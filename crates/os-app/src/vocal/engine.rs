@@ -10,7 +10,9 @@ static NATIVE_CALL:std::sync::Mutex<()>=std::sync::Mutex::new(());
 struct CallGuard(std::sync::MutexGuard<'static,()>);
 impl CallGuard{fn acquire()->Result<Self>{Ok(Self(NATIVE_CALL.lock().unwrap_or_else(|e|e.into_inner())))}}
 pub type Result<T>=std::result::Result<T,String>;
-pub const BASE:&str="https://michaellanemusic.de/lemon-studio/components/vocal-world-v1/";
+/// Where signed engine packages are published. ML Studio's engine is signed for ML Studio and served from its server,
+/// so AQUILA has none: the download reports it is unavailable.
+pub const BASE:Option<&str>=None;
 pub fn platform()->String{format!("{}-{}",std::env::consts::OS,std::env::consts::ARCH)}
 fn filename()->String{format!("LemonVocalEngine-{}{}",platform(),if cfg!(windows){".dll"}else if cfg!(target_os="macos"){".dylib"}else{".so"})}
 pub fn root()->Result<PathBuf>{
@@ -36,11 +38,12 @@ fn checked(dir:&Path,m:&Manifest)->Result<PathBuf>{
 pub fn ready()->bool{root().and_then(|d|{let m=verify(&fs::read(d.join("manifest.json")).map_err(|e|e.to_string())?)?;checked(&d,&m)}).is_ok()}
 pub fn install()->Result<()>{install_at(&root()?)}
 pub fn install_at(dir:&Path)->Result<()>{
+ let Some(base)=BASE else {return Err("The vocal engine download is not available in AQUILA.".into())};
  fs::create_dir_all(dir).map_err(|e|e.to_string())?;
  let agent=ureq::AgentBuilder::new().timeout_connect(Duration::from_secs(20)).timeout_read(Duration::from_secs(30)).build();
  let fetch=|url:&str,limit:u64|->Result<Vec<u8>>{let mut data=Vec::new();agent.get(url).call().map_err(|e|format!("Download failed: {e}"))?.into_reader().take(limit+1).read_to_end(&mut data).map_err(|e|e.to_string())?;if data.len()as u64>limit{return Err("Component download exceeded its size limit".into());}Ok(data)};
- let signed=fetch(&format!("{BASE}{}.json",platform()),8192)?;let m=verify(&signed)?;
- if checked(dir,&m).is_err(){let data=fetch(&format!("{BASE}{}",m.file),m.size)?;if data.len()as u64!=m.size||hex(&Sha256::digest(&data))!=m.sha256{return Err("Downloaded vocal engine failed verification".into());}
+ let signed=fetch(&format!("{base}{}.json",platform()),8192)?;let m=verify(&signed)?;
+ if checked(dir,&m).is_err(){let data=fetch(&format!("{base}{}",m.file),m.size)?;if data.len()as u64!=m.size||hex(&Sha256::digest(&data))!=m.sha256{return Err("Downloaded vocal engine failed verification".into());}
   let pending=dir.join(format!("{}.download",m.file));fs::write(&pending,data).map_err(|e|e.to_string())?;if dir.join(&m.file).exists(){fs::remove_file(dir.join(&m.file)).map_err(|e|e.to_string())?;}fs::rename(pending,dir.join(&m.file)).map_err(|e|e.to_string())?;}
  let temp=dir.join("manifest.pending");fs::write(&temp,signed).map_err(|e|e.to_string())?;if dir.join("manifest.json").exists(){fs::remove_file(dir.join("manifest.json")).map_err(|e|e.to_string())?;}fs::rename(temp,dir.join("manifest.json")).map_err(|e|e.to_string())?;checked(dir,&m)?;Ok(())
 }

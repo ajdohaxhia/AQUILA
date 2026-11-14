@@ -11101,7 +11101,11 @@ impl App {
             if crate::updates::ready() {
                 if self.transport.playing() || self.audio_rec.is_some() { self.state.message = Some("Stop playback or recording before restarting to update.".into()); self.invalidate(); return; }
                 self.ask_discard("restarting to update", crate::dialog::Next::Update);
-            } else { crate::updates::request(); self.state.message = Some(crate::updates::display().1); self.invalidate(); }
+            } else {
+                crate::updates::request();
+                let message = match crate::donate::open_url(crate::updates::RELEASES) { Ok(()) => crate::updates::display().1, Err(error) => error };
+                self.state.message = Some(message); self.invalidate();
+            }
             return;
         }
         if let Action::DetachWin(w)=a {

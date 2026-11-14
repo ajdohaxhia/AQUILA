@@ -121,7 +121,12 @@ fn extract(archive:&Path,dest:&Path,limit:u64)->Result<()> {
 fn install(root:&Path)->Result<()> {
     directory(root)?;let lock=fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(root.join("install.lock"))?;
     lock.try_lock().map_err(|_|"Another ML Studio instance is installing Melli")?;
-    let p=package();let models=root.join("models");directory(&models)?;
+    let p=package();
+    // Melli's runtime is published on ML Studio's server for ML Studio; AQUILA does not download from it.
+    if [&p.archive.url,&p.model.url].iter().any(|u|u.contains("michaellanemusic.de")) {
+        return Err("Melli is not available in AQUILA.".into());
+    }
+    let models=root.join("models");directory(&models)?;
     let stage=root.join("next");let old=root.join("previous");let current=root.join("current");
     remove_owned(&stage)?;
     if !current.exists() && old.exists(){fs::rename(&old,&current)?;}

@@ -553,3 +553,73 @@ their "Related:" links included, and its install topic points to https://github.
 ML Studio's download page. A later merge of ML Studio's guide will conflict wherever those lines change: take theirs
 and repeat the replacement. os-app tests after the change: 1515 passed, 85 failed, the failures outside the baseline
 unchanged.
+
+## 15. ML Studio v2026.11.14.2 merged; AQUILA no longer contacts michaellanemusic.de (2026-11-14, in progress)
+
+**State at handoff (nothing committed or pushed yet):**
+
+- A merge of `origin/michael-lane` 5fedeac2 (v2026.11.14.2) is open (`.git/MERGE_HEAD`). All conflicts are resolved.
+- The staged files plus these unstaged merge fixes compile cleanly (`chk.sh check --workspace --lib --bins --tests`):
+  - `record.rs`: the AQUILA `Take.controls` field restored (struct + `open_take`), `.as_deref()` in a test.
+  - `recording_merge.rs`: `schedule_controls` returns `(tick, kind, value)`; `kind` is the same word as
+    `target::channel(ch, param)`. `Automation` literals gain `lfo: Default::default()`.
+  - `smart_recording.rs`: `.as_deref()` on `history::undo` in tests.
+  - `params.rs`: the test's `CapturePlugin` is `{desc, events, value}`.
+  - `studio_helper.rs`: test no longer looks for the hidden Help menu row.
+  - `plugins/smith/src/editor.rs`: `Cmd::BrowseSample | Cmd::SampleFit => 0` (Windows-only match; CI run
+    43618382354 failed there; Linux and macOS were green).
+- Test run of the merge state (`work/newfail.sh`, before the second change): passed 3178, failed 112. Besides the 17
+  of section 14, **11 new failures**, to fix or explain before committing the merge:
+  - Smart recording after the merge (likely the params/engine/record resolutions of this merge):
+    `params::smart_plugin_recording_does_not_also_write_pattern_controls` (params.rs:1266),
+    `remote::remote_fader_and_container_levels_record_in_smart_mode` (remote.rs:919),
+    `record_lead::lead_fix_modes_timing_note_automation_gates_and_stop` (record_lead.rs:51, `smart_pending()` false),
+    `engine::touch_override_resumes_a_flat_curve_and_survives_seek` (engine.rs:9623: the touched channel does not
+    resume its automation value; see the `CtlTo::Channel` lookup in `automation_writing`).
+  - `mixer::workflow_effect_bypass_preserves_selection_locks_and_undo` (mixer.rs:4013; `toggle_slot` resolution).
+  - Expected from AQUILA's choices, adjust the tests: `views::menus::working_entries_have_their_command` (Melli is
+    hidden), `help::tests::guide_catalog_links_images_and_stock_plugins` (guide says AQUILA, test expects "ML Studio").
+  - Theme: `design::tests::classic_is_unchanged`, `fl::tests::the_light_mode_key_is_ignored` (os-theme; compare with
+    ML Studio's 14.2 theme files).
+  - `helper_install::tests::melli_archive_validation_and_owned_extraction` (helper_install.rs:171),
+    `playlist_tracks::drops::tests::workflow_header_drop_modes_undo_reopen_and_routing` (log: "ML Plasma payload has
+    an unexpected instrument identity").
+  Run a failing test alone with `/Volumes/aquilabuild/chk.sh test -p os-app --bins <name> -- --nocapture`. A test
+  that also fails in a clean ML Studio 14.2 checkout joins the baseline (`work/base-sorted.txt`).
+
+**Second change, written but not yet compiled, to commit separately after the merge:**
+
+- `updates.rs`: no update feed; `request()` does no network work; `RELEASES` = the AQUILA GitHub releases page;
+  `PRODUCT` ids are `aquila-*`. `check()` kept (signed-update tests) but unused.
+- `app.rs` (`Action::Updates`): opens `updates::RELEASES` in the browser.
+- `feedback.rs`: Report a bug opens a new GitHub issue on ajdohaxhia/AQUILA, diagnostics in `?body=`.
+- `vocal/engine.rs`: `BASE` is `None`; `install_at` returns "not available in AQUILA".
+- `helper_install.rs`: `install` refuses catalog URLs on michaellanemusic.de before downloading anything.
+- Left alone: `donate.rs` (PayPal link for ML Studio's author, opened by the user), and the publishing scripts and
+  pages under `packaging/` (ML Studio's release tooling; not part of the app).
+
+**Resolution of the new failures (2026-11-14, evening).** Each was checked against a clean ML Studio 14.2 tree
+(`git archive 5fedeac2` copied into the build disk's `tree`, same target dir):
+- `rec_smart` defaults to true (ML Studio always records smart); the legacy-writer test in `record.rs` turns it off
+  under a `Drop` guard that puts it back.
+- params / remote (AQUILA-only tests): the smart recorder writes its clip when the pass ends, so the asserts now
+  follow Stop. `smart_record_value` again ignores a non-finite value before Start on input (AQUILA's order).
+- record_lead, Melli archive: pass once smart recording is the default.
+- engine `touch_override…`: the automation channel gets the full 0..1 range, as AQUILA scales clips by it (FL).
+- mixer `toggle_slot`: back to ML Studio's code (`Snap::SlotEnabled`, "Effect bypass"); the control-plane test
+  follows that name.
+- drops: `add_audio_clip_in` routes an audio-mode lane through its linked output, as ML Studio 14.2 does.
+- menus test lists Melli's label among those dispatched by label; two guide "Related" links say AQUILA.
+- Baseline (`work/base-sorted.txt`, fail on clean ML Studio 14.2 too): os-theme `design::classic_is_unchanged`,
+  `fl::the_light_mode_key_is_ignored`; `app::pressed_button_look`, `app::skins_and_themes_are_chosen_apart`,
+  `app::playlist_floating_frame_has_no_inset_rail_and_panels_have_flush_edges`,
+  `attached_mixer::ordinary_playlist_audio_recording_uses_clicked_lane_and_retains_binding`,
+  `playlist_links::audio_import_uses_destination_only_while_attached`.
+- Flaky only in the full parallel run (pass alone, here and in clean 14.2): `app::tempo_tapper_flash_repaints_the_pad`
+  (global update status changed by other tests repaints the whole frame), `helper_install::melli_archive_validation…`.
+- Result: `newfail.sh` shows the 17 of section 14 plus these two flaky tests.
+
+**Order to finish:** commit the merge with only the merge files staged (`app.rs`, `updates.rs`, `feedback.rs`,
+`vocal/engine.rs`, `helper_install.rs`, `HANDOFF.md` must stay unstaged for it), check and test again, commit the
+second change, set the `ade` remote to https://github.com/ajdohaxhia/AQUILA.git, push both branches, read CI, then
+run `aquila-release.yml`.

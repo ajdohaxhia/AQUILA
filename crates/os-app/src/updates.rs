@@ -8,30 +8,20 @@ use sha2::{Digest, Sha256};
 pub(crate) mod retention;
 
 pub const VERSION: u64 = 2026111402;
+/// Where AQUILA's builds are published. AQUILA has no signed update feed of its own yet, so it never contacts
+/// ML Studio's update server: the Update button opens this page instead.
+pub const RELEASES: &str = "https://github.com/ajdohaxhia/AQUILA/releases";
+/// No update feed: `check` is kept for the signed-update machinery and its tests, but nothing calls it.
+pub const FEED: &str = "";
+const ROOT: &str = "";
 #[cfg(windows)]
-pub const FEED: &str = "https://michaellanemusic.de/lemon-studio/updates/stable.json";
-#[cfg(windows)]
-const ROOT: &str = "https://michaellanemusic.de/lemon-studio/updates/";
-#[cfg(windows)]
-const PRODUCT: &str = "lemon-studio-michael-lane-windows-x64";
+const PRODUCT: &str = "aquila-windows-x64";
 #[cfg(target_os="linux")]
-pub const FEED: &str = "https://michaellanemusic.de/lemon-studio/updates/linux-x64/stable.json";
-#[cfg(target_os="linux")]
-const ROOT: &str = "https://michaellanemusic.de/lemon-studio/updates/linux-x64/";
-#[cfg(target_os="linux")]
-const PRODUCT: &str = "lemon-studio-michael-lane-linux-x64";
+const PRODUCT: &str = "aquila-linux-x64";
 #[cfg(all(target_os="macos",target_arch="aarch64"))]
-pub const FEED: &str = "https://michaellanemusic.de/lemon-studio/mac/updates/arm64/stable.json";
-#[cfg(all(target_os="macos",target_arch="aarch64"))]
-const ROOT: &str = "https://michaellanemusic.de/lemon-studio/mac/updates/arm64/";
-#[cfg(all(target_os="macos",target_arch="aarch64"))]
-const PRODUCT: &str = "lemon-studio-michael-lane-mac-arm64";
+const PRODUCT: &str = "aquila-mac-arm64";
 #[cfg(all(target_os="macos",not(target_arch="aarch64")))]
-pub const FEED: &str = "https://michaellanemusic.de/lemon-studio/mac/updates/x86_64/stable.json";
-#[cfg(all(target_os="macos",not(target_arch="aarch64")))]
-const ROOT: &str = "https://michaellanemusic.de/lemon-studio/mac/updates/x86_64/";
-#[cfg(all(target_os="macos",not(target_arch="aarch64")))]
-const PRODUCT: &str = "lemon-studio-michael-lane-mac-x86_64";
+const PRODUCT: &str = "aquila-mac-x86_64";
 const EXE: &str = if cfg!(windows) {"lemonstudio.exe"} else {"lemonstudio"};
 const MAC_FILES: &[&str] = &["Contents/MacOS/lemonstudio","Contents/Info.plist","Contents/PkgInfo","Contents/Resources/Assets.car","Contents/Resources/lemonstudio.icns","Contents/_CodeSignature/CodeResources"];
 fn expected_files() -> Vec<&'static str> {
@@ -118,6 +108,7 @@ fn writable_bundle(exe:&Path) -> Result<()> {
     fs::remove_file(probe)?;
     Ok(())
 }
+#[allow(dead_code)]
 fn check() -> Result<Option<PathBuf>> {
     let bytes=get(FEED,65536).map_err(|e| format!("Could not fetch the update feed ({e})"))?;
     // Authenticate even a current/older release, before interpreting its version.
@@ -157,20 +148,11 @@ pub fn start(previous_failure: Option<&str>) {
     }
 }
 pub fn request() {
+    // No network: AQUILA has no update feed, and ML Studio's server is not AQUILA's.
     let mut s=status().lock().unwrap();
     if s.busy || s.ready.is_some() { return; }
-    s.busy=true; s.last=Some(Instant::now()); s.message="Checking for updates…".into(); drop(s);
-    std::thread::spawn(|| {
-        let result=check(); let mut s=status().lock().unwrap(); s.busy=false;
-        match result {
-            Ok(Some(dir)) => {s.ready=Some(dir);s.message="Update ready. Click to restart, or it will install when you close AQUILA.".into();}
-            Ok(None) => s.message="AQUILA is up to date.".into(),
-            Err(e) => {
-                s.message=format!("Update check failed: {e}. Click Update to retry.");
-                report_error(&s.message);
-            }
-        }
-    });
+    s.last=Some(Instant::now());
+    s.message=format!("AQUILA does not update itself. New versions are published at {RELEASES}");
 }
 pub fn tick() {
     let s=status().lock().unwrap();
