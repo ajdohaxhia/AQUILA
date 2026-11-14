@@ -3349,9 +3349,11 @@ pub fn add_layer_channel(s: &mut State) -> usize {
 pub fn import_audio_clip(s: &mut State, path: &str, from: u16, tick: u32) -> Result<usize, &'static str> {
     let wave = s.playlist.wave(path).ok_or("Could not read the file as audio")?;
     let window=crate::browser_preview::import_window(path);
-    let len = audio_drop_length_for_window(s,wave.secs(),window);
+    let secs=wave.secs();
+    let fit=crate::loop_fit::dropped_beats(path,s.tempo);
+    let len = fitted_drop_length(s,secs,window,fit);
     let track=audio_drop_track(s,from,tick,len,&[]).ok_or("No available Playlist track below this position")?;
-    let i=add_audio_clip_as(s,path,track,tick,"Playlist edit").ok_or("Could not read the file as audio")?;
+    let i=add_audio_clip_fitted(s,path,track,tick,"Playlist edit",fit).ok_or("Could not read the file as audio")?;
     if let Some(window)=window{let clip=&mut arr_mut(s).clips[i];clip.window=Some(window);clip.length=len;}
     Ok(i)
 }
@@ -3374,16 +3376,26 @@ pub fn audio_drop_track(s:&State,from:u16,tick:u32,len:u32,reserved:&[u16])->Opt
 /// Add an audio clip channel for a sample file and place it at `tick` on `track` (§9). The channel's colour comes from
 /// `State::clip_colors`.
 pub fn add_audio_clip(s: &mut State, path: &str, track: u16, tick: u32) -> Option<usize> {
-    let i=add_audio_clip_as(s, path, track, tick, "Arranger edit")?;
-    if let Some(window)=crate::browser_preview::import_window(path){let length=((window.1-window.0)/1000.*s.tempo/60.*f64::from(s.project.ppq)).round().clamp(1.,u32::MAX as f64) as u32;let clip=&mut arr_mut(s).clips[i];clip.window=Some(window);clip.length=length;}
+    let secs=s.playlist.wave(path)?.secs();
+    let fit=crate::loop_fit::dropped_beats(path,s.tempo);
+    let i=add_audio_clip_fitted(s, path, track, tick, "Arranger edit",fit)?;
+    if let Some(window)=crate::browser_preview::import_window(path){let length=fitted_drop_length(s,secs,Some(window),fit);let clip=&mut arr_mut(s).clips[i];clip.window=Some(window);clip.length=length;}
     Some(i)
+}
+
+fn fitted_drop_length(s:&State,secs:f64,window:Option<(f64,f64)>,fit:Option<f64>)->u32 {
+    fit.map(|beats| (beats*f64::from(s.project.ppq)*window.map_or(1.,|(a,b)|((b-a)/1000./secs).clamp(0.,1.))).round().clamp(1.,u32::MAX as f64) as u32)
+        .unwrap_or_else(||audio_drop_length_for_window(s,secs,window))
 }
 
 /// `add_audio_clip` as the undo step `name` (One-click audio recording's "Recorded items").
 pub fn add_audio_clip_as(s: &mut State, path: &str, track: u16, tick: u32, name: &'static str) -> Option<usize> {
+    add_audio_clip_fitted(s,path,track,tick,name,None)
+}
+fn add_audio_clip_fitted(s: &mut State, path: &str, track: u16, tick: u32, name: &'static str, fit:Option<f64>) -> Option<usize> {
     s.playlist.wave(path)?;
     if crate::attached_mixer::active(s){crate::playlist_links::snapshot(s,name);}else{snapshot_as(s,name);}
-    add_audio_clip_in(s, path, track, tick, None)
+    add_audio_clip_in_fit(s, path, track, tick, None, fit)
 }
 
 /// An audio clip's channel as one is made: no sample, name or colour yet, on the master, FL's sampler flags.
@@ -3413,6 +3425,9 @@ fn audio_clip_channel() -> Channel {
 /// `add_audio_clip_as` with no undo step of its own (the caller took one), its channel on mixer track `mixer` (`None`:
 /// the track after the highest any channel uses).
 pub fn add_audio_clip_in(s: &mut State, path: &str, track: u16, tick: u32, mixer: Option<u16>) -> Option<usize> {
+    add_audio_clip_in_fit(s, path, track, tick, mixer, None)
+}
+fn add_audio_clip_in_fit(s: &mut State, path: &str, track: u16, tick: u32, mixer: Option<u16>, fit: Option<f64>) -> Option<usize> {
     s.playlist.wave(path)?;
     // Not on an instrument track: the next free track below it (§6c); on an audio track, through its mixer track.
     let track = crate::track_links::audio_drop_track(s, track, tick, tick + 1);
@@ -3435,6 +3450,8 @@ pub fn add_audio_clip_in(s: &mut State, path: &str, track: u16, tick: u32, mixer
         sample_path: Some(path.to_string()),
         ..audio_clip_channel()
     });
+    // ML Studio 14.3: a loop dropped at the project tempo keeps its fitted length.
+    if let Some(beats)=fit {crate::loop_fit::set_fitted_time(&mut s.project.channels.last_mut()?.sound,beats);}
     s.playlist.source = Some(ClipSource::Channel(index));
     s.playlist.picker = PickKind::Audio;
     let i = place(s, track, tick);

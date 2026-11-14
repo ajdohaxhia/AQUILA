@@ -7,7 +7,7 @@ use sha2::{Digest, Sha256};
 #[path = "update_retention.rs"]
 pub(crate) mod retention;
 
-pub const VERSION: u64 = 2026111402;
+pub const VERSION: u64 = 2026111403;
 /// Where AQUILA's builds are published. AQUILA has no signed update feed of its own yet, so it never contacts
 /// ML Studio's update server: the Update button opens this page instead.
 pub const RELEASES: &str = "https://github.com/ajdohaxhia/AQUILA/releases";

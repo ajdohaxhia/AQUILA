@@ -623,3 +623,15 @@ unchanged.
 `vocal/engine.rs`, `helper_install.rs`, `HANDOFF.md` must stay unstaged for it), check and test again, commit the
 second change, set the `ade` remote to https://github.com/ajdohaxhia/AQUILA.git, push both branches, read CI, then
 run `aquila-release.yml`.
+
+## 16. ML Studio v2026.11.14.3 merged (2026-11-14)
+
+- Conflicts: `history.rs` keeps both rescale arms; `engine.rs` keeps AQUILA's `skipped` slot result plus 14.3's
+  `record_delay`; `playlist.rs` takes 14.3's loop fitting (`add_audio_clip_fitted`, threaded through
+  `add_audio_clip_in_fit`) with AQUILA's "Arranger edit" step; `updates.rs` and the NSIS installer keep AQUILA's
+  text with version 2026.11.14.3; the guide and `github-release.json` take 14.3's text, named AQUILA. The new Helper
+  visibility row reads "AQUILA Helper companion".
+- Twelve UI tests new in 14.3 fail on a clean ML Studio 14.3 tree too and join the baseline: mixer layout
+  (vintage seams, modern numbers, selected outline, separator, routing deck, traditional readouts, channel layout),
+  menus (titles on first press, wheel rows, wide menus, nested plugin folders) and `recent::file_menu_section`.
+- `newfail.sh`: the 17 of section 14 plus the two parallel-only flaky tests of section 15.
