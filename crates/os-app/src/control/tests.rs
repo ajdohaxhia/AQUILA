@@ -457,7 +457,7 @@ fn the_mixer_s_edits_are_undoable() {
     ui_round_trip(&mut a, "Mixer track polarity", |a| {
         hit(a, MHit::Polarity(3));
     });
-    ui_round_trip(&mut a, "Effect slot", |a| {
+    ui_round_trip(&mut a, "Effect bypass", |a| { // ML Studio's toggle_slot names its own undo step
         a.state.selected_mixer = 1;
         hit(a, MHit::SlotLed(4));
     });

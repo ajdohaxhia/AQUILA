@@ -671,11 +671,13 @@ impl App {
         match t {
             Target::SampleTempo(_) => return,
             Target::Knob(k) => {
+                self.smart_begin_host(&crate::app::Action::Knob(k));
                 crate::history::knob(&mut self.state, k, true);
                 self.state.set_knob(k, v);
                 self.record_knob(k);
             }
             Target::Fader(m) => {
+                self.smart_begin_host(&crate::app::Action::Fader(m));
                 if let Some(tr) = crate::mixer::track_mut(&mut self.state, m) {
                     tr.volume = Some(f64::from(v));
                     self.state.piano.dirty = true;
@@ -914,6 +916,9 @@ mod tests {
         app.transport.pretend_at(24., false);
         app.remote_set(Target::Fader(1), 0.3);
         app.remote_set(Target::Member(2, 0, 1, true), 0.6);
+        // The smart recorder writes its clips when the pass ends.
+        app.transport.stop();
+        app.record_tick();
         assert_eq!(app.state.project.automations.len(), 2);
         for (target, value) in [
             (os_model::target::mixer(1, os_model::target::MIXER_VOLUME), 0.3),

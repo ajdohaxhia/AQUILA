@@ -26,6 +26,8 @@ mod clip_effects;
 mod ara;
 mod ai_control;
 mod voice_assistant;
+mod studio_helper;
+mod helper_install;
 mod voice_runtime;
 mod voice_plan;
 mod ai_commands;
@@ -135,6 +137,8 @@ mod rack_mixer;
 mod mini_eq;
 mod mixer_recording;
 mod smart_recording;
+mod automation_feedback;
+mod recording_merge;
 mod comping;
 mod mixer_state;
 mod osc3;
@@ -749,6 +753,7 @@ impl Shell {
         }
         self.prepare_main();
         if let Some(main) = &self.window {
+            studio_helper::heartbeat(&mut self.app,main);
             let state = &self.app.state;
             let target = if !state.show_browser { None }
             else if state.native_detached.contains(&app::Win::Browser) {
@@ -1002,7 +1007,11 @@ impl ApplicationHandler for Shell {
     fn about_to_wait(&mut self, el: &ActiveEventLoop) {
         self.detached.flush_stems(&mut self.app);
         let files=std::mem::take(&mut self.dropped_files);
-        if let Some((track,tick))=self.stem_anchor.take().filter(|_|files.len()>1 &&
+        let anchor=self.stem_anchor.take();
+        if !self.app.modal_open() && files.len()>1 && files.iter().all(|p|crate::views::browser::file_icon(&p.to_string_lossy())==crate::icons::Icon::FileAudio)
+            && let Some(row)=crate::playlist_tracks::drops::header_at(&self.app){
+            crate::playlist_tracks::drops::samples(&mut self.app,files.into_iter().map(|p|p.to_string_lossy().into_owned()).collect(),row);
+        }else if let Some((track,tick))=anchor.filter(|_|files.len()>1 &&
             files.iter().all(|p|crate::views::browser::file_icon(&p.to_string_lossy())==crate::icons::Icon::FileAudio)) {
             self.app.import_stems(files,track,tick);
         } else { for file in files {self.app.drop_file(file);} }
@@ -1013,6 +1022,7 @@ impl ApplicationHandler for Shell {
     /// (`macos::answer_quit`) ends the process from AppKit, after this: the plugin windows close and the instances go as
     /// they do when `run_app` returns.
     fn exiting(&mut self, _el: &ActiveEventLoop) {
+        studio_helper::shutdown();
         if !os_host::guard::tripped() { self.app.transport.shutdown(); }
         self.detached.save();
         // An update to install: the updater waits for this process to end (`update`).
@@ -2155,6 +2165,10 @@ fn main() {
         return;
     }
     if args.first().map(String::as_str)==Some("--ai-mcp"){std::process::exit(ai_control::bridge(&args[1..]));}
+    #[cfg(windows)]
+    if args.first().map(String::as_str) == Some("--relaunch-update") {
+        std::process::exit(updates::relaunch(&args[1..]));
+    }
     if args.first().map(String::as_str) == Some("--apply-update") {
         std::process::exit(updates::helper(&args[1..]));
     }

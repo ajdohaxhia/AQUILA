@@ -47,6 +47,8 @@ pub enum Opt {
 pub enum RecCmd {
     Arm { notes: bool, automation: bool },
     AskOff,
+    AutomationMode(bool),
+    SeparateAutomationClips(bool),
     /// 0: Recording precount off; 1 or 2: on, that many bars.
     Precount(u32),
     LeadMode(bool),
@@ -187,10 +189,11 @@ struct Take {
     channels: Vec<u16>,
     span: Option<(u32, u32)>,
     new: Vec<Note>,
-    /// Each recorded control (`ControlPoint::kind`) and the tick of its last point in this take.
-    controls: Vec<(u32, u32)>,
     /// SONG mode: the clip the take records into (track, position), made longer when playback runs past it (spec §2).
     clip: Option<(u16, u32)>,
+    /// Per control word (target), the last tick this take wrote: moving the control again clears the points it laid
+    /// between that tick and the new one (unless Blend is on).
+    controls: Vec<(u32, u32)>,
 }
 
 /// Record's state (spec §2).
@@ -265,6 +268,7 @@ impl App {
     /// The Record button and R: disarms, or asks what to record (spec §2 What to record), or arms when asking is off.
     pub(crate) fn toggle_record(&mut self) {
         if self.state.rec.armed {
+            self.smart_record_tick();self.smart_finish();
             self.end_take();
             self.state.rec.armed = false;
         } else if !self.state.mixer.recording.armed.is_empty() {
@@ -326,6 +330,17 @@ impl App {
                 set(Opt::Notes, notes);
                 set(Opt::Automation, automation);
                 self.arm();
+                None
+            }
+            RecCmd::AutomationMode(latch)=>{
+                self.smart_record_tick();self.smart_finish();
+                crate::settings_file::set_flag("automation_record_latch",latch);
+                None
+            }
+            RecCmd::SeparateAutomationClips(separate)=>{
+                self.smart_record_tick();self.smart_finish();
+                if self.smart_pending(){return Some("Place the buffered automation take on an unlocked Playlist row before changing this option.".into());}
+                crate::settings_file::set_flag("automation_record_separate_clips",separate);
                 None
             }
             RecCmd::AskOff => {
@@ -445,6 +460,7 @@ impl App {
 
     /// Stop ends a wait or a count-in.
     pub(crate) fn record_stopped(&mut self) {
+        self.smart_finish();
         self.state.rec.waiting = false;
         self.state.rec.count = None;
         self.state.rec.preroll = None;
@@ -496,7 +512,7 @@ impl App {
         if !crate::settings_file::flag("rec_filter_explicit",false) && self.state.mixer.recording.armed.is_empty() {crate::mixer_recording::auto_filter();}
         use crate::playlist::{Cmd, Mark, PItem, Popup};
         let it = |label: &'static str, o: Opt| PItem::new(label, Cmd::Record(o)).mark(Mark::Check(o.on()));
-        let items = vec![
+        let mut items = vec![
             PItem::head("Recording filter"),
             it("Notes", Opt::Notes),
             it("Automation", Opt::Automation),
@@ -508,6 +524,17 @@ impl App {
             it("Note start time", Opt::QuantizeStart),
             it("Note end time", Opt::QuantizeEnd),
         ];
+        if crate::settings_file::flag(crate::smart_recording::MODE_VISIBILITY,true) {
+            items.insert(4,PItem::sub("Automation mode",vec![
+                PItem::new("Touch (release returns to automation)",Cmd::Rec(RecCmd::AutomationMode(false))).mark(Mark::Check(!crate::smart_recording::latch())),
+                PItem::new("Latch (keep writing until Stop)",Cmd::Rec(RecCmd::AutomationMode(true))).mark(Mark::Check(crate::smart_recording::latch())),
+            ]));
+        }
+        if crate::settings_file::flag(crate::smart_recording::CLIPS_VISIBILITY,true) {
+            let at=items.iter().position(|i|i.label=="Options").unwrap_or(4);
+            items.insert(at,PItem::new("Record as separate clips",Cmd::Rec(RecCmd::SeparateAutomationClips(!crate::smart_recording::separate_clips())))
+                .mark(Mark::Check(crate::smart_recording::separate_clips())));
+        }
         self.state.playlist.popup = Some(Popup { x, y, items, sub: None, scroll: [0; 2], cascade: Vec::new() });
     }
 
@@ -918,6 +945,7 @@ impl App {
             return "Nothing is being recorded".into();
         }
         let since = r.since;
+        self.smart_cancel();
         self.state.rec.held.clear();
         self.state.rec.take = None;
         self.state.rec.waiting = false;
@@ -1109,6 +1137,8 @@ mod tests {
                 "Notes",
                 "Automation",
                 "Audio",
+                "Automation mode",
+                "Record as separate clips",
                 "Options",
                 "Disarm on stop",
                 "Quantize",
@@ -1419,52 +1449,28 @@ mod tests {
         app.state.project.pattern(1).map_or(vec![], |p| p.controls.iter().map(|c| (c.position, c.channel(), c.param(), c.value)).collect())
     }
 
-    /// A channel volume knob dragged while recording becomes the pattern's control points at the playback position;
-    /// the sweep replaces the earlier points between its points; undo puts them back; pan records too; with
-    /// Automation off nothing is written (spec §2 Taking automation).
+    /// Host drag and wheel paths record clips without erasing legacy pattern events.
     #[test]
     fn records_channel_knobs() {
         use os_model::ControlPoint;
-        let Ok(mut c) = Canvas::new(1920, 1080, 1.0) else { return };
-        let mut app = app();
-        let ch = app.state.project.channels[1].index;
-        crate::piano::set_control(&mut app.state, ch, ControlPoint::VOLUME, 70, 1000);
-        crate::piano::set_control(&mut app.state, ch, ControlPoint::VOLUME, 200, 2000);
-        app.paint(&mut c, None);
-        let k = hit_rect(&app, &Action::Knob(KnobId::ChanVol(1)));
-        app.toggle_record();
-        crate::settings_file::set_flag("rec_smart",false); // This case explicitly tests pattern control points.
-        app.transport.pretend_at(48.0, false);
-        app.record_tick();
-        app.mouse_move(k.cx(), k.cy());
-        app.mouse_down();
-        app.mouse_move(k.cx(), k.cy() + 10.0);
-        let mid = (app.state.knob(KnobId::ChanVol(1)) * 12800.0).round() as i32;
-        app.transport.pretend_at(96.0, false);
-        app.mouse_move(k.cx(), k.cy() + 20.0);
-        app.mouse_up();
-        let end = (app.state.knob(KnobId::ChanVol(1)) * 12800.0).round() as i32;
-        assert!(end < mid);
-        let vol = |app: &App| controls(app).into_iter().filter(|c| c.2 == ControlPoint::VOLUME).map(|c| (c.0, c.3)).collect::<Vec<_>>();
-        assert_eq!(vol(&app), [(48, mid), (96, end), (200, 2000)], "the point at 70 is replaced, the one at 200 stays");
-        assert!(controls(&app).iter().all(|c| c.1 == ch));
-
-        // Pan, by the wheel path's call.
-        app.state.set_knob(KnobId::ChanPan(1), 0.25);
-        app.record_knob(KnobId::ChanPan(1));
-        assert!(controls(&app).contains(&(96, ch, ControlPoint::PAN, 3200)));
-        stop(&mut app);
-        crate::history::undo(&mut app.state);
-        assert_eq!(vol(&app), [(70, 1000), (200, 2000)]);
-
-        // Automation off: knob moves write nothing.
-        Opt::Automation.toggle();
-        app.transport.pretend_at(10.0, false);
-        app.record_tick();
-        app.state.set_knob(KnobId::ChanVol(1), 0.1);
-        app.record_knob(KnobId::ChanVol(1));
-        assert_eq!(vol(&app), [(70, 1000), (200, 2000)]);
-        assert_eq!(crate::record::hint(), "Record (notes) (R) - right-click for options");
+        let mut c=Canvas::new(1920,1080,1.).unwrap();let mut app=app();
+        let ch=app.state.project.channels[1].index;
+        crate::piano::set_control(&mut app.state,ch,ControlPoint::VOLUME,70,1000);
+        let original=controls(&app);
+        app.paint(&mut c,None);let k=hit_rect(&app,&Action::Knob(KnobId::ChanVol(1)));
+        app.toggle_record();app.transport.pretend_at(48.,true);app.record_tick();
+        app.mouse_move(k.cx(),k.cy());app.mouse_down();app.mouse_move(k.cx(),k.cy()+10.);
+        app.transport.pretend_at(96.,true);app.mouse_move(k.cx(),k.cy()+20.);app.mouse_up();
+        assert!(app.state.rec.smart.active.is_empty(),"mouse release ends Touch");
+        app.state.set_knob(KnobId::ChanPan(1),0.25);app.record_knob(KnobId::ChanPan(1));
+        app.transport.pretend_at(144.,true);app.record_tick();stop(&mut app);
+        assert_eq!(app.state.project.automations.len(),2);
+        assert_eq!(controls(&app),original);
+        assert_eq!(crate::history::undo(&mut app.state).as_deref(),Some("Record automation"));
+        assert!(app.state.project.automations.is_empty());assert_eq!(controls(&app),original);
+        Opt::Automation.toggle();app.transport.pretend_at(10.,true);app.record_tick();
+        app.state.set_knob(KnobId::ChanVol(1),0.1);app.record_knob(KnobId::ChanVol(1));
+        assert!(!app.smart_pending());
     }
 
     /// A mixer track's fader and pan, the tempo and a plugin's parameter record into the current pattern as control
@@ -1491,6 +1497,11 @@ mod tests {
         app.toggle_record();
         // Exercise the legacy pattern-control writer explicitly. The ML Studio toolbar
         // normally selects smart recording, whose automation-clip undo is covered separately.
+        // rec_smart is a global flag (default true in AQUILA); save it and restore it at the
+        // end so forcing the legacy path here does not leak into other tests.
+        struct SmartGuard(bool);
+        impl Drop for SmartGuard { fn drop(&mut self) { crate::mixer_recording::flag(Opt::Smart, self.0); } }
+        let _smart = SmartGuard(Opt::Smart.on());
         crate::mixer_recording::flag(Opt::Smart, false);
         app.transport.pretend_at(24.0, false);
         app.record_tick();

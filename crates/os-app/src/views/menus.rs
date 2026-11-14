@@ -462,6 +462,7 @@ const HELP: &[Item] = &[
     it("AQUILA website", "").on().cmd(MenuCmd::Web(crate::help_links::WEBSITE_URL)),
     it("About...", "").cmd(MenuCmd::Settings(crate::views::settings::ABOUT)),
     it("Community Discord", "").on(),
+    it(crate::studio_helper::LABEL, "").on(),
 ];
 
 pub const MENUS: &[Menu] = &[
@@ -618,6 +619,8 @@ pub fn label_now(s: &State, menu: usize, item: &Item) -> std::borrow::Cow<'stati
 /// Whether an entry is in its menu now: EDIT's Redo only with Alternate undo mode on and a history to act on (spec:
 /// ui/menus.md "EDIT": only Undo while the history is empty).
 pub fn in_menu(s: &State, menu: usize, item: &Item) -> bool {
+    // ML Studio's helper (Melli) installs its files from ML Studio's own server: not offered in AQUILA.
+    if menu == HELP_MENU && item.label == crate::studio_helper::LABEL { return false; }
     if item.label==crate::collaboration::LABEL {return s.collaborating || crate::workspace_visibility::shown(crate::collaboration::VISIBLE);}
     if menu == HELP_MENU && item.label == crate::change_log::LABEL {
         return crate::workspace_visibility::shown(crate::change_log::VISIBILITY);
@@ -1311,7 +1314,7 @@ mod tests {
         for (mi, m) in MENUS.iter().enumerate() {
             for (i, it) in m.cols.iter().flat_map(|(_, items)| items.iter()).enumerate().filter(|(_, it)| it.kind == Kind::Item) {
                 // AQUILA keeps ML Studio's entries that are dispatched by their label.
-                let by_label = ["Compact", "Classic FL-style (CPU and MB)", "Lemon live monitor", crate::help::LABEL, crate::change_log::LABEL, "Community Discord", "AI assistant settings"];
+                let by_label = ["Compact", "Classic FL-style (CPU and MB)", "Lemon live monitor", crate::help::LABEL, crate::change_log::LABEL, crate::studio_helper::LABEL, "Community Discord", "AI assistant settings"];
                 if works(mi, it) && !by_place.contains(&(mi, i)) && !by_label.contains(&it.label) {
                     assert_ne!(it.cmd, MenuCmd::None, "{} works but has no command", it.label);
                 }
