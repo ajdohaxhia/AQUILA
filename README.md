@@ -10,6 +10,8 @@
 </p>
 
 <p align="center">
+  <a href="#download">Download</a> ·
+  <a href="#why-aquila">Why AQUILA</a> ·
   <a href="#features">Features</a> ·
   <a href="#screenshots">Screenshots</a> ·
   <a href="#built-in-instruments-and-effects">Instruments and effects</a> ·
@@ -29,7 +31,62 @@ AQUILA brings together two lines of development:
 - **ML Studio** by Michael Lane, which added analog-style channel strips, the Master Assistant, comping, time stretching, MPE, ARA, stem separation, vocal tuning, live collaboration, a redesigned browser and many workflow tools.
 - **Lemon Studio** by ItsAlphaNeon and contributors, the project both are built on. AQUILA includes Lemon Studio's development through November 2026, including multi-core mixing and its newest built-in plugins.
 
+The current release, **AQUILA 2026.11.14.3**, includes ML Studio up to v2026.11.14.3 and Lemon Studio's `main` branch as of 15 November 2026.
+
 > **Status:** pre-release. AQUILA is usable for real work, but keep backups and work on copies of important projects, especially when moving them between AQUILA, Lemon Studio and FL Studio.
+
+## Download
+
+Ready-made builds for every platform are on the [releases page](https://github.com/ajdohaxhia/AQUILA/releases):
+
+| Platform | File |
+| --- | --- |
+| Windows 10/11, x86-64 | `AQUILA-<version>-windows-x86_64.zip` |
+| macOS, Apple silicon | `AQUILA-<version>-macos-arm64.zip` |
+| macOS, Intel | `AQUILA-<version>-macos-x86_64.zip` |
+| Linux, x86-64 | `AQUILA-<version>-linux-x86_64.tar.gz` |
+
+Each release lists `SHA256SUMS.txt` to check the downloads. The builds are not code-signed: on macOS open AQUILA the first time with right-click ▸ Open; on Windows choose "More info ▸ Run anyway" if SmartScreen warns.
+
+AQUILA does not update itself. **Help ▸ Updates** opens the releases page, where new versions are published.
+
+## Why AQUILA
+
+ML Studio is a fork of Lemon Studio that went its own way. AQUILA starts from ML Studio and brings Lemon Studio's later work back in, so it has **everything ML Studio 2026.11.14.3 has, plus the following**:
+
+**Ten more built-in plugins from Lemon Studio**, none of which ship with ML Studio:
+
+| Plugin | What it does |
+| --- | --- |
+| Smith | Additive synthesizer that also plays Ogun patches from FL projects |
+| Lemon Slicer | Beat slicer; opens Fruity Slicer channels from FL projects |
+| Lemon Drum Sampler | Multi-pad drum sampler; opens FPC channels from FL projects |
+| Lemon Vocoder | Band vocoder; plays Vocodex slots from FL projects |
+| Lemon Filter | Multi-mode filter |
+| Lemon Flanger, Lemon Phaser | Modulation effects with the original's factory presets |
+| Lemon Peak Controller | Turns a track's level into automation for any parameter |
+| Lemon Formula Controller | Drives parameters from a formula |
+| Lemon Drop | Audio visualizer: spectrum, waveform, vectorscope and meters |
+
+**Engine and workflow features from Lemon Studio** that ML Studio does not have:
+
+- **Multi-core mixing**: mixer tracks and instruments render on several cores, sample-for-sample identical to one core, and **auto-bypass** stops silent effect slots from using CPU.
+- **Patcher containers**: a mixer slot or a channel can hold a whole chain of effects, with its own wet/dry and window. FL "Patcher" serial chains open as containers.
+- **Performance mode**: launch the arranger's clips live from a grid, from MIDI or the computer keyboard.
+- **Event editor**: edit a control's automation as events, with draw, paint, interpolate, scale and LFO tools, and turn events into automation clips.
+- **Plugin palette**: a searchable floating window for every installed plugin, instead of long menus.
+- **Chord progression tool**, **Burn MIDI to pattern**, **Save audio clipboard to browser** and **VIEW ▸ Arrange windows** layouts.
+- **Lemon MIDI Out**: a channel that sends its notes to a hardware or software MIDI port.
+- **Control plane**: an undoable command interface (`--control` socket or `--serve` port, JSON-RPC) for scripts and tools to change a project from outside.
+- **Older FL projects**: FL 10 to FL 24.1 projects are converted on open.
+- **Linux**: real-time priority for the audio threads and a JACK mode.
+- **Diagnostics**: a crash log (`Logs/panic.log`) and an audio dropout log that record what happened, so problems can be reported precisely.
+
+**AQUILA's own changes:**
+
+- **It contacts no one.** AQUILA never talks to ML Studio's server: there is no automatic update check, Report a bug opens an AQUILA issue on GitHub, and optional downloads hosted by ML Studio are not used. Credits to ML Studio's and Lemon Studio's authors stay in the app and in this repository.
+- **Builds for four platforms on every release**, made by GitHub Actions from this repository: Windows, Linux, and macOS for both Apple silicon and Intel.
+- **Kept in sync with both parents.** Each ML Studio release and Lemon Studio's `main` are merged in, and the full test suite is compared with a clean ML Studio tree: a test that fails in AQUILA but passes in ML Studio is fixed before the merge is committed.
 
 ## Screenshots
 
@@ -140,7 +197,7 @@ Every AQUILA install includes these, with no extra downloads.
 Clone into a folder whose path contains **no spaces**. The bundled LAME MP3 encoder and the ML Plasma engine use `make`, which breaks on paths with spaces.
 
 ```bash
-git clone https://github.com/ajdohaxhia/ADE-Studio.git aquila
+git clone https://github.com/ajdohaxhia/AQUILA.git aquila
 cd aquila
 PYTHON=python3 cargo run --release -p os-app
 ```
