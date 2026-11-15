@@ -3401,7 +3401,7 @@ mod tests {
         let key=if instrument {a.plugins.available=vec![available];a.plugins.create(0,0).unwrap();0}
             else {a.plugins.effects=vec![available];a.plugins.create_effect(0,0,0,None).unwrap();crate::plugins::fx_key(0,0)};
         a.params_tick();
-        let info=crate::plugin_window::ChannelInfo{name:"Isolated audio test".into(),target:"Master".into(),enabled:true,volume:0.78,pan:0.,pitch_cents:0,range:2,track:0,max_track:125,sidechain:None,misc:None};
+        let info=crate::plugin_window::ChannelInfo{name:"Isolated audio test".into(),target:"Master".into(),enabled:true,volume:0.78,pan:0.,pitch_cents:0,range:2,track:0,max_track:125,sidechain:None,misc:None,icon:None};
         if !headless {a.plugins.open_window(key,info.clone()).unwrap();}
         let initial_state=if lifecycle {a.plugins.state(key)} else {None};
         let plugin=a.plugins.hosted[&key].plugin.clone();

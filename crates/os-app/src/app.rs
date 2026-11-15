@@ -32977,8 +32977,7 @@ mod tests {
         app.state.settings.driver = Some(crate::device::DeviceInfo {
             host: crate::device::ASIO, name: "AudioBox ASIO Driver".into(), rate: 48000, fixed: Some(128),
             buffers: Some((64, 2048)), channels: 2, inputs: 2, input_latency: None,
-            rates: vec![44100, 48000], sizes: vec![64, 128, 256, 512, 1024, 2048], latency: None, instead: None,
-        });
+            rates: vec![44100, 48000], sizes: vec![64, 128, 256, 512, 1024, 2048], latency: None, instead: None, in_names: Vec::new(), out_names: Vec::new() });
         for advanced in [false, true, false] {
             app.settings_act(SAct::AudioView(advanced));
             frame(&mut app, &mut c, None);
@@ -33064,8 +33063,7 @@ mod tests {
         app.state.settings.driver = Some(crate::device::DeviceInfo {
             host: crate::device::ASIO, name: "Some ASIO".into(), rate: 48000, fixed: Some(480),
             buffers: Some((96, 960)), channels: 2, inputs: 2, input_latency: None,
-            rates: vec![48000], sizes: vec![96, 192, 480, 960], latency: None, instead: None,
-        });
+            rates: vec![48000], sizes: vec![96, 192, 480, 960], latency: None, instead: None, in_names: Vec::new(), out_names: Vec::new() });
         assert_eq!(app.state.settings.latency_presets(), [
             ("Automatic", None), ("Low latency", Some(96)), ("Balanced", Some(480)), ("Large buffer", Some(960)),
         ]);

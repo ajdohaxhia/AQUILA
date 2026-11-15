@@ -628,7 +628,7 @@ mod tests {
         app.show_form(Body::VoiceAssistant);
         speak(&mut app, "tempo-128.wav");
         assert_eq!(app.state.tempo, 128.0, "{}", app.state.voice_ui.status);
-        assert_eq!(crate::history::undo(&mut app.state), Some("Tempo"));
+        assert_eq!(crate::history::undo(&mut app.state).as_deref(), Some("Tempo"));
         assert_eq!(app.state.tempo, initial);
         app.dialog_click(DHit::Close);
         assert!(!is_open(&app));

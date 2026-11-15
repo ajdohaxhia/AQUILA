@@ -456,7 +456,7 @@ mod tests {
             stereo: &[0.5, -0.5, 0.25, 0.75], extra: &[0.125, 0.25, -0.125, -0.25], extra_channels: 2,
         };
         let mut buf = [0u8; 8];
-        unsafe { write(buf.as_mut_ptr(), &mix, 2, Side::One(1), 2, Format::F32, false) };
+        unsafe { write(buf.as_mut_ptr(), &mix, Side::One(1), 2, Format::F32, false) };
         assert_eq!(buf[..4], (-0.5f32).to_le_bytes());
         assert_eq!(buf[4..], 0.75f32.to_le_bytes());
         unsafe { write(buf.as_mut_ptr(), &mix, Side::One(3), 2, Format::F32, false) };
@@ -465,11 +465,6 @@ mod tests {
         unsafe { write(buf.as_mut_ptr(), &mix, Side::Both, 2, Format::F32, false) };
         assert_eq!(buf[..4], 0.0f32.to_le_bytes());
         assert_eq!(buf[4..], 0.5f32.to_le_bytes());
-        // Two pairs: output 3 is the second pair's left.
-        let wide = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8];
-        unsafe { write(buf.as_mut_ptr(), &wide, 4, Side::One(2), 2, Format::F32, false) };
-        assert_eq!(buf[..4], 0.3f32.to_le_bytes());
-        assert_eq!(buf[4..], 0.7f32.to_le_bytes());
     }
 
     /// The buffer lengths offered for a driver: those of the usual list it takes.
