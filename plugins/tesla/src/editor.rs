@@ -209,6 +209,7 @@ pub enum Cmd {
     Properties,
     Stretch,
     Cleanup,
+    Deverb,
     ReturnTrack,
     Format(Format),
     Channels(usize),
@@ -2194,6 +2195,7 @@ impl Logic {
                 t(&mut m, "Create sequence...", "", ToolCmd::EnvDialog(EnvTool::Sequence), envm);
                 m.head("Amp", Cmd::None);
                 if crate::cleanup::visible(){m.add(item("Clean up audio (denoise)...").enabled(has),Cmd::Cleanup);}
+                if crate::cleanup::deverb_visible(){m.add(item("Deverb...").enabled(has),Cmd::Deverb);}
                 if crate::stretch::visible(){m.add(item("Time stretch / pitch shift...").enabled(has),Cmd::Stretch);}
                 t(&mut m, "Mixdown amp envelopes", "Ctrl+E", ToolCmd::Mixdown, has && !d.env.amp_flat());
                 t(&mut m, "Amp...", "Alt+A", ToolCmd::Amp, has);
@@ -2340,7 +2342,8 @@ impl Logic {
         let mut acts = vec![Act::Repaint];
         match cmd {
             Cmd::ReturnTrack=>self.cleanup_return_current(),
-            Cmd::Cleanup => {if crate::cleanup::visible(){self.cleanup_open();}},
+            Cmd::Cleanup => {if crate::cleanup::visible(){self.cleanup_open_as(crate::cleanup::Mode::Denoise);}},
+            Cmd::Deverb => {if crate::cleanup::deverb_visible(){self.cleanup_open_as(crate::cleanup::Mode::General);}},
             Cmd::Stretch => {
                 if self.stretch_job.is_none() && crate::stretch::visible() && self.doc(|d|d.frames()>0) && !self.shared.armed.load(Ordering::Acquire){self.view.stretch=Some(Default::default());}
                 else{self.hint="Load audio, stop recording and wait for pending processing.".into();}
@@ -4376,7 +4379,8 @@ mod tests {
         load(&mut l, Sample::from_channels(rate as u32, vec![x.clone(), x.clone()], Format::Float32));
         let m = l.menu(&MenuReq::Main(MenuId::Tools));
         assert_eq!(m.find("Vocal denoise / isolator..."), Some(Cmd::Tool(ToolCmd::VocalIsolate)));
-        assert_eq!(m.find("Deverb..."), Some(Cmd::Tool(ToolCmd::Deverb)));
+        // The upstream cleanup feature also adds a Deverb entry earlier in this menu.
+        assert!(m.cmds.contains(&Cmd::Tool(ToolCmd::Deverb)));
         l.pick(&MenuReq::Main(MenuId::Tools), Cmd::Tool(ToolCmd::VocalIsolate), 0.0, 0.0);
         assert!(l.view.amp.is_some_and(|u| u.voice == Some(Isolate::default())));
         paint(&mut l);

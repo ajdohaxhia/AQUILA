@@ -102,6 +102,7 @@ pub const SPEC: &Spec = &Spec {
     word: "PEAK CONTROLLER",
     about: "AQUILA's peak controller",
     settings: &SETTINGS,
+    studio_settings: 0,
     version: None,
     any_version: false,
     fields: &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, byte(0), byte(1)],

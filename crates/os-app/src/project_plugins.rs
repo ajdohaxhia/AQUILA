@@ -62,9 +62,9 @@ pub fn has_recreation(id: &str) -> bool {
 pub fn is_wrapped(d: &Descriptor) -> bool {
     #[cfg(test)]
     if WRAP_BUILTINS.with(|w| w.get()) {
-        return matches!(d.format, Format::Clap | Format::Vst3 | Format::Vst2);
+        return matches!(d.format, Format::Clap | Format::Vst3 | Format::Vst2 | Format::AudioUnit);
     }
-    matches!(d.format, Format::Clap | Format::Vst3 | Format::Vst2) && (!is_builtin(d) || matches!(d.name.as_str(),"ML Chop"|"ML Wave"|"ML Plasma") || crate::plugins::LINKED_EFFECTS.contains(&d.name.as_str()))
+    matches!(d.format, Format::Clap | Format::Vst3 | Format::Vst2 | Format::AudioUnit) && (!is_builtin(d) || matches!(d.name.as_str(),"ML Chop"|"ML Wave"|"ML Plasma") || crate::plugins::LINKED_EFFECTS.contains(&d.name.as_str()))
 }
 
 /// The project-file identity of a hosted plugin with its saved state. A built-in effect with no file plugin of its own
@@ -80,7 +80,9 @@ pub fn plugin_ref(d: &Descriptor, state: Vec<u8>) -> PluginRef {
     PluginRef {
         format: d.format.as_str().into(),
         // A CLAP id has no place in the wrapper state (spec §4): such plugins are found by file and name.
-        id: if matches!(d.format, Format::Vst3 | Format::Vst2) { d.id.clone() } else { String::new() },
+        id: if d.is_vst2_x86() { format!("{}:x86", d.id) }
+            else if matches!(d.format, Format::Vst3 | Format::Vst2 | Format::AudioUnit) { d.id.clone() }
+            else { String::new() },
         name: d.name.clone(),
         vendor: d.vendor.clone(),
         path: path.to_string_lossy().into_owned(),
@@ -264,6 +266,9 @@ pub fn slot_ports(project: &Project, track: usize, slot: usize) -> (usize, usize
         let routing = os_engine::effects::vocoder::Settings::from_state(&s.state).unwrap_or_default().routing();
         return (0, routing.key_input());
     }
+    if s.name == crate::plugins::EQ_FILE_NAME {
+        return (0, os_engine::effects::eq::routed::sidechain_port(&s.state));
+    }
     if s.name != WRAPPER {
         return (0, 0);
     }
@@ -281,6 +286,15 @@ pub fn set_slot_sidechain(proj: &mut Project, plugins: &Plugins, track: u16, slo
     let Some(s) = proj.mixer.iter_mut().find(|m| m.index == track).and_then(|m| m.slots.get_mut(usize::from(slot))?.as_mut()) else {
         return false;
     };
+    if s.name == crate::plugins::EQ_FILE_NAME {
+        let Some(mut state) = plugins.eq_file_state(key) else { return false };
+        os_engine::effects::eq::routed::set_sidechain_port(&mut state, port);
+        if !plugins.set_state(key, &lemon_parametric_eq_2::params::plugin_state_from_fl(&state)) {
+            return false;
+        }
+        s.state = state;
+        return true;
+    }
     if s.name != WRAPPER {
         let Some(d) = plugins.descriptor(key).filter(is_wrapped) else { return false };
         let Some(state)=plugins.state(key) else{return false;};
@@ -290,6 +304,46 @@ pub fn set_slot_sidechain(proj: &mut Project, plugins: &Plugins, track: u16, slo
     let Some(state) = wrapper::set_input_port(&s.state, 1, i32::try_from(port).unwrap_or(0)) else { return false };
     s.state = state;
     true
+}
+
+/// Other DAWs see the compatible effect state. The live plugin and the
+/// internal project continue to hold the ML-only options.
+pub(crate) fn strip_ml_dsp_options(project: &mut Project, warnings: &mut Vec<String>) -> Vec<(u16, usize, Vec<u8>)> {
+    let mut restore = Vec::new();
+    use lemon_small_fx::{chorus, fast_distortion, soft_clipper, stereo_enhancer, transient_processor};
+    for track in &mut project.mixer {
+        for (index, slot) in track.slots.iter_mut().enumerate() {
+            let Some(slot) = slot else { continue };
+            let spec = match slot.name.as_str() {
+                "Fruity Chorus" => Some(chorus::SPEC),
+                "Fruity Fast Dist" => Some(fast_distortion::SPEC),
+                "Fruity Soft Clipper" => Some(soft_clipper::SPEC),
+                "Fruity Stereo Enhancer" => Some(stereo_enhancer::SPEC),
+                "Transient Processor" => Some(transient_processor::SPEC),
+                _ => None,
+            };
+            let mut length = spec.map_or(slot.state.len(), |spec| lemon_small_fx::params::studio_base_len(spec, &slot.state));
+            let tag = match slot.name.as_str() {
+                "Fruity Delay 3" => Some(os_engine::effects::delay::CLEAN_ECHO_TAG),
+                "Fruity Limiter" => Some(os_engine::effects::dynamics::PEAK_GUARD_TAG),
+                _ => None,
+            };
+            if let Some(tag) = tag.filter(|tag| slot.state.ends_with(*tag)) {
+                length -= tag.len();
+            }
+            let eq_key = slot.name == crate::plugins::EQ_FILE_NAME
+                && os_engine::effects::eq::routed::sidechain_port(&slot.state) != 0;
+            if length != slot.state.len() || eq_key {
+                restore.push((track.index, index, slot.state.clone()));
+                slot.state.truncate(length);
+                if eq_key {
+                    os_engine::effects::eq::routed::set_sidechain_port(&mut slot.state, 0);
+                }
+                warnings.push(format!("Insert {}, slot {}: advanced ML DSP settings require an LMN project", track.index, index + 1));
+            }
+        }
+    }
+    restore
 }
 
 /// Attaches hosted effects to `e`, each with the input ports its slot is saved with in `project`.
@@ -322,13 +376,44 @@ fn same_plugin_name(d: &Descriptor, saved: &str) -> bool {
 
 fn find_installed(list: &[Available], r: &PluginRef, missing: &std::collections::HashSet<String>) -> Option<usize> {
     let format = Format::parse(&r.format);
-    for exact in [true,false] {
-        if let Some(i)=list.iter().position(|a|!missing.contains(&a.desc.uid()) && if exact {
-            !r.id.is_empty()&&Some(a.desc.format)==format&&a.desc.id.eq_ignore_ascii_case(&r.id)
-        }else{!r.path.is_empty()&&same_file(&a.desc.path,&r.path)&&same_plugin_name(&a.desc, &r.name)}){return Some(i);}
+    if format == Some(Format::AudioUnit) {
+        return list.iter().position(|a| a.desc.format == Format::AudioUnit
+            && !r.id.is_empty() && a.desc.id.eq_ignore_ascii_case(&r.id) && !missing.contains(&a.desc.uid()));
+    }
+    let architecture = if r.is_vst2_x86() {
+        Some(true)
+    } else if format == Some(Format::Vst2) {
+        match os_vst2::pe_machine(std::path::Path::new(&r.path)) {
+            Some("x86") => Some(true),
+            Some("x86_64") => Some(false),
+            _ => None,
+        }
+    } else {
+        None
+    };
+    let available = |a: &Available| a.desc.format != Format::AudioUnit && !missing.contains(&a.desc.uid())
+        && architecture.is_none_or(|x86| a.desc.is_vst2_x86() == x86);
+    if format == Some(Format::Vst2) && !r.path.is_empty() {
+        let original = r.path.replace('\\', "/");
+        if let Some(index) = list.iter().position(|a| available(a)
+            && a.desc.format == Format::Vst2
+            && a.desc.id.eq_ignore_ascii_case(r.class_id())
+            && a.desc.path.to_string_lossy().replace('\\', "/").eq_ignore_ascii_case(&original)) {
+            return Some(index);
+        }
+    }
+    if let Some((index, _)) = list.iter().enumerate()
+        .filter(|(_, a)| available(a) && !r.id.is_empty() && Some(a.desc.format) == format
+            && a.desc.id.eq_ignore_ascii_case(r.class_id()))
+        .min_by_key(|(_, a)| a.desc.is_vst2_x86()) {
+        return Some(index);
+    }
+    if let Some(index) = list.iter().position(|a| available(a)
+        && !r.path.is_empty() && same_file(&a.desc.path, &r.path) && same_plugin_name(&a.desc, &r.name)) {
+        return Some(index);
     }
     for same_format in [true,false]{
-        let candidates:Vec<_>=list.iter().enumerate().filter(|(_,a)|same_plugin_name(&a.desc, &r.name)&&!missing.contains(&a.desc.uid())&&(!same_format||Some(a.desc.format)==format)).collect();
+        let candidates:Vec<_>=list.iter().enumerate().filter(|(_,a)|same_plugin_name(&a.desc, &r.name)&&available(a)&&(!same_format||Some(a.desc.format)==format)).collect();
         if candidates.len()==1{return Some(candidates[0].0);}
         if candidates.len()>1{return None;} // An ambiguous catalog entry is never an automatic identity match.
     }
@@ -348,7 +433,7 @@ pub fn switched_format(d: &Descriptor, r: &PluginRef) -> Option<String> {
 fn substitute_notice(d:&Descriptor,r:&PluginRef)->Option<String>{
     switched_format(d,r).or_else(||{
         // Stable class IDs outrank vendor display strings, which can change between versions.
-        let identity=!r.id.is_empty()&&d.id.eq_ignore_ascii_case(&r.id);
+        let identity=!r.id.is_empty()&&d.id.eq_ignore_ascii_case(r.class_id());
         // CLAP IDs are not stored in this wrapper. Preserve portable file/name identity,
         // including linked Lemon plugins whose installed directory differs from their descriptor.
         let stored_file=r.path.rsplit(['\\','/']).next().unwrap_or("");
@@ -387,6 +472,7 @@ pub fn plugin_title(ch: &Channel) -> Option<String> {
 
 /// What a mixer slot shows: a wrapped plugin's own name, else the slot's label (spec: ui/mixer.md §7).
 pub fn slot_title(s: &SlotPlugin) -> String {
+    if let Some(title) = crate::ara::link_title(s) { return title; }
     match wrapped_slot(s).map(|r| crate::plugins::canonical_name(&r.name).to_string()).filter(|n| !n.is_empty()) {
         Some(n) => n,
         None => crate::plugins::slot_label(&s.name).to_string(),
@@ -590,7 +676,7 @@ impl crate::app::App {
             // Before the states are copied: this runs every tick, and an Edison slot's can be tens of megabytes.
             .filter(|&(t, k, s)| {
                 let key = fx_key(t, k);
-                !s.name.is_empty() && s.name != WRAPPER && s.name != crate::container::CONTAINER && !self.plugins.hosted.contains_key(&key) && !self.native_failed.contains(&key)
+                !s.name.is_empty() && s.name != WRAPPER && s.name != crate::container::CONTAINER && s.name != crate::ara::MIXER_LINK && !self.plugins.hosted.contains_key(&key) && !self.native_failed.contains(&key)
             })
             .map(|(t, k, s)| (t, k, s.name.clone(), s.state.clone()))
             .collect();
@@ -721,6 +807,47 @@ mod tests {
     use crate::app::App;
     use crate::plugins::{fx_key, LEMON_EQ, LEMON_SAMPLER};
 
+    #[test]
+    fn stock_dsp_options_survive_project_save_and_reopen() {
+        let mut app = App::new(None);
+        app.state.project = crate::app::test_project();
+        app.plugins.effects = crate::plugins::builtin_effects();
+        let spec = lemon_small_fx::soft_clipper::SPEC;
+        let base = lemon_small_fx::params::default_state(spec);
+        let advanced = lemon_small_fx::params::to_fl(spec, &[64, 150, 2, 1, 1], &base);
+        let mut delay = os_engine::effects::delay::Settings::default().to_state();
+        delay.extend_from_slice(os_engine::effects::delay::CLEAN_ECHO_TAG);
+        let mut limiter = lemon_limiter::params::default_state();
+        limiter.extend_from_slice(os_engine::effects::dynamics::PEAK_GUARD_TAG);
+        for (index, (name, state)) in [
+            ("Fruity Soft Clipper", advanced), ("Fruity Delay 3", delay), ("Fruity Limiter", limiter),
+            (crate::plugins::EQ_FILE_NAME, lemon_parametric_eq_2::params::default_state()),
+        ].into_iter().enumerate() {
+            app.state.project.mixer[3].slots[index] = Some(SlotPlugin { id: os_model::Id::NONE, name: name.into(), state });
+        }
+        app.sync_effects();
+        assert!(set_slot_sidechain(&mut app.state.project, &app.plugins, 3, 3, 2));
+        let path = std::env::temp_dir().join(format!("ml-stock-dsp-{}.lmn", std::process::id()));
+        app.save_to(path.clone());
+        let saved = os_flp::project::load(&os_flp::FlpFile::parse(&std::fs::read(&path).unwrap()).unwrap()).unwrap();
+        let mut reopened = App::new(None);
+        reopened.state.project = saved;
+        reopened.plugins.effects = crate::plugins::builtin_effects();
+        reopened.sync_effects();
+        reopened.store_builtin_states();
+        let mut project = reopened.state.project.clone();
+        let state = |slot: usize| project.mixer[3].slots[slot].as_ref().unwrap().state.as_slice();
+        assert_eq!(lemon_small_fx::params::values_of(spec, state(0)), [64, 150, 2, 1, 1]);
+        assert!(state(1).ends_with(os_engine::effects::delay::CLEAN_ECHO_TAG));
+        assert!(state(2).ends_with(os_engine::effects::dynamics::PEAK_GUARD_TAG));
+        assert_eq!(slot_ports(&project, 3, 3), (0, 2));
+        let mut warnings = Vec::new();
+        assert_eq!(strip_ml_dsp_options(&mut project, &mut warnings).len(), 4);
+        assert_eq!(warnings.len(), 4);
+        assert_eq!(slot_ports(&project, 3, 3), (0, 0));
+        let _ = std::fs::remove_file(path);
+    }
+
     /// A hosted plugin channel and a mixer slot plugin are saved as wrapped plugins holding their identity and state,
     /// and the reopened project hosts them again with that state; a second save keeps working on the saved file
     /// (spec: flp/events/plugins.md). The built-in Lemon plugins stand in for third-party plugins.
@@ -797,6 +924,65 @@ mod tests {
         let r2 = wrapped_channel(&again.channels[row]).unwrap();
         assert_eq!(Some(r2.state), b.plugins.state(row));
         assert_eq!(again.mixer[3].slots[2], saved.mixer[3].slots[2]);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn audio_units_scan_host_and_reopen_project() {
+        use crate::plugin_db::{Cache, FileScan, Prefs, Status};
+        use os_host::audio_unit::REGISTRY_PATH;
+        use std::path::Path;
+
+        let folders = crate::plugin_db::search_dirs(&Prefs::default());
+        let found = crate::plugin_db::discover(&folders.into_iter()
+            .filter(|folder| folder.path == Path::new(REGISTRY_PATH)).collect::<Vec<_>>(), Vec::new());
+        assert_eq!(found.len(), 1);
+        let scanned = crate::plugin_scan::scan_here(&found[0].path, Format::AudioUnit);
+        assert_eq!(scanned.status, Status::Ok);
+        let cache = Cache { version: 1, files: vec![FileScan {
+            path: REGISTRY_PATH.into(), format: "au".into(), size: 0, modified: 0,
+            status: Status::Ok, error: String::new(), plugins: scanned.plugins,
+        }] };
+
+        let mut app = App::new(None);
+        app.state.project = crate::app::test_project();
+        app.state.file = None;
+        app.state.path = None;
+        app.plugins.merge(&cache);
+        let synth_id = "61756D75646C73206170706C";
+        let effect_id = "617566786C7061736170706C";
+        let synth = app.plugins.available.iter().position(|a| a.desc.id == synth_id).unwrap();
+        let name = app.plugins.available[synth].desc.name.clone();
+        let row = crate::app::add_plugin_channel(&mut app.state.project, &name);
+        app.plugins.create(row, synth).unwrap();
+        app.state.hosted_rows.push(row);
+
+        let effect = app.plugins.effects.iter().position(|a| a.desc.id == effect_id).unwrap();
+        let title = app.plugins.effects[effect].desc.name.clone();
+        app.state.project.mixer[1].slots[0] = Some(SlotPlugin { id: os_model::Id::NONE, name: title, state: Vec::new() });
+        app.plugins.create_effect(1, 0, effect, None).unwrap();
+        let key = fx_key(1, 0);
+        let cutoff = {
+            let plugin = app.plugins.hosted[&key].plugin.lock().unwrap();
+            (0..plugin.param_count()).find_map(|i| plugin.param_info(i)
+                .filter(|p| p.automatable && p.name.to_ascii_lowercase().contains("cutoff"))).unwrap().id
+        };
+        assert!(app.plugins.hosted[&key].plugin.lock().unwrap().set_param(cutoff, 0.31));
+        let path = std::env::temp_dir().join(format!("ml-au-roundtrip-{}.lmn", std::process::id()));
+        app.save_to(path.clone());
+        let bytes = std::fs::read(&path).unwrap();
+        std::fs::remove_file(path).unwrap();
+        let saved = os_flp::project::load(&os_flp::FlpFile::parse(&bytes).unwrap()).unwrap();
+        assert_eq!(wrapped_channel(&saved.channels[row]).unwrap().id, synth_id);
+        assert_eq!(wrapped_slot(saved.mixer[1].slots[0].as_ref().unwrap()).unwrap().id, effect_id);
+
+        let mut reopened = App::new(None);
+        reopened.state.project = saved;
+        reopened.plugins.merge(&cache);
+        reopened.sync_wrapped();
+        assert_eq!(reopened.plugins.descriptor(row).unwrap().format, Format::AudioUnit);
+        let value = reopened.plugins.hosted[&key].plugin.lock().unwrap().param_value(cutoff).unwrap();
+        assert!((value - 0.31).abs() < 0.001);
     }
 
     /// Every Lemon effect is compiled in: `FILE_MAPPED`, then `LINKED_EFFECTS` in that order, each an effect from this program.

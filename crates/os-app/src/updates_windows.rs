@@ -67,7 +67,7 @@ pub(super) fn relaunch(args: &[String]) -> super::Result<()> {
     let handoff = Path::new(&args[3]);
     super::wait_parent(args[0].parse()?, handoff)?;
     if unsafe { WaitForSingleObject(process.as_raw_handle(), 120000) } != WAIT_OBJECT_0 {
-        return Err("Updater did not finish; reopen ML Studio from its shortcut".into());
+        return Err("Updater did not finish; reopen AQUILA from its shortcut".into());
     }
     if handoff.join("helper-cancelled").exists() { return Ok(()); }
     if let Some(stage) = handoff.parent().and_then(Path::parent) {

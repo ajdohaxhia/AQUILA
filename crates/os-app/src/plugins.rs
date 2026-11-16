@@ -284,6 +284,7 @@ pub enum Request {
     Detach(usize, bool),
     /// The menu arrow was clicked: open the window menu at this screen point.
     Menu(usize, i32, i32),
+    ExportMp4(usize, i32, i32),
     SidechainMenu(usize,i32,i32),
     /// The title-bar Presets box was clicked: open the preset list at this screen point (spec: plugins/presets.md).
     Presets(usize, i32, i32),
@@ -487,11 +488,21 @@ fn linked(cell: &OnceLock<Option<Arc<os_clap::Library>>>, entry: *const std::ffi
 
 /// Loads plugin file `path` of `format` under the crash guard (spec: plugins/plugin-formats.md, "Crash containment").
 pub fn load_file(path: &Path, format: os_host::Format) -> Result<Arc<dyn Library>, String> {
+    #[cfg(all(windows, target_arch = "x86_64"))]
+    if crate::legacy_vst::is_x86(path, format) {
+        return crate::legacy_vst::load(path, None);
+    }
     let load = || -> Result<Arc<dyn Library>, String> {
         match format {
             os_host::Format::Clap => os_clap::Library::load(path).map(|l| l as Arc<dyn Library>),
             os_host::Format::Vst3 => os_vst3::Module::load(path).map(|l| l as Arc<dyn Library>),
             os_host::Format::Vst2 => os_vst2::Module::load(path).map(|l| l as Arc<dyn Library>),
+            os_host::Format::AudioUnit => {
+                #[cfg(target_os = "macos")]
+                { os_host::audio_unit::Registry::load(path).map(|l| l as Arc<dyn Library>) }
+                #[cfg(not(target_os = "macos"))]
+                { Err("Audio Unit plug-ins require macOS".into()) }
+            }
             os_host::Format::Native => os_native::NativeLibrary::load(path).map(|l| l as Arc<dyn Library>),
         }
     };
@@ -529,10 +540,22 @@ impl Library for LazyLibrary {
     }
 
     fn create(self: Arc<Self>, id: &str) -> Result<SharedPlugin, String> {
+        if crate::settings_file::flag("external_plugins_disabled", false) {
+            return Err("External plug-ins are disabled for recovery. Enable them in Settings > Plugins and reopen the project to restore them.".into());
+        }
         // A missing dependency can become available after a rescan. Cache successful loads only.
         let real = match self.real.get() {
             Some(lib) => lib.clone(),
             None => {
+                #[cfg(all(windows, target_arch = "x86_64"))]
+                let bridged = self.plugins.iter().any(Descriptor::is_vst2_x86);
+                #[cfg(all(windows, target_arch = "x86_64"))]
+                let lib = if bridged {
+                    crate::legacy_vst::load(&self.path, Some(&self.plugins))?
+                } else {
+                    load_file(&self.path, self.format)?
+                };
+                #[cfg(not(all(windows, target_arch = "x86_64")))]
                 let lib = load_file(&self.path, self.format)?;
                 self.real.get_or_init(|| lib).clone()
             }
@@ -550,6 +573,7 @@ pub fn format_name(f: os_host::Format) -> &'static str {
         os_host::Format::Clap => "CLAP",
         os_host::Format::Vst3 => "VST3",
         os_host::Format::Vst2 => "VST2",
+        os_host::Format::AudioUnit => "AU",
         os_host::Format::Native => "native",
     }
 }
@@ -560,6 +584,7 @@ impl Plugins {
         let native_checks = (!cfg!(test)).then(|| os_native::check::Checks::load(os_paths::user_file(NATIVE_CHECKS)));
         let mut effects = builtin_effects();
         effects.extend(crate::master_assistant::available());
+        effects.extend(crate::visualizer::available());
         Plugins { available: builtin(), effects, scale: 1.0, native_checks, ..Plugins::default() }
     }
 
@@ -568,10 +593,11 @@ impl Plugins {
     /// lazily loaded library; plugins no longer found are marked missing (not listed). The first file wins for a
     /// plugin id. Built-in plugins are never replaced.
     pub fn merge(&mut self, cache: &crate::plugin_db::Cache) {
-        let builtin: HashSet<String> = self.available.iter().chain(&self.effects).filter(|a| crate::project_plugins::is_builtin(&a.desc) || crate::master_assistant::is_bundled(&a.desc)).map(|a| a.desc.uid()).collect();
+        let builtin: HashSet<String> = self.available.iter().chain(&self.effects).filter(|a| crate::project_plugins::is_builtin(&a.desc) || crate::master_assistant::is_bundled(&a.desc) || crate::visualizer::is_managed(&a.desc)).map(|a| a.desc.uid()).collect();
         let mut seen: HashSet<String> = builtin.clone();
         for f in cache.files.iter().filter(|f| f.status == crate::plugin_db::Status::Ok) {
             let Some(format) = os_host::Format::parse(&f.format) else { continue };
+            if format == os_host::Format::AudioUnit && !cfg!(target_os = "macos") { continue; }
             let path = PathBuf::from(&f.path);
             let descs: Vec<Descriptor> = f.plugins.iter().map(|r| r.descriptor(format, &path)).collect();
             let lib: Arc<dyn Library> = Arc::new(LazyLibrary { path: path.clone(), format, plugins: descs.clone(), real: OnceLock::new() });
@@ -653,7 +679,7 @@ impl Plugins {
     pub fn create_with(&mut self, row: usize, index: usize, state: Option<&[u8]>) -> Result<String, String> {
         if let Some(st)=state.filter(|st|os_vst3::ara::State::is(st)) {
             let saved=os_vst3::ara::State::decode(st)?;
-            return self.create_ara(row,&saved.plugin_path,&saved.class_id,&saved.source_path,Some(st));
+            return self.create_ara(row,&saved.plugin_path,&saved.class_id,&saved.source_path,Some(st),None);
         }
         let (plugin, name) = self.instantiate(index, state)?;
         self.hosted.insert(row, Hosted::new(plugin));
@@ -706,10 +732,11 @@ impl Plugins {
         Ok((plugin, a.desc.name))
     }
 
-    pub fn create_ara(&mut self,row:usize,path:&Path,id:&str,source:&str,state:Option<&[u8]>)->Result<String,String> {
+    pub fn create_ara(&mut self,row:usize,path:&Path,id:&str,source:&str,state:Option<&[u8]>,owner:Option<(u16,u32)>)->Result<String,String> {
+        if crate::settings_file::flag("external_plugins_disabled", false) { return Err("External ARA plug-ins are disabled for recovery. Enable them in Settings > Plugins and reopen the project.".into()); }
         let saved=state.map(os_vst3::ara::State::decode).transpose()?;
         let module=os_host::guard::catch(||os_vst3::Module::load(path)).map_err(|c|format!("ARA plugin crashed while loading: {}",os_host::guard::describe(c)))??;
-        let plugin=module.create_ara(id,Path::new(&resolve_sample(source)),saved.as_ref())?;
+        let plugin=module.create_ara(id,Path::new(&resolve_sample(source)),saved.as_ref(),owner)?;
         let mut p=plugin.lock().map_err(|_|"ARA editor busy")?;
         if self.rate==0 {self.rate=crate::transport::Transport::device_rate().unwrap_or(48000);}
         if !p.activate(self.rate){return Err("ARA audio renderer could not start".into());}
@@ -857,13 +884,14 @@ impl Plugins {
     pub fn remap_fx(&mut self, m: &dyn Fn(u16, u8) -> Option<(u16, u8)>) {
         let keys: Vec<usize> = self.hosted.keys().copied().filter(|&k| fx_of(k).is_some()).collect();
         let mut moved = Vec::new();
+        let mut moved_presets = Vec::new();
         for k in keys {
             let (t, s) = fx_of(k).unwrap();
             match m(t, s) {
                 Some((nt, ns)) if (nt, ns) == (t, s) => {}
                 Some((nt, ns)) => {
                     if let Some(p) = self.presets.remove(&k) {
-                        self.presets.insert(fx_key(nt, ns), p);
+                        moved_presets.push((fx_key(nt, ns), p));
                     }
                     moved.push((fx_key(nt, ns), self.hosted.remove(&k).unwrap()))
                 }
@@ -878,6 +906,7 @@ impl Plugins {
                 self.keep_hosted(&old, true);
             }
         }
+        self.presets.extend(moved_presets);
     }
 
     /// The mixer slot instances for the transport: (track, slot, effect).
@@ -1276,7 +1305,14 @@ impl Plugins {
     /// its own (Tesla plays its sample) or show what it hears.
     pub fn editor_open(&self) -> bool {
         #[cfg(plugin_windows)]
-        return self.hosted.values().any(|h| {let open=h.window.is_some();#[cfg(any(windows,target_os="macos"))] let open=open||h.rack_editor.is_some();open});
+        return self.hosted.values().any(|h| {
+            let open = h.window.is_some();
+            #[cfg(any(windows, target_os = "macos"))]
+            let open = open || h.rack_editor.is_some();
+            #[cfg(all(windows, target_arch = "x86_64"))]
+            let open = open || h.plugin.try_lock().is_ok_and(|p| p.desc().is_vst2_x86() && p.editor_open());
+            open
+        });
         #[cfg(not(plugin_windows))]
         false
     }
@@ -1287,6 +1323,10 @@ impl Plugins {
         #[cfg(any(windows,target_os="macos"))] self.close_rack(row);
         let (owner, scale) = (self.owner, self.scale_for(row, self.scale));
         let h = self.hosted.get(&row).ok_or("not a plugin channel")?;
+        #[cfg(all(windows, target_arch = "x86_64"))]
+        if h.plugin.lock().is_ok_and(|p| p.desc().is_vst2_x86()) {
+            return editor_action(&h.plugin, os_host::EditorAction::Open { parent: std::ptr::null_mut(), scale }).map(|_| ());
+        }
         if let Some(w) = &h.window {
             w.raise();
             return Ok(());
@@ -1330,6 +1370,12 @@ impl Plugins {
             let _ = std::fs::write(path, format!("plugin={}\nformat={:?}\nfile={}\nscale={k}\ndetached={}\neditor_result={result:?}\n", descriptor.name, descriptor.format, descriptor.path.display(), h.detached));
         }
         let size = result?;
+        #[cfg(windows)]
+        if fx_of(row).is_some() && crate::visualizer::is_managed(&descriptor)
+            && crate::visualizer_video::available()
+        {
+            w.enable_visual_export();
+        }
         crate::rack_mixer::observe_editor(&descriptor, size, k);
         h.link = fit_editor(&w, size, k);
         if h.name=="ML Wave" {w.enable_wave_zoom();}
@@ -1617,7 +1663,11 @@ impl Plugins {
                     }
                 }
                 #[cfg(plugin_windows)]
-                if let (Some(w), false, Some((ew, eh))) = (&h.window, h.linked(), p.editor_size()) {
+                if let (Some(w), true, Some((ew, eh))) = (
+                    &h.window,
+                    h.link.as_ref().is_none_or(|link| link.resizable().is_none()),
+                    p.editor_size(),
+                ) {
                     let k = w.scale();
                     crate::rack_mixer::observe_editor(p.desc(),(ew,eh),k);
                     let resizable=p.editor_resizable().then_some((1.0, 1.0));
@@ -1647,11 +1697,12 @@ impl Plugins {
                 if let Some(l) = &mut h.link {
                     w.set_page(l.page());
                     w.set_hint(l.hint());
-                    if let Some((lw, lh)) = l.size() {
-                        w.set_editor_size((lw as f32, lh as f32));
+                    if let Some((mw, mh)) = l.resizable() {
+                        if let Some((lw, lh)) = l.size() {
+                            w.set_editor_size((lw as f32, lh as f32));
+                        }
+                        w.set_resizable(Some((mw as f32, mh as f32)));
                     }
-                    // A resizable Lemon plugin (Tesla): the frame's edges resize it.
-                    w.set_resizable(l.resizable().map(|(mw, mh)| (mw as f32, mh as f32)));
                 }
                 let wave=h.name=="ML Wave";
                 for e in w.take_events() {
@@ -1665,11 +1716,11 @@ impl Plugins {
                             l.set_page(*n);
                             continue;
                         }
-                        (FrameEvent::Resize(ew, eh), Some(l)) => {
+                        (FrameEvent::Resize(ew, eh), Some(l)) if l.resizable().is_some() => {
                             l.set_size(*ew, *eh);
                             continue;
                         }
-                        (FrameEvent::Resize(ew, eh), None) => {
+                        (FrameEvent::Resize(ew, eh), _) => {
                             h.pending_editor_resize = Some((*ew, *eh));
                             os_host::wake();
                             continue;
@@ -1700,6 +1751,7 @@ impl Plugins {
                         FrameEvent::Detach(on) => Request::Detach(row, on),
                         FrameEvent::SidechainMenu(x,y)=>Request::SidechainMenu(row,x,y),
                         FrameEvent::Menu(x, y) => Request::Menu(row, x, y),
+                        FrameEvent::ExportMp4(x, y) => Request::ExportMp4(row, x, y),
                         FrameEvent::Presets(x, y) => Request::Presets(row, x, y),
                         FrameEvent::PresetStep(d) => Request::PresetStep(row, d),
                         FrameEvent::DropFile(p) => Request::DropFile(row, p),
@@ -2590,6 +2642,23 @@ pub type ChannelInfoT = ();
 /// (`OS_SHOT_DIR=<dir> OS_CLAP=<Lemon Sampler.clap> cargo test -p os-app plugin_window_shots -- --ignored`).
 #[cfg(all(test, windows))]
 mod tests {
+    #[test]
+    fn recovery_mode_blocks_external_library_before_loading() {
+        let mut app = crate::app::App::new(None);
+        assert!(crate::views::settings::plugin_check(crate::views::settings::SAFE_PLUGIN_CHECK));
+        assert!(crate::views::settings::LIVE.contains(&crate::views::settings::SAFE_PLUGIN_CHECK));
+        app.plugin_check(crate::views::settings::SAFE_PLUGIN_CHECK);
+        let library = std::sync::Arc::new(super::LazyLibrary {
+            path: std::path::PathBuf::from("missing-recovery-fixture.vst3"),
+            format: os_host::Format::Vst3,
+            plugins: Vec::new(), real: Default::default(),
+        });
+        let Err(message) = os_host::Library::create(library, "fixture") else { panic!("external library loaded"); };
+        assert!(message.contains("disabled for recovery"));
+        app.plugin_check(crate::views::settings::SAFE_PLUGIN_CHECK);
+        assert!(!crate::settings_file::flag("external_plugins_disabled", false));
+    }
+
     use super::*;
     use std::ffi::c_void;
     use std::sync::Mutex;

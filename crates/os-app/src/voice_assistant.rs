@@ -232,7 +232,7 @@ fn complete(app: &mut App, result: Result<TaskResult, String>) {
                     }
                 }
                 Some(_) => status(app, Screen::Result, "Try again with a local project open."),
-                None => status(app, Screen::Result, "I could not map that request. Try one specific ML Studio action."),
+                None => status(app, Screen::Result, "I could not map that request. Try one specific AQUILA action."),
             }
         }
         Err(error) => {

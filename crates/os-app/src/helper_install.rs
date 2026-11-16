@@ -120,7 +120,7 @@ fn extract(archive:&Path,dest:&Path,limit:u64)->Result<()> {
 }
 fn install(root:&Path)->Result<()> {
     directory(root)?;let lock=fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(root.join("install.lock"))?;
-    lock.try_lock().map_err(|_|"Another ML Studio instance is installing Melli")?;
+    lock.try_lock().map_err(|_|"Another AQUILA instance is installing Melli")?;
     let p=package();
     // Melli's runtime is published on ML Studio's server for ML Studio; AQUILA does not download from it.
     if [&p.archive.url,&p.model.url].iter().any(|u|u.contains("michaellanemusic.de")) {

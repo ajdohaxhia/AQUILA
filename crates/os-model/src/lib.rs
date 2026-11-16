@@ -12,10 +12,12 @@
 pub mod clip_lfo;
 pub mod crossfade;
 pub mod chords;
+pub mod timeline;
 pub mod mpe;
 pub mod curve;
 pub mod vocal;
 pub mod audio_edit;
+pub mod notation;
 
 /// A stable identity for a channel, pattern, mixer track, arrangement, playlist clip or mixer slot's plugin: it stays
 /// with the thing through moves, renumbering and the deletion of others, so commands can name it (the control plane,
@@ -368,6 +370,11 @@ impl Project {
         tempo * f64::from(self.bar().1) / 4.0
     }
 
+    pub fn tempo_map(&self, base: f64) -> timeline::TempoMap {
+        let points = self.arrangement().map_or(&[][..], |a| a.timeline.tempo.as_slice());
+        timeline::TempoMap::new(self.ppq, self.bar().1, base, points)
+    }
+
     /// The bar as a time signature (numerator, denominator = 16 / steps per beat), when the steps divide 16.
     pub fn signature(&self) -> Option<(u16, u16)> {
         let (beats, steps) = self.bar();
@@ -400,6 +407,8 @@ impl Project {
             a.clips.iter_mut().for_each(|c| c.rescale(from, to));
             for clips in a.tracks.iter_mut().filter_map(|t|t.frozen.as_mut()) {clips.iter_mut().for_each(|c|c.rescale(from,to));}
             a.markers.iter_mut().for_each(|m| m.rescale(from, to));
+            a.timeline.rescale(from, to);
+            a.staff_notation.iter_mut().for_each(|c| c.rescale(from, to));
         }
         if let Some(v) = &mut self.playlist_view {
             let k = f64::from(to) / f64::from(from);
@@ -603,6 +612,9 @@ impl Project {
         self.vocal_edits.retain_mut(|d|m(d.channel).map(|ch|d.channel=ch).is_some());
         self.clip_fx_channels=self.clip_fx_channels.iter().filter_map(|&c|m(c)).collect();
         self.instrument_lanes.retain_mut(|v|m(v.0).map(|ch|v.0=ch).is_some());
+        for a in &mut self.arrangements {
+            a.staff_notation.retain_mut(|v| m(v.channel).map(|ch| v.channel = ch).is_some());
+        }
         let old = std::mem::take(&mut self.channels);
         self.channels = order
             .iter()
@@ -1406,6 +1418,8 @@ impl ControlPoint {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Note {
+    #[serde(default, skip_serializing_if = "note_marks_empty")]
+    pub notation: notation::NoteMarks,
     /// Independent Lemon Sampler voice drive, 0 (bypass) to 127.
     pub drive:u8,
     /// Immutable per-note expression record; zero means no expression.
@@ -1432,6 +1446,10 @@ pub struct Note {
     pub unk14: u16,
     /// Note repeat index 0..=14 (byte 17; 0 = off; spec: flp/events/patterns.md).
     pub repeat: u8,
+}
+
+fn note_marks_empty(marks: &notation::NoteMarks) -> bool {
+    *marks == notation::NoteMarks::default()
 }
 
 impl Note {
@@ -1508,6 +1526,7 @@ impl Note {
     /// A step-sequencer step with default parameters.
     pub fn step(channel: u16, position: u32) -> Self {
         Note {
+            notation: Default::default(),
             drive:0,expression:0,
             position,
             length: 0,
@@ -1856,8 +1875,8 @@ pub struct SlotPlugin {
 pub struct PluginRef {
     /// `clap`, `vst3` or `vst2`.
     pub format: String,
-    /// VST3: the class id as 32 uppercase hex digits; VST2: the unique id as 8 hex digits; CLAP: empty when the file
-    /// does not store it (the plugin is then found by path and name).
+    /// VST3: the class id as 32 uppercase hex digits. VST2: the unique id as 8 hex digits, with
+    /// an optional `:x86` suffix on saved 32-bit Windows plug-ins. CLAP: empty when unavailable.
     pub id: String,
     pub name: String,
     pub vendor: String,
@@ -1865,6 +1884,20 @@ pub struct PluginRef {
     pub path: String,
     /// The plugin's own saved state.
     pub state: Vec<u8>,
+}
+
+impl PluginRef {
+    pub fn is_vst2_x86(&self) -> bool {
+        self.format == "vst2" && self.id.ends_with(":x86")
+    }
+
+    pub fn class_id(&self) -> &str {
+        if self.is_vst2_x86() {
+            self.id.trim_end_matches(":x86")
+        } else {
+            &self.id
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
@@ -1878,6 +1911,10 @@ pub struct Arrangement {
     pub tracks: Vec<PlaylistTrack>,
     /// Time markers in file order (spec: flp/events/playlist.md "Time markers").
     pub markers: Vec<TimeMarker>,
+    #[serde(default)]
+    pub timeline: timeline::Timeline,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub staff_notation: Vec<notation::StaffChange>,
     /// Custom row order in the attached view, using the ordinary Playlist's row numbers.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub attached_order: Vec<u16>,
@@ -2118,6 +2155,9 @@ pub fn fade_curve(x: f64, tension: f64) -> f64 {
 pub struct TimeMarker {
     /// Optional marker-tab RGB color, stored in Lemon project metadata.
     pub color: Option<u32>,
+    /// Absolute project seconds in microseconds for a linear cue.
+    #[serde(default)]
+    pub linear_us: Option<u64>,
     pub position: u32,
     /// High byte of the stored position: the marker's action (the constants below; spec: flp/events/playlist.md
     /// "Marker kinds"). Kinds not listed there (6, 0xB) are kept as read.
@@ -2196,7 +2236,7 @@ impl TimeMarker {
     pub const KEY: u8 = 12;
 
     pub fn new(position: u32, name: &str) -> Self {
-        TimeMarker { color: None, position, kind: Self::PLAIN, name: name.into(), numerator: 4, denominator: 4, scale: 0, root: 0, flag: 0, scale_index: 0 }
+        TimeMarker { color: None, linear_us: None, position, kind: Self::PLAIN, name: name.into(), numerator: 4, denominator: 4, scale: 0, root: 0, flag: 0, scale_index: 0 }
     }
 
     /// The key marker Add key marker ▸ adds (spec: ui/playlist.md §7a): `scale` is a place in [`SCALES`], −1 for
@@ -2216,6 +2256,10 @@ impl TimeMarker {
             }
         };
         TimeMarker { kind: Self::KEY, scale: mask, root, flag, scale_index: scale, ..TimeMarker::new(position, &name) }
+    }
+
+    pub fn song_tick(&self, map: &timeline::TempoMap) -> u32 {
+        self.linear_us.map_or(self.position, |us| map.tick(us as f64 / 1_000_000.0).round() as u32)
     }
 
     /// The marker at timebase `to` instead of `from` ([`Project::set_ppq`]).

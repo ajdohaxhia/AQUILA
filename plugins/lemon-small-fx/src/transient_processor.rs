@@ -18,7 +18,8 @@ use crate::params::{db_text, leading_number, nearest, parse_db};
 use crate::{Card, Control, Kind, Mark, Setting, SmallFx, Sound, Spec};
 
 /// The settings in the original's order (spec §5).
-pub const SETTINGS: [Setting; dsp::PARAMS] = [
+const BAND_MODE: usize = dsp::PARAMS;
+pub const SETTINGS: [Setting; dsp::PARAMS + 1] = [
     Setting { id: "attack", name: "Attack", range: dsp::RANGES[dsp::ATTACK], start: dsp::DEFAULTS[dsp::ATTACK], magnet: Some(80) },
     Setting { id: "drive", name: "Drive", range: dsp::RANGES[dsp::DRIVE], start: dsp::DEFAULTS[dsp::DRIVE], magnet: Some(16) },
     Setting { id: "release", name: "Release", range: dsp::RANGES[dsp::RELEASE], start: dsp::DEFAULTS[dsp::RELEASE], magnet: Some(80) },
@@ -40,21 +41,23 @@ pub const SETTINGS: [Setting; dsp::PARAMS] = [
     Setting { id: "split", name: "Split frequency", range: dsp::RANGES[dsp::SPLIT], start: dsp::DEFAULTS[dsp::SPLIT], magnet: None },
     Setting { id: "balance", name: "Split balance", range: dsp::RANGES[dsp::BALANCE], start: dsp::DEFAULTS[dsp::BALANCE], magnet: Some(80) },
     Setting { id: "on", name: "Processing", range: dsp::RANGES[dsp::ON], start: dsp::DEFAULTS[dsp::ON], magnet: None },
+    Setting { id: "band_mode", name: "Transient range", range: (0, 1), start: 0, magnet: None },
 ];
 
 /// Editor layout (spec §2), as the original's: the wordmark on top; the split frequency over the processing switch,
 /// the large attack knob over its shape button, the drive over the split balance, the large release knob over its
 /// shape button and the gain; the hint well along the foot. The page's ranges end before their last number (6 px
 /// apart, 8 px from the edges); a card's `x1` and `y1` are its last pixels.
-const CARDS: [Card; 5] = [
+const CARDS: [Card; 6] = [
     Card { x0: 8.0, x1: 99.0, y0: 34.0, y1: 161.0, heading: "" },
     Card { x0: 106.0, x1: 225.0, y0: 34.0, y1: 161.0, heading: "" },
     Card { x0: 232.0, x1: 327.0, y0: 34.0, y1: 161.0, heading: "" },
     Card { x0: 334.0, x1: 453.0, y0: 34.0, y1: 161.0, heading: "" },
     Card { x0: 460.0, x1: 551.0, y0: 34.0, y1: 161.0, heading: "" },
+    Card { x0: 8.0, x1: 236.0, y0: 200.0, y1: 237.0, heading: "" },
 ];
 
-const CONTROLS: [Control; 9] = [
+const CONTROLS: [Control; 10] = [
     Control::Knob { id: "split", cx: 54.0, cy: 68.0, r: 18.0, caption: "SPLIT FREQ", bipolar: false },
     Control::Choice { id: "on", x: 32.0, top: 118.0, names: &["OFF", "ON"] },
     Control::Knob { id: "attack", cx: 166.0, cy: 80.0, r: 30.0, caption: "ATTACK", bipolar: true },
@@ -64,6 +67,7 @@ const CONTROLS: [Control; 9] = [
     Control::Knob { id: "release", cx: 394.0, cy: 80.0, r: 30.0, caption: "RELEASE", bipolar: true },
     Control::Shape { id: "release_shape", cx: 394.0, cy: 144.0 },
     Control::Knob { id: "gain", cx: 506.0, cy: 68.0, r: 18.0, caption: "GAIN", bipolar: true },
+    Control::Choice { id: "band_mode", x: 16.0, top: 202.0, names: &["Above split", "Full band"] },
 ];
 
 pub const SPEC: &Spec = &Spec {
@@ -71,13 +75,14 @@ pub const SPEC: &Spec = &Spec {
     word: "TRANSIENT PROCESSOR",
     about: "AQUILA's transient processor",
     settings: &SETTINGS,
+    studio_settings: 1,
     version: Some(dsp::VERSION),
     any_version: false,
     fields: &[],
     tail: &dsp::DISPLAY,
     blank: None,
     locate: None,
-    size: (560, 200),
+    size: (560, 244),
     cards: &CARDS,
     controls: &CONTROLS,
     display: None,
@@ -114,6 +119,7 @@ fn balance_share(v: i32) -> f64 {
 /// Value texts (spec §3, Lemon Studio's choice).
 fn text(k: usize, v: i32) -> String {
     match k {
+        BAND_MODE => if v == 0 { "Above split" } else { "Full band" }.into(),
         dsp::ATTACK | dsp::RELEASE => match mapped(k, v) {
             0.0 => "0%".into(),
             w => format!("{:+.2}%", f64::from(w) * 100.0),
@@ -139,6 +145,11 @@ fn parse(k: usize, s: &str) -> Option<i32> {
     let low = s.trim().to_ascii_lowercase();
     let named = |names: &[&str]| names.iter().position(|n| low.starts_with(n)).map(|i| i as i32);
     match k {
+        BAND_MODE => match s.trim().to_ascii_lowercase().as_str() {
+            "above split" | "0" => Some(0),
+            "full band" | "1" => Some(1),
+            _ => None,
+        },
         dsp::ATTACK | dsp::RELEASE => nearest(range, leading_number(&low)?, |v| Some(f64::from(mapped(k, v)) * 100.0)),
         dsp::DRIVE | dsp::GAIN => parse_db(range, s, |v| mapped(k, v)),
         dsp::ATTACK_SHAPE | dsp::RELEASE_SHAPE => named(&["sharp", "mid", "slow"]),
@@ -166,6 +177,7 @@ struct Processor(TransientProcessor);
 impl Sound for Processor {
     fn set(&mut self, v: &[i32]) {
         self.0.set(&settings(v));
+        self.0.set_full_band(v.get(BAND_MODE).copied() == Some(1));
     }
     fn set_sample_rate(&mut self, rate: u32) {
         self.0.set_sample_rate(rate);
@@ -179,7 +191,9 @@ impl Sound for Processor {
 
 /// The plugin starts with the settings in force, as a loaded project's slot does; later changes glide.
 fn sound(rate: u32, v: &[i32]) -> Box<dyn Sound> {
-    Box::new(Processor(TransientProcessor::with_settings(rate, &settings(v))))
+    let mut effect = Processor(TransientProcessor::with_settings(rate, &settings(v)));
+    effect.set(v);
+    Box::new(effect)
 }
 
 pub struct TransientProcessorKind;

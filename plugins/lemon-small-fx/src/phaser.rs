@@ -71,6 +71,7 @@ pub const SPEC: &Spec = &Spec {
     word: "PHASER",
     about: "AQUILA's phaser",
     settings: &SETTINGS,
+    studio_settings: 0,
     version: Some(dsp::VERSION),
     any_version: false,
     fields: &[],

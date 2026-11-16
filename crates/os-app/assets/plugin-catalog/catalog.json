@@ -2,6 +2,7 @@
   {
     "id": "surge-xt",
     "name": "Surge XT",
+    "scan_vendor": "Surge Synth Team",
     "category": "Synthesizers",
     "description": "Hybrid synth with wavetable, FM and MPE.",
     "source": "https://github.com/surge-synthesizer/surge",
@@ -193,7 +194,7 @@
         "url": "https://github.com/greatest-ape/OctaSine/releases/download/v0.9.1/OctaSine-v0.9.1-Windows.zip",
         "filename": "OctaSine-v0.9.1-Windows.zip",
         "version": "0.9.1",
-        "note": "Installs only this selected portable plugin into your ML Studio profile and scans it automatically.",
+        "note": "Installs only this selected portable plugin into your AQUILA profile and scans it automatically.",
         "sha256": "7ac928ddfe8f54a26c4264b95d3f1c4ccd047db106694bf5c722748662cb2d5f",
         "size": 4624717,
         "install": [
@@ -240,7 +241,7 @@
         "url": "https://github.com/michaelwillis/dragonfly-reverb/releases/download/3.2.10/dragonfly-reverb-3.2.10-win64.zip",
         "filename": "dragonfly-reverb-3.2.10-win64.zip",
         "version": "3.2.10",
-        "note": "Installs only this selected portable plugin into your ML Studio profile and scans it automatically.",
+        "note": "Installs only this selected portable plugin into your AQUILA profile and scans it automatically.",
         "sha256": "ca5f35f9dcd9a33f06490d3c92f04061a1a798cb81257d5ca5851bdda0824c66",
         "size": 22447365,
         "install": [
@@ -287,7 +288,7 @@
         "url": "https://github.com/michaelwillis/dragonfly-reverb/releases/download/3.2.10/dragonfly-reverb-3.2.10-win64.zip",
         "filename": "dragonfly-reverb-3.2.10-win64.zip",
         "version": "3.2.10",
-        "note": "Installs only this selected portable plugin into your ML Studio profile and scans it automatically.",
+        "note": "Installs only this selected portable plugin into your AQUILA profile and scans it automatically.",
         "sha256": "ca5f35f9dcd9a33f06490d3c92f04061a1a798cb81257d5ca5851bdda0824c66",
         "size": 22447365,
         "install": [
@@ -334,7 +335,7 @@
         "url": "https://github.com/michaelwillis/dragonfly-reverb/releases/download/3.2.10/dragonfly-reverb-3.2.10-win64.zip",
         "filename": "dragonfly-reverb-3.2.10-win64.zip",
         "version": "3.2.10",
-        "note": "Installs only this selected portable plugin into your ML Studio profile and scans it automatically.",
+        "note": "Installs only this selected portable plugin into your AQUILA profile and scans it automatically.",
         "sha256": "ca5f35f9dcd9a33f06490d3c92f04061a1a798cb81257d5ca5851bdda0824c66",
         "size": 22447365,
         "install": [
@@ -606,7 +607,7 @@
         "url": "https://www.airwindows.com/wp-content/uploads/2021/08/TapeDelay2.zip",
         "filename": "TapeDelay2.zip",
         "version": "original release",
-        "note": "Installs only this selected portable plugin into your ML Studio profile and scans it automatically.",
+        "note": "Installs only this selected portable plugin into your AQUILA profile and scans it automatically.",
         "sha256": "4fccf86d3c4ef42a6b83225099fb252dfa9fac55cb60a7bbda955bb31a184989",
         "size": 632859,
         "install": [
@@ -654,7 +655,7 @@
         "url": "https://www.airwindows.com/wp-content/uploads/2017/06/PurestEcho.zip",
         "filename": "PurestEcho.zip",
         "version": "original release",
-        "note": "Installs only this selected portable plugin into your ML Studio profile and scans it automatically.",
+        "note": "Installs only this selected portable plugin into your AQUILA profile and scans it automatically.",
         "sha256": "1e30373810fc23f99c9c52848749035b77935c145881c312952504fb754d5c25",
         "size": 353688,
         "install": [
@@ -746,6 +747,7 @@
   {
     "id": "zl-spectrum-equalizer",
     "name": "ZL Spectrum Equalizer",
+    "scan_vendor": "ZL",
     "category": "EQ and filters",
     "description": "Dynamic spectrum-based tonal control.",
     "source": "https://github.com/ZL-Audio/ZLSpectrumEqualizer",
@@ -902,7 +904,7 @@
         "url": "https://github.com/DISTRHO/DPF-Plugins/releases/download/v1.7/DPF-Plugins-v1.7-win64.zip",
         "filename": "DPF-Plugins-v1.7-win64.zip",
         "version": "v1.7",
-        "note": "Installs only this selected portable plugin into your ML Studio profile and scans it automatically.",
+        "note": "Installs only this selected portable plugin into your AQUILA profile and scans it automatically.",
         "sha256": "fdc609e0936e9c999395b9ddd98a9a72739cb672d8838ab71849469aee50ad98",
         "size": 74524341,
         "install": [
@@ -1139,7 +1141,7 @@
         "url": "https://www.airwindows.com/wp-content/uploads/2021/12/Pressure5.zip",
         "filename": "Pressure5.zip",
         "version": "original release",
-        "note": "Installs only this selected portable plugin into your ML Studio profile and scans it automatically.",
+        "note": "Installs only this selected portable plugin into your AQUILA profile and scans it automatically.",
         "sha256": "e72299ed0d43dd66313010014bb625b9efe06486ab91646dd1504a77e9d66223",
         "size": 630418,
         "install": [
@@ -1187,7 +1189,7 @@
         "url": "https://github.com/Wamphyre/oXygen/releases/download/v1.0.4/Windows-oXygen.vst3.zip",
         "filename": "Windows-oXygen.vst3.zip",
         "version": "v1.0.4",
-        "note": "Installs only this selected portable plugin into your ML Studio profile and scans it automatically.",
+        "note": "Installs only this selected portable plugin into your AQUILA profile and scans it automatically.",
         "sha256": "639d4616716b4b7ecfc5ba850a20e1be49d3f43966cf4c8deafa7439d597ab20",
         "size": 2146398,
         "install": [
@@ -1234,7 +1236,7 @@
         "url": "https://github.com/trummerschlunk/master_me/releases/download/1.3.1/master_me-1.3.1-win64.zip",
         "filename": "master_me-1.3.1-win64.zip",
         "version": "1.3.1",
-        "note": "Installs only this selected portable plugin into your ML Studio profile and scans it automatically.",
+        "note": "Installs only this selected portable plugin into your AQUILA profile and scans it automatically.",
         "sha256": "0122b72259fd54f99854d038cd7f850f06f6f62d68495f6cc15f57251938fd72",
         "size": 13178088,
         "install": [
@@ -1326,7 +1328,7 @@
         "url": "https://www.airwindows.com/wp-content/uploads/2021/10/ClipOnly2.zip",
         "filename": "ClipOnly2.zip",
         "version": "original release",
-        "note": "Installs only this selected portable plugin into your ML Studio profile and scans it automatically.",
+        "note": "Installs only this selected portable plugin into your AQUILA profile and scans it automatically.",
         "sha256": "47d51c53a9cec1e9e86add58fb4c4a9f8fc3983bf326c9566ec88346232eec6e",
         "size": 587383,
         "install": [
@@ -1374,7 +1376,7 @@
         "url": "https://www.airwindows.com/wp-content/uploads/2024/02/ADClip8.zip",
         "filename": "ADClip8.zip",
         "version": "original release",
-        "note": "Installs only this selected portable plugin into your ML Studio profile and scans it automatically.",
+        "note": "Installs only this selected portable plugin into your AQUILA profile and scans it automatically.",
         "sha256": "2c5b4b373a9372373c17b9fae56e7547199dddeca04cd9f1677871d0cda3c905",
         "size": 517804,
         "install": [
@@ -1602,7 +1604,7 @@
         "url": "https://www.airwindows.com/wp-content/uploads/2024/09/ToTape8.zip",
         "filename": "ToTape8.zip",
         "version": "original release",
-        "note": "Installs only this selected portable plugin into your ML Studio profile and scans it automatically.",
+        "note": "Installs only this selected portable plugin into your AQUILA profile and scans it automatically.",
         "sha256": "97f31c2759a526dc732181e80e5d8aff7aed5da8d2514e7c96dfe9d9223f6d4e",
         "size": 667813,
         "install": [
@@ -1695,7 +1697,7 @@
         "url": "https://www.airwindows.com/wp-content/uploads/2017/09/ChorusEnsemble.zip",
         "filename": "ChorusEnsemble.zip",
         "version": "original release",
-        "note": "Installs only this selected portable plugin into your ML Studio profile and scans it automatically.",
+        "note": "Installs only this selected portable plugin into your AQUILA profile and scans it automatically.",
         "sha256": "11ed4e43037061046d1240901eb6487056dc9f422c4bf6d19f4128199f39588e",
         "size": 361312,
         "install": [
@@ -1743,7 +1745,7 @@
         "url": "https://www.airwindows.com/wp-content/uploads/2019/08/Vibrato.zip",
         "filename": "Vibrato.zip",
         "version": "original release",
-        "note": "Installs only this selected portable plugin into your ML Studio profile and scans it automatically.",
+        "note": "Installs only this selected portable plugin into your AQUILA profile and scans it automatically.",
         "sha256": "2d082c9ea8faff1c2d628097135accbf8e329f4ff6ea64057967696ad3dbda00",
         "size": 357552,
         "install": [
@@ -1791,7 +1793,7 @@
         "url": "https://www.airwindows.com/wp-content/uploads/2024/07/Flutter2.zip",
         "filename": "Flutter2.zip",
         "version": "original release",
-        "note": "Installs only this selected portable plugin into your ML Studio profile and scans it automatically.",
+        "note": "Installs only this selected portable plugin into your AQUILA profile and scans it automatically.",
         "sha256": "f93c5aa5d9f651465e051e7714db7d857cf64c6567fb984a256d248d29e48242",
         "size": 516432,
         "install": [
@@ -1839,7 +1841,7 @@
         "url": "https://github.com/DISTRHO/DPF-Plugins/releases/download/v1.7/DPF-Plugins-v1.7-win64.zip",
         "filename": "DPF-Plugins-v1.7-win64.zip",
         "version": "v1.7",
-        "note": "Installs only this selected portable plugin into your ML Studio profile and scans it automatically.",
+        "note": "Installs only this selected portable plugin into your AQUILA profile and scans it automatically.",
         "sha256": "fdc609e0936e9c999395b9ddd98a9a72739cb672d8838ab71849469aee50ad98",
         "size": 74524341,
         "install": [
@@ -2076,7 +2078,7 @@
         "url": "https://www.airwindows.com/wp-content/uploads/2018/05/Wider.zip",
         "filename": "Wider.zip",
         "version": "original release",
-        "note": "Installs only this selected portable plugin into your ML Studio profile and scans it automatically.",
+        "note": "Installs only this selected portable plugin into your AQUILA profile and scans it automatically.",
         "sha256": "2b2910bb60c052d2c08f3c487462909ff0436830d8ed58cc754416a28208e508",
         "size": 351968,
         "install": [
@@ -2446,6 +2448,8 @@
   {
     "id": "span",
     "name": "Voxengo SPAN",
+    "scan_vendor": "Voxengo",
+    "scan_aliases": ["SPAN"],
     "category": "Analysis and meters",
     "description": "Real-time spectrum analyzer for seeing bass, midrange and treble balance.",
     "info": "Real-time spectrum analyzer for seeing bass, midrange and treble balance. Includes stereo correlation and level statistics. Use it to compare tracks and investigate resonances; it measures the signal rather than changing its tone.",
@@ -4057,7 +4061,7 @@
     "license": "Proprietary freeware",
     "license_url": "https://kilohearts.com/products/kilohearts_essentials",
     "downloads": [],
-    "note": "Official website installation. Check platform support and free-edition terms with the developer. Then use Scan Plugins in ML Studio.",
+    "note": "Official website installation. Check platform support and free-edition terms with the developer. Then use Scan Plugins in AQUILA.",
     "info": "A collection of mixing and creative effects. Use the official Kilohearts installer and check current system requirements.",
     "freeware": true
   },
@@ -4070,7 +4074,7 @@
     "license": "Proprietary freeware",
     "license_url": "https://www.meldaproduction.com/MFreeFXBundle",
     "downloads": [],
-    "note": "Official website installation. Check platform support and free-edition terms with the developer. Then use Scan Plugins in ML Studio.",
+    "note": "Official website installation. Check platform support and free-edition terms with the developer. Then use Scan Plugins in AQUILA.",
     "info": "A broad collection of free effects and analysis tools. Optional paid upgrades exist; choose the free edition in the official installer.",
     "freeware": true
   },
@@ -4215,7 +4219,7 @@
     "license": "Proprietary freeware",
     "license_url": "https://www.spitfireaudio.com/products/bbc-symphony-orchestra-discover",
     "downloads": [],
-    "note": "Official website installation. Check platform support and free-edition terms with the developer. Then use Scan Plugins in ML Studio.",
+    "note": "Official website installation. Check platform support and free-edition terms with the developer. Then use Scan Plugins in AQUILA.",
     "info": "Free orchestral instrument library. Requires the vendor account and installation manager; allow disk space for its sample content.",
     "freeware": true
   },
@@ -4228,7 +4232,7 @@
     "license": "Proprietary freeware",
     "license_url": "https://www.native-instruments.com/products/komplete-start",
     "downloads": [],
-    "note": "Official website installation. Check platform support and free-edition terms with the developer. Then use Scan Plugins in ML Studio.",
+    "note": "Official website installation. Check platform support and free-edition terms with the developer. Then use Scan Plugins in AQUILA.",
     "info": "Free instruments and effects collection installed through Native Access. A Native Instruments account and separate manager are required.",
     "freeware": true
   },
@@ -5631,6 +5635,7 @@
   {
     "id": "spectrum",
     "name": "Spectrum",
+    "scan_vendor": "tadmn",
     "category": "Analysis and meters",
     "description": "GPU-accelerated spectrum analyzer for comparing frequency balance during mixing.",
     "source": "https://github.com/tadmn/spectrum/releases",

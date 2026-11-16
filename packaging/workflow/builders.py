@@ -1,6 +1,6 @@
 """Isolated public build workers. Credentials never enter these environments."""
 from pathlib import Path
-import json, os, shutil, subprocess, tarfile
+import json, os, shutil, struct, subprocess, tarfile, tempfile, zipfile
 import release as r
 import storage
 from checkpoints import atomic_json, digest
@@ -12,6 +12,13 @@ def environment(config,platform):
     env['CARGO_TARGET_DIR']=str(Path(config['cache'])/platform)
     env['LEMON_MASTER_BUNDLE']=config['engines'][platform]['bundle']
     env['LEMON_JUCE_SOURCE']=config['juce_source']
+    for key in ('LEMON_VISUALIZER_WORKER', 'LEMON_VISUALIZER_SOURCE'):
+        env.pop(key, None)
+    if platform == 'windows':
+        env['LEMON_VISUALIZER_WORKER'], env['LEMON_VISUALIZER_SOURCE'] = map(str, visualizer_inputs(config))
+    env.pop('LEMON_SCORE_BUNDLE', None)
+    if entry := config.get('score_bundles', {}).get(platform):
+        env['LEMON_SCORE_BUNDLE'] = entry['bundle']
     if bundle := config.get('plasma_bundles', {}).get(platform):
         target = {'windows': 'WINDOWS_X86_64', 'linux': 'LINUX_X86_64',
                   'mac-arm64': 'MACOS_AARCH64', 'mac-x86_64': 'MACOS_X86_64'}[platform]
@@ -21,6 +28,41 @@ def environment(config,platform):
         env['PATH']=str(Path.home()/'.cargo/bin')+os.pathsep+str(Path.home()/'.lemon-studio-release/tools/bin')+os.pathsep+env.get('PATH','')
     else:env['LIBCLANG_PATH']=r.read_config()['llvm']
     return env
+
+
+def visualizer_inputs(config):
+    """Fail public builds before compiling if the pinned renderer or its source is missing."""
+    entry = config.get('visualizer_worker', {})
+    catalog = json.loads((r.ROOT/'packaging/visualizer/video-tools.json').read_text(encoding='utf-8'))
+    worker = Path(entry.get('binary', ''))
+    source = Path(entry.get('source', ''))
+    if (not worker.is_file() or worker.stat().st_size != catalog['renderer_size']
+            or digest(worker) != catalog['renderer_sha256']):
+        raise RuntimeError('Configure the pinned Windows Visualizer renderer in pipeline.json (visualizer_worker.binary)')
+    if not source.is_file() or digest(source) != catalog['renderer_source_sha256']:
+        raise RuntimeError('Configure the matching Visualizer worker source archive in pipeline.json (visualizer_worker.source)')
+    return worker, source
+
+
+def verify_score_bundle(config, platform):
+    entry = config.get('score_bundles', {}).get(platform)
+    if not entry:
+        raise RuntimeError('Missing Score Editor bundle configuration: ' + platform)
+    archive = Path(entry['bundle'])
+    if not archive.is_file() or digest(archive) != entry['sha256']:
+        raise RuntimeError('Missing or changed Score Editor bundle: ' + platform)
+    with zipfile.ZipFile(archive) as bundle:
+        binary = bundle.read('verovio.exe' if platform == 'windows' else 'verovio')
+        if platform == 'windows':
+            pe_offset = struct.unpack_from('<I', binary, 60)[0]
+            valid = binary[:2] == b'MZ' and binary[pe_offset:pe_offset + 6] == b'PE\0\0\x64\x86'
+        elif platform == 'linux':
+            valid = binary[:6] == b'\x7fELF\x02\x01' and binary[18:20] == b'\x3e\x00'
+        else:
+            expected_cpu = 0x0100000c if platform == 'mac-arm64' else 0x01000007
+            valid = binary[:4] == b'\xcf\xfa\xed\xfe' and struct.unpack_from('<I', binary, 4)[0] == expected_cpu
+        if not valid or not bundle.read('data/Bravura.xml') or bundle.testzip() is not None:
+            raise RuntimeError('Invalid Score Editor bundle for ' + platform)
 
 
 def command(log,*args,env=None,cwd=r.ROOT):
@@ -76,7 +118,39 @@ def linux_package(config,binary,win_plan,out,log):
     return r.write_plan(site,out,'windows-linux')
 
 
-def mac(config,arch,out,log):
+def verify_mac_package(dmg, update, arch, out, log):
+    with tempfile.TemporaryDirectory(prefix='mac-smoke-', dir=out) as scratch:
+        scratch=Path(scratch)
+        mount=scratch/'installer'
+        mount.mkdir()
+        command(log,'hdiutil','attach','-nobrowse','-readonly','-mountpoint',mount,dmg)
+        try:
+            app=mount/'ML Studio.app'
+            command(log,'codesign','--verify','--deep','--strict',app)
+            feed=json.loads((update/'signed.json').read_text())
+            files=json.loads(feed['payload'])['files']
+            for entry in files:
+                if any(digest(root/entry['name'])!=entry['sha256'] for root in (app,update)):
+                    raise RuntimeError('Installer and updater differ: '+entry['name'])
+            profile=scratch/'profile'
+            profile.mkdir()
+            env=dict(os.environ,OPENSTUDIO_USER_DIR=str(profile),OPENSTUDIO_NO_PLUGIN_BUILD='1')
+            binary=app/'Contents/MacOS/lemonstudio'
+            report=out/'startup-report.txt'
+            command(log,'arch','-'+arch,binary,'--startup-report',report,env=env)
+            if str(profile) not in report.read_text():
+                raise RuntimeError('Mac startup did not use the clean profile')
+            result=subprocess.check_output(['arch','-'+arch,binary,'--scan-plugin','au','macOS Audio Units'],env=env,text=True,timeout=30)
+            scan=json.loads(next(line[7:] for line in result.splitlines() if line.startswith('OSSCAN ')))
+            ids={plugin['id'] for plugin in scan.get('plugins',[])}
+            if not scan['ok'] or not {'61756D75646C73206170706C','617566786C7061736170706C'}<=ids:
+                raise RuntimeError('Packaged Mac app did not discover the expected Audio Units')
+            atomic_json(out/'audio-unit-smoke.json',{'architecture':arch,'registered_plugins':len(ids),'installer_matches_updater':True})
+        finally:
+            command(log,'hdiutil','detach',mount)
+
+
+def mac(config,arch,out,log,verify_au=False):
     storage.build_preflight(Path(config['cache'])/('mac-'+arch), out)
     env=environment(config,'mac-'+arch);out=Path(out);out.mkdir(parents=True);env['LEMON_PACKAGE_OUT']=str(out)
     command(log,'bash',r.ROOT/'packaging/mac/build-release.command',env=env)
@@ -85,6 +159,8 @@ def mac(config,arch,out,log):
         dest=site/rel;dest.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(out/Path(rel).name,dest)
     shutil.copy2(out/f'mac-{arch}.json',site/'platforms'/f'mac-{arch}.json')
     command(log,r.sys.executable,r.ROOT/'packaging/prepare-unix-update.py','--platform','mac-'+arch,'--site',site,'--app',Path(env['CARGO_TARGET_DIR'])/'bundled/ML Studio.app',env=env)
+    if verify_au:
+        verify_mac_package(site/manifest['url'],site/'mac/updates'/arch/str(r.version()),arch,out,log)
     return r.write_plan(site,out,'mac-'+arch)
 
 

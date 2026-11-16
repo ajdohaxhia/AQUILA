@@ -60,6 +60,7 @@ pub const SPEC: &Spec = &Spec {
     word: "FILTER",
     about: "AQUILA's filter",
     settings: &SETTINGS,
+    studio_settings: 0,
     version: Some(dsp::VERSION),
     any_version: false,
     fields: &[0, 1, 2, 3, 4, 5, BYTE],

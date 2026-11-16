@@ -167,6 +167,7 @@ pub const SPEC: &Spec = &Spec {
     word: "VOCODER",
     about: "AQUILA's vocoder",
     settings: &SETTINGS,
+    studio_settings: 0,
     version: None,
     any_version: false,
     fields: &FIELDS,

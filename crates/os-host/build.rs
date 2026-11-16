@@ -9,6 +9,14 @@
 fn main() {
     println!("cargo::rustc-check-cfg=cfg(plugin_guard)");
     println!("cargo:rerun-if-changed=src/guard.c");
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
+        // ML Studio: Audio Unit hosting on macOS (AQUILA's crash guard below still applies).
+        println!("cargo:rerun-if-changed=src/audio_unit.m");
+        cc::Build::new().file("src/audio_unit.m").flag("-fobjc-arc").compile("os_audio_unit");
+        for framework in ["AudioToolbox", "CoreFoundation", "AppKit"] {
+            println!("cargo:rustc-link-lib=framework={framework}");
+        }
+    }
     println!("cargo:rerun-if-changed=src/guard_unix.c");
     let os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
     let env = std::env::var("CARGO_CFG_TARGET_ENV").unwrap_or_default();

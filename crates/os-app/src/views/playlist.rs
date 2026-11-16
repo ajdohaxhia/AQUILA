@@ -19,6 +19,8 @@ use crate::playlist::{self as pl, Mark, Overlay, PGeom, PickKind, MARKER_H, TITL
 pub const BAR_W: f32 = 60.0;
 
 // Clip colours (spec: ui/playlist.md §2).
+use os_theme::chrome::Chrome;
+
 const CLIP_BORDER: u32 = 0x353c41;
 const TITLE_TOP: u32 = 0x50595e;
 /// How much of an automation clip's body covers what lies under it (`clip_paint`).
@@ -80,7 +82,21 @@ fn clip_controls(ui: &mut Ui, s: &State, strip: Rect) {
     }
     let Some(kind) = s.playlist.controls.shown else {
         let label = Rect::new(strip.x,strip.y,strip.w-if attached{50.}else if add{25.}else{0.},strip.h);
-        ui.c.text_center(Font::new(11), label, ui.t.text_faint, if crate::attached_mixer::active(s){"MIXER TRACKS"}else{"TRACKS"});
+        let name = if attached { "MIXER TRACKS" } else { "TRACKS" };
+        if crate::workspace_visibility::shown(crate::scoring::TRACKS_MENU)
+            && crate::scoring::tracks_menu_available()
+        {
+            let hot = ui.hit(label, Action::PlTimelineTracks, "Show or hide timeline tracks");
+            let ink = if hot { ui.t.text } else { ui.t.text_dim };
+            let text = Rect::new(label.x, label.y, (label.w - 15.0).max(0.0), label.h);
+            ui.c.text_center(Font::new(11), text, ink, name);
+            let x = label.right() - 9.0;
+            let y = label.cy();
+            ui.c.line(x - 3.0, y - 1.5, x, y + 1.5, 1.0, ink);
+            ui.c.line(x, y + 1.5, x + 3.0, y - 1.5, 1.0, ink);
+        } else {
+            ui.c.text_center(Font::new(11), label, ui.t.text_faint, name);
+        }
         return;
     };
     for (i, (k, hint)) in [(PickKind::Audio, "Audio clip controls"), (PickKind::Automation, "Automation editing controls"), (PickKind::Pattern, "Pattern note colors")].into_iter().enumerate() {
@@ -126,7 +142,7 @@ pub fn paint(ui: &mut Ui, s: &State, r: Rect, f: &FrameInfo) {
     let ty=r.y+2.;
     for (x,icon,action,hint) in [(4.,Icon::ArrowRight,Action::PlOptions,"Playlist options".to_string()),(25.,Icon::Magnet,Action::PlSnap,format!("Snap: {}",s.playlist.snap.label()))] {
         let b=Rect::new(r.x+x,ty,18.,18.);let hot=ui.hit(b,action,hint);
-        icons::draw(ui.c,icon,b,if hot {t.glyph}else{t.text});
+        icons::draw(ui.c,icon,b,Chrome::PlaylistBarInk.or(t, if hot {t.glyph}else{t.text}));
     }
     for (i,(tool,icon)) in [(pl::PlTool::Draw,Icon::Pencil),(pl::PlTool::Paint,Icon::Brush),(pl::PlTool::Slice,Icon::Slice),(pl::PlTool::Select,Icon::Select)].into_iter().enumerate() {
         let b=Rect::new(r.x+49.+i as f32*22.,ty,20.,18.);
@@ -161,7 +177,7 @@ pub fn paint(ui: &mut Ui, s: &State, r: Rect, f: &FrameInfo) {
             ui.c.text_center(Font::new(10),Rect::new(b.x+15.0,b.y,b.w-15.0,b.h),ink,"COMP");
         }
     }
-    for x in [161.,222.,282.] {ui.c.line(r.x+x,ty+3.,r.x+x,ty+15.,1.,t.text_faint);}
+    for x in [161.,222.,282.] {ui.c.line(r.x+x,ty+3.,r.x+x,ty+15.,1.,Chrome::PlaylistBarDivider.or(t, t.text_faint));}
     if crate::workspace_visibility::shown("visible_playlist-clips") {
         let b=Rect::new(r.x+229.,ty,47.,18.);
         let hot=ui.hit(b,Action::PlClips,"Clips: patterns, audio clips and automation clips");
@@ -303,13 +319,17 @@ pub fn paint(ui: &mut Ui, s: &State, r: Rect, f: &FrameInfo) {
 
     // Overview (horizontal scroll bar with a miniature of the clips) + ruler. The song extends 16 bars past
     // its last clip, at least 100 bars; 500 tracks.
-    let last = pl::clips(s).iter().map(|c| c.end() as f32 / proj_bar).fold(0.0, f32::max);
+    let last = pl::clips(s).iter().map(|c| c.end() as f32 / proj_bar)
+        .fold(crate::scoring::timeline_end(s) as f32 / proj_bar, f32::max);
     // A finite content-derived end: navigating to it must not move the goalpost.
     let bars = if crate::elastic_scroll::adaptive(crate::app::Scroll::PlaylistX) {last.ceil().max(grid_w/bar_w)} else {(last.ceil() + 16.0).max(100.0).max((sx + grid_w) / bar_w)};
     let bars = bars * proj_bar / bar_t;
     let (_, vbar) = bar_sizes();
     let over = overview_rect(s, grid);
     super::scrollbar(ui, over, false, sx, grid_w, bars * bar_w, crate::app::Scroll::PlaylistX);
+    if let Some(face) = Chrome::PlaylistRail.get(t) {
+        ui.c.fill_rect(over, face);
+    }
     if t.style.vintage_2005 {
         crate::vintage::recess(ui.c, over, Color::rgb(0x252e33));
     }
@@ -331,7 +351,7 @@ pub fn paint(ui: &mut Ui, s: &State, r: Rect, f: &FrameInfo) {
         if t.style.vintage_2005 {
             crate::vintage::metal(ui.c, window, Color::rgb(0x65767e));
         } else {
-            let thumb = t.text_dim.mix(Color::rgb(0x2096f3), 0.32);
+            let thumb = Chrome::PlaylistThumb.or(t, t.text_dim.mix(Color::rgb(0x2096f3), 0.32));
             ui.c.fill_rrect(window, 2.0, thumb.with_alpha(if show_map { 140 } else { 255 }));
         }
         if show_map {
@@ -341,7 +361,7 @@ pub fn paint(ui: &mut Ui, s: &State, r: Rect, f: &FrameInfo) {
         let edge = if t.style.vintage_2005 {
             Color::rgb(0xb0c2ca)
         } else {
-            t.text.mix(Color::rgb(0x2096f3), 0.40).with_alpha(255)
+            Chrome::PlaylistThumbEdge.or(t, Chrome::PlaylistThumb.or(t, t.text.mix(Color::rgb(0x2096f3), 0.40))).with_alpha(255)
         };
         for y in [window.y, window.bottom() - 1.0] {
             ui.c.fill_rect(Rect::new(window.x, y, window.w, 1.0), edge);
@@ -350,16 +370,19 @@ pub fn paint(ui: &mut Ui, s: &State, r: Rect, f: &FrameInfo) {
         // Keep clips and markers out of the thumb's lane, even when the arrangement fills the map.
         let rail_h = if show_map { (over.h * 0.42).floor() } else { over.h - 2.0 };
         let rail = Rect::new(over.x, over.y + 1.0, over.w, rail_h);
-        ui.c.fill_rect(rail, Color::rgb(0x22282d));
+        ui.c.fill_rect(rail, Chrome::PlaylistRail.or(t, Color::rgb(0x22282d)));
         let (offset,width)=if crate::elastic_scroll::adaptive(crate::app::Scroll::PlaylistX) {
             let (at,w,_)=crate::elastic_scroll::horizontal(rail.w,sx,grid_w,bars*bar_w);(at,w)
         } else {let (at,w)=os_ui::kit::thumb(rail.w,sx,grid_w,bars*bar_w);crate::elastic_scroll::thumb(&ui.elastic,crate::app::Scroll::PlaylistX,at,w)};
         let thumb = Rect::new(rail.x + offset, rail.y, width, rail.h);
-        let face = if t.style.vintage_2005 { Color::rgb(0xb8c8cf) } else { Color::rgb(0x7ac4ff) };
+        let face = if t.style.vintage_2005 { Color::rgb(0xb8c8cf) } else { Chrome::PlaylistThumb.or(t, Color::rgb(0x7ac4ff)) };
         if t.style.vintage_2005 {
             ui.c.fill_rect_gradient(thumb, face.shade(0.16), face.shade(-0.16), 0.0);
         } else {
             ui.c.fill_rrect(thumb, 1.5, face);
+            if let Some(edge) = Chrome::PlaylistThumbEdge.get(t) {
+                ui.c.stroke_rrect(thumb.inset(0.5), 1.0, 1.0, edge);
+            }
         }
         if show_map {
             let y = rail.bottom() + 1.0;
@@ -436,14 +459,15 @@ pub fn paint(ui: &mut Ui, s: &State, r: Rect, f: &FrameInfo) {
     // Paint the source clips first, automation second regardless of saved clip ordering.
     let brightness = s.playlist_brightness();
     let show_waveforms = crate::workspace_visibility::shown("visible_playlist-waves");
+    let motion = s.playlist_motion.borrow();
     for automation in [false,true] {
         for (i,c) in pl::clips(s).iter().enumerate() {
             if (pl::source_kind(s,c.source)==PickKind::Automation)!=automation{continue;}
-            let glide=s.playlist_motion.borrow_mut().offset(s.project.current_arrangement,pl::clips(s).len(),i,std::time::Instant::now());
-            if let Some((left,right,down))=glide{
-                let mut at=g.clone();at.scroll_y-=down;
-                if (left-right).abs()<0.01{at.scroll_x-=left;clip_paint(ui,s,&at,i,c,brightness,show_waveforms);}
-                else{clip_paint(ui,s,&at,i,&pl::with_edges(s,&g,c,left,right),brightness,show_waveforms);}
+            if let Some(offset) = motion.offset(s.project.current_arrangement, pl::clips(s).len(), i) {
+                let (at, drawn) = crate::playlist_motion::placement(s, &g, c, offset);
+                if ui.c.visible(at.clip_rect(&drawn).outset(2.0)) {
+                    clip_paint(ui, s, &at, i, &drawn, brightness, show_waveforms);
+                }
             }else if ui.c.visible(g.clip_rect(c).outset(2.0)){clip_paint(ui,s,&g,i,c,brightness,show_waveforms);}
         }
     }
@@ -533,6 +557,7 @@ pub fn paint(ui: &mut Ui, s: &State, r: Rect, f: &FrameInfo) {
         }
     }
     ui.c.pop_clip();
+    crate::scoring::paint(ui, s, &g, grid.y - crate::scoring::height(s), heads);
     // Paint the inspector rim after adjacent header chrome: at fractional DPI its
     // antialiased corner must not soften or overwrite the panel's final edge.
     let inspector_w=crate::attached_mixer::width(s);
@@ -545,7 +570,7 @@ pub fn paint(ui: &mut Ui, s: &State, r: Rect, f: &FrameInfo) {
 
 /// The overview bar above `grid` (a miniature of the clips that is also the horizontal scroll bar, §1).
 pub fn overview_rect(s: &State, grid: Rect) -> Rect {
-    let lane_y = grid.y - if pl::markers(s).is_empty() { 0.0 } else { MARKER_H };
+    let lane_y = grid.y - crate::scoring::height(s) - if pl::markers(s).is_empty() { 0.0 } else { MARKER_H };
     Rect::new(grid.x, lane_y - 41.0, grid.w, bar_sizes().0)
 }
 
@@ -574,6 +599,7 @@ pub struct ScrollParts {
     pub grid: Rect,
     pub ruler: Rect,
     pub lane: Option<Rect>,
+    pub scoring: Option<Rect>,
     pub heads: Rect,
     pub overview: Rect,
     /// The vertical scroll bar's column.
@@ -588,6 +614,10 @@ pub fn scroll_parts(s: &State, grid: Rect) -> ScrollParts {
         grid,
         ruler: ruler_rect(s, grid),
         lane: (!pl::markers(s).is_empty()).then(|| Rect::new(grid.x, overview.y + 41.0, grid.w, MARKER_H)),
+        scoring: (crate::scoring::height(s) > 0.0).then(|| {
+            let h = crate::scoring::height(s);
+            Rect::new(grid.x, grid.y - h, grid.w, h)
+        }),
         heads: Rect::new(grid.x-width-5.,grid.y,width,grid.h),
         vbar: Rect::new(grid.right(), overview.y, 4.0 + bar_sizes().1, grid.bottom() - overview.y),
         overview,
@@ -608,7 +638,7 @@ pub(crate) fn grid_rect(s: &State, r: Rect, client: Rect) -> Rect {
     // Keep the timeline anchored when reclaiming the old left frame padding.
     let grid_x = r.x + crate::clip_picker::width(s,r) + crate::attached_mixer::width(s) + 2.0 + header_width(s) + 10.0;
     let grid_w = (r.right() - grid_x - 4.0 - bar_sizes().1).max(1.0);
-    let grid_y = client.y + 42.0 + if pl::markers(s).is_empty() { 0.0 } else { MARKER_H };
+    let grid_y = client.y + 42.0 + crate::scoring::height(s) + if pl::markers(s).is_empty() { 0.0 } else { MARKER_H };
     Rect::new(grid_x, grid_y, grid_w, (r.bottom() - grid_y).max(0.0))
 }
 
@@ -714,31 +744,35 @@ fn ruler_paint(ui: &mut Ui, s: &State, g: &PGeom, ruler: Rect, f: &FrameInfo) {
         let x = g.x_of(p as f32).clamp(ruler.x, ruler.right());
         ui.c.fill_rect(Rect::span(ruler.x, x, ruler.y, ruler.bottom()), offset(face, -8));
     }
-    // Labels by the project's bar width; the song's bars follow the time-signature markers (`pl::Bars`).
-    let every = label_step(s.project.bar_ticks() as f32 * g.ppt);
-    // From the bars whose numbers still reach into view (a number is up to ~40 px wide): which labels are drawn must
-    // not depend on the scroll position, or a scrolled ruler would differ from a repainted one.
-    let t0 = ((g.scroll_x - 48.0) / g.ppt).max(0.0) as u32;
-    let t1 = ((g.scroll_x + ruler.w) / g.ppt).max(0.0) as u32 + 1;
-    let digits = Font { width: 5, ..Font::vintage(11) };
-    let number_y = if vintage {
-        (ruler.bottom() - 2.0 - (15.0 + ui.c.line_height(digits)) * 0.5)
-            .max(ruler.y + 1.0)
-    } else { ruler.y };
-    for (b, tick, _) in bars.lines(t0, t1) {
-        let n = b - sb;
-        if n < 0 || n % every != 0 {
-            continue;
+    if crate::scoring::time_ruler(s) {
+        crate::scoring::paint_seconds(ui, s, g, ruler);
+    } else {
+        // Labels by the project's bar width; the song's bars follow the time-signature markers (`pl::Bars`).
+        let every = label_step(s.project.bar_ticks() as f32 * g.ppt);
+        // From the bars whose numbers still reach into view (a number is up to ~40 px wide): which labels are drawn must
+        // not depend on the scroll position, or a scrolled ruler would differ from a repainted one.
+        let t0 = ((g.scroll_x - 48.0) / g.ppt).max(0.0) as u32;
+        let t1 = ((g.scroll_x + ruler.w) / g.ppt).max(0.0) as u32 + 1;
+        let digits = Font { width: 5, ..Font::vintage(11) };
+        let number_y = if vintage {
+            (ruler.bottom() - 2.0 - (15.0 + ui.c.line_height(digits)) * 0.5)
+                .max(ruler.y + 1.0)
+        } else { ruler.y };
+        for (b, tick, _) in bars.lines(t0, t1) {
+            let n = b - sb;
+            if n < 0 || n % every != 0 {
+                continue;
+            }
+            let x = g.xs(f64::from(tick) * f64::from(g.bar_w) / f64::from(g.ppq * 4));
+            let major = n % (every * 4) == 0;
+            let label = (n + 1).to_string();
+            if vintage {
+                let ink = Color::rgb(if major { 0xc0c7d3 } else { 0xa8afc0 });
+                ui.c.text(digits, x + 2.0, number_y, ink, &label);
+            } else {
+                let size = if major { 15.0 } else { 13.0 };
+                ui.c.text(super::fnt(size), x + 2.0, ruler.bottom() - 17.0 + (16.0 - size), t.ruler_text, &label);
         }
-        let x = g.xs(f64::from(tick) * f64::from(g.bar_w) / f64::from(g.ppq * 4));
-        let major = n % (every * 4) == 0;
-        let label = (n + 1).to_string();
-        if vintage {
-            let ink = Color::rgb(if major { 0xc0c7d3 } else { 0xa8afc0 });
-            ui.c.text(digits, x + 2.0, number_y, ink, &label);
-        } else {
-            let size = if major { 15.0 } else { 13.0 };
-            ui.c.text(super::fnt(size), x + 2.0, ruler.bottom() - 17.0 + (16.0 - size), t.ruler_text, &label);
         }
     }
     // Song position: a flag ◤ on the playhead while playing the song, else on the start position (§7: its left edge
@@ -773,7 +807,7 @@ fn markers_paint(ui: &mut Ui, s: &State, g: &PGeom, lane: Rect) {
     // A tab per marker (§7a): flat left edge on its position, rounded top-right corner, slanted right edge; its action's
     // icon, then its name.
     for m in pl::markers(s) {
-        let x64 = g.x64(f64::from(m.position));
+        let x64 = g.x64(crate::scoring::marker_x(s, m));
         let x = x64 as f32;
         let w = pl::marker_w(s, m);
         if x > lane.right() || x + w < lane.x {
@@ -851,6 +885,7 @@ fn marker_glyph(ui: &mut Ui, kind: u8, x: f32, cy: f32) {
 
 /// A marker's label: its name; a time signature first shows the signature (spec: ui/pattern-time-signature.md §2).
 pub(crate) fn marker_label(m: &TimeMarker) -> String {
+    if m.linear_us.is_some() { return format!("[Time] {}", m.name); }
     if m.kind == TimeMarker::SIGNATURE {
         // FL names a new signature marker after its signature ("3/8", spec: ui/pattern-time-signature.md §4): shown once.
         let sig = format!("{}/{}", m.numerator, m.denominator);
@@ -1585,6 +1620,16 @@ pub(crate) fn activity_halo(c:&mut os_ui::Canvas,t:&os_theme::Palette,face:Rect,
     c.stroke_rrect(face.inset(1.5/scale),(radius-1./scale).max(0.),2./scale,color(42.));
 }
 
+fn mute_led(ui: &mut Ui, led: Rect, on: bool, hovered: bool, vintage: bool) {
+    if vintage {
+        let r = Rect::new(led.cx() - 7., led.cy() - 7., 14., 14.);
+        if on { crate::vintage_rack_art::led_on(ui.c, r); } else { crate::vintage_rack_art::led_off(ui.c, r); }
+    } else {
+        // Match the registered hit target so crossing its interior cannot change the LED during a partial paint.
+        os_ui::kit::led(ui.c, ui.t, led.cx(), led.cy(), 6.0, os_ui::kit::State::hover(hovered).with_on(on));
+    }
+}
+
 /// Track face, grouped corners and direct instrument/recording controls.
 fn header(ui: &mut Ui, s: &State, f: &FrameInfo, g: &PGeom, row: u16, x: f32, w: f32) {
     const INDENT: f32 = 6.0;
@@ -1691,22 +1736,23 @@ fn header(ui: &mut Ui, s: &State, f: &FrameInfo, g: &PGeom, row: u16, x: f32, w:
     if base_height < 36.0 {
         let face = Rect::new(hr.x, hr.y, hr.w, base_height - gap);
         let led = Rect::new(face.right() - 17.0, face.y, 16.0, face.h);
-        ui.hit(led, Action::PlLed(row), "Mute track (right-click / Ctrl+click: solo)");
-        if s.vintage_2005 {
-            let r=Rect::new(led.cx()-7.,led.cy()-7.,14.,14.);
-            if on {crate::vintage_rack_art::led_on(ui.c,r);}else{crate::vintage_rack_art::led_off(ui.c,r);}
-        } else {super::led(ui, led.cx(), led.cy(), on);}
+        let hovered = ui.hit(led, Action::PlLed(row), "Mute track (right-click / Ctrl+click: solo)");
+        mute_led(ui, led, on, hovered, s.vintage_2005);
         let expanded = crate::vocal::expanded(s, row);
         let record = crate::attached_mixer::record_button_visible(s,row);
-        let tuning_x = led.x - if record { 43. } else { 19. };
+        let record_width = crate::record_light::playlist_width(t, face.w - 115.);
+        let record_rect = Rect::new(led.x - record_width - 2., led.cy() - 7., record_width, 14.);
+        let tuning_x = if record { record_rect.x - 19. } else { led.x - 19. };
         crate::warp::head(ui,s,row,Rect::new(tuning_x-18.,led.cy()-7.,16.,14.));
         if !editing {
             ui.c.push_clip(face);
-            ui.c.text_clip(if s.vintage_2005 {Font::vintage(11)}else{Font::new(12)}, face.x + if crate::playlist_tracks::buttons(s,row){18.}else{5.}, face.cy() - 6.0, face.w-if crate::playlist_tracks::buttons(s,row){100.}else{62.}, text, &pl::track_name(s, row));
+            let name_x = face.x + if crate::playlist_tracks::buttons(s,row){18.}else{5.};
+            let name_width = (tuning_x - 22. - name_x).max(0.);
+            ui.c.text_clip(if s.vintage_2005 {Font::vintage(11)}else{Font::new(12)}, name_x, face.cy() - 6.0, name_width, text, &pl::track_name(s, row));
             ui.c.pop_clip();
         }
         crate::vocal::head(ui, s, row, Rect::new(tuning_x, led.cy() - 7.0, 17.0, 14.0));
-        crate::attached_mixer::record_button(ui,s,row,Rect::new(led.x-24.,led.cy()-7.,22.,14.));
+        crate::attached_mixer::record_button(ui,s,row,record_rect);
         if crate::playlist_tracks::buttons(s,row){let b=Rect::new(face.x+2.,led.cy()-7.,14.,14.);ui.hit(b,Action::Mix(crate::mixer::MHit::AttachedPiano(row)),"Piano Roll; right-click to insert an instrument");icons::draw(ui.c,Icon::PianoRoll,b,text);}
         if expanded {
             crate::vocal::keys(ui, s, g, row, hr);
@@ -1726,10 +1772,12 @@ fn header(ui: &mut Ui, s: &State, f: &FrameInfo, g: &PGeom, row: u16, x: f32, w:
     ui.c.fill_rect(Rect::new(toggle.x+if active.is_some(){10.0}else{2.0},toggle.y+2.0,6.0,6.0),if active.is_some(){ui.t.tx(0x253039)}else{t.text});
     let hot = ui.hit(auto, Action::PlAutomation(row), hint);
     clip_kind_icon(ui, PickKind::Automation, auto.inset(1.0), crate::attached_mixer::lane_icon(s,row,hot).unwrap_or(if active.is_some() || hot { t.glyph } else { t.text_faint }));
-    ui.hit(led, Action::PlLed(row), "Mute track (right-click / Ctrl+click: solo; with Alt: the whole group)");
+    let hovered = ui.hit(led, Action::PlLed(row), "Mute track (right-click / Ctrl+click: solo; with Alt: the whole group)");
     crate::vocal::head(ui,s,row,Rect::new(hr.x+27.,led.y,17.,14.));
     crate::warp::head(ui,s,row,Rect::new(hr.x+47.,led.y,14.,14.));
-    crate::attached_mixer::record_button(ui,s,row,Rect::new(led.x-if lead{45.}else{27.},led.cy()-7.,22.,14.));
+    let record_right = led.x - if lead { 23. } else { 5. };
+    let record_width = crate::record_light::playlist_width(t, record_right - hr.x - 64.);
+    crate::attached_mixer::record_button(ui,s,row,Rect::new(record_right-record_width,led.cy()-7.,record_width,14.));
     if !editing {
         let name_w = if toggle.y < hr.y + 18.0 {
             (toggle.x - hr.x - 12.0).max(1.0)
@@ -1765,10 +1813,7 @@ fn header(ui: &mut Ui, s: &State, f: &FrameInfo, g: &PGeom, row: u16, x: f32, w:
         // FL draws a lock where the LED is on such a group (§6a).
         draw_padlock(ui.c, led.cx(), led.cy() + 1., 1., t.led(0xa0dd48), true);
     } else {
-        if s.vintage_2005 {
-            let r=Rect::new(led.cx()-7.,led.cy()-7.,14.,14.);
-            if on {crate::vintage_rack_art::led_on(ui.c,r);}else{crate::vintage_rack_art::led_off(ui.c,r);}
-        } else {super::led(ui, led.cx(), led.cy(), on);}
+        mute_led(ui, led, on, hovered, s.vintage_2005);
     }
     crate::vocal::keys(ui,s,g,row,hr);
     ui.hit(Rect::new(hr.x,hr.bottom()-3.,hr.w,4.),Action::PlRowResize(row),"Drag to resize this Playlist track");
@@ -1778,8 +1823,28 @@ fn header(ui: &mut Ui, s: &State, f: &FrameInfo, g: &PGeom, row: u16, x: f32, w:
 fn tool_face(ui: &mut Ui, b: Rect, on: bool, hov: bool) -> Color {
     let t = ui.t;
     let state = os_ui::kit::State::hover(hov).with_on(on);
+    let active = Chrome::PlaylistActive.get(t);
+    let normal = Chrome::PlaylistButton.get(t);
+    let hovered = Chrome::PlaylistButtonHover.get(t);
+    let face = if on {
+        active.map(|color| if hov { color.shade(0.10) } else { color })
+    } else if hov {
+        hovered.or_else(|| normal.map(|color| color.shade(0.10)))
+    } else {
+        normal
+    };
+    let ink = |fallback| if on {
+        Chrome::PlaylistActiveInk.or(t, fallback)
+    } else {
+        Chrome::PlaylistBarInk.or(t, fallback)
+    };
+    if let Some(face) = face {
+        ui.c.fill_rrect(b, lk::r_btn(t), face);
+        return os_ui::kit::button_ink_on(face, ink(lk::ink_on(face)));
+    }
     if os_ui::kit::custom_button_in(ui.c, t, b, state, t.appearance.playlist_buttons) {
-        return os_ui::kit::ink(t, state);
+        let ink = ink(os_ui::kit::ink(t, state));
+        return if on { os_ui::kit::button_ink_on(Chrome::ActiveButton.or(t, t.on_bottom), ink) } else { ink };
     }
     if super::lemon(ui) {
         if on {
@@ -1787,12 +1852,17 @@ fn tool_face(ui: &mut Ui, b: Rect, on: bool, hov: bool) -> Color {
         } else if hov {
             ui.c.fill_rrect(b.outset(1.0), lk::r_btn(t), t.button_hi);
         }
-        return if on { lk::ink_on_lit(ui.t) } else { t.glyph };
+        return if on {
+            let face = Chrome::ActiveButton.or(t, t.brand_lit(os_theme::design::lemon::MAIN));
+            os_ui::kit::button_ink_on(face, ink(lk::ink_on_lit(t)))
+        } else {
+            ink(t.glyph)
+        };
     }
     if on {
         ui.c.fill_rrect(b.outset(1.0), 3.0, t.glyph.with_alpha(40));
     }
-    if on { t.glyph } else if hov { t.text.shade(0.3) } else { t.text }
+    ink(if on { t.glyph } else if hov { t.text.shade(0.3) } else { t.text })
 }
 
 /// The open playlist popup menu and its submenu, and the inline text box (drawn above everything).
@@ -1831,7 +1901,8 @@ pub fn paint_overlays(ui: &mut Ui, s: &State) {
         super::typein::paint(ui, s, e, t, norm);
     } else if let Some(e) = &s.playlist.edit {
         let t = ui.t;
-        let r = Rect::new(e.at.0, e.at.1, 150.0, 20.0);
+        let width = if matches!(e.target, pl::EditTarget::VisualText(..)) { 240. } else { 150. };
+        let r = Rect::new(e.at.0, e.at.1, width, 20.0);
         ui.hit(r, Action::Swallow, "Type, Enter accepts, Esc cancels");
         ui.c.fill_rect(r, ui.t.s(0x0e1214));
         ui.c.stroke_rrect(r, 0.0, 1.0, t.glyph);

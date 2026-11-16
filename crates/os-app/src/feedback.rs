@@ -12,6 +12,6 @@ pub fn open()->Result<(),String>{crate::donate::open_url(&address())}
     #[test]fn feedback_diagnostics_are_reviewable_fragment_and_button_is_visible(){
         let address=super::address();assert!(address.starts_with(super::URL));assert!(address.contains("?body="));assert!(!address.contains("michaellanemusic"));
         let mut app=crate::app::App::new(None);
-        for width in [1024,1280,1920]{let mut canvas=os_ui::Canvas::new(width,900,1.).unwrap();app.paint(&mut canvas,None);let button=app.hits.iter().find(|h|h.action==crate::app::Action::ReportBug).expect("Visible report button");assert!(button.rect.x>=0.&&button.rect.right()<width as f32);for h in &app.hits{if matches!(h.action,crate::app::Action::Updates|crate::app::Action::Donate){assert!(button.rect.x>=h.rect.right()||button.rect.right()<=h.rect.x);}}}
+        for width in [1024,1280,1920]{let mut canvas=os_ui::Canvas::new(width,900,1.).unwrap();app.paint(&mut canvas,None);let button=app.hits.iter().find(|h|h.action==crate::app::Action::ReportBug).expect("Visible report button");assert!(button.rect.x>=0.&&button.rect.right()<width as f32);for h in &app.hits{if matches!(h.action,crate::app::Action::Updates|crate::app::Action::Donate){assert!(button.rect.intersect(&h.rect).is_empty(),"toolbar panels must not overlap across either row");}}}
     }
 }

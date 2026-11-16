@@ -149,6 +149,7 @@ impl KnobId {
             KnobId::ChanVol(_) => 0.03,
             KnobId::ChanPan(_) => 0.015,
             KnobId::MixPan(_) => 0.025,
+            KnobId::Send(..) => PER_NOTCH * 1.15,
             KnobId::Swing => 0.045,
             KnobId::Strum(k) => k.notch(),
             KnobId::Arp(k) => k.notch(),
@@ -172,6 +173,7 @@ impl KnobId {
             // spec: ui/channel-rack.md §11 (0.4 % / px volume, 0.8 % / px pan) and §7 (30 px = 17 % swing).
             KnobId::ChanVol(_) | KnobId::ChanPan(_) => 0.004,
             KnobId::Swing => 0.17 / 30.0,
+            KnobId::Send(..) => PER_PX * 1.15,
             // All native channel-strip knobs share the EQ gain knobs' mouse travel.
             KnobId::Eq(..) | KnobId::Strip(..) => 1.5625 / 160.0,
             // A tension's side is half as many notches as a strength's (spec: ui/piano-strum.md §1).
@@ -184,6 +186,10 @@ impl KnobId {
             KnobId::MidiOut(_, k) => (k.notch() / 6.0).max(PER_PX),
             _ => PER_PX,
         }
+    }
+
+    pub fn mixer_control(self) -> bool {
+        matches!(self, Self::MixPan(_) | Self::MixSep(_) | Self::Send(..) | Self::SlotMix(..) | Self::Strip(..) | Self::Eq(..))
     }
 
     /// Value restored by a middle click.
@@ -527,6 +533,11 @@ impl State {
             }
             KnobId::Strum(_) | KnobId::Arp(_) | KnobId::PianoDlg(_) | KnobId::AutoLfo(..) | KnobId::MidiOut(..) => return None,
         })
+    }
+
+    pub fn knob_hint(&self, id: KnobId) -> String {
+        let text=self.knob_text(id);
+        if id.mixer_control() {format!("{text} | Shift-drag: fine | Right-click: type value / reset")} else {text}
     }
 }
 

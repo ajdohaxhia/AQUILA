@@ -70,6 +70,7 @@ pub const SPEC: &Spec = &Spec {
     word: "FORMULA CONTROLLER",
     about: "AQUILA's formula controller",
     settings: &SETTINGS,
+    studio_settings: 0,
     version: Some(VERSION),
     any_version: false,
     fields: &[],

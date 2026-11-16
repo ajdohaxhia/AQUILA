@@ -1,14 +1,17 @@
-"""One resumable, four-platform release. `check` checks setup without building or publishing; `run` publishes."""
+"""Resumable full or macOS-only release. `check` verifies setup; `run` publishes."""
 from pathlib import Path, PurePosixPath
 from concurrent.futures import ThreadPoolExecutor
 import argparse, datetime, hashlib, json, mmap, os, platform, re, shutil, subprocess, sys, time, urllib.request, urllib.error, urllib.parse, zipfile
 import release as r
 import builders as b
 import storage
+import discord_changelog
 from checkpoints import Journal, atomic_json, digest, exclusive, plan_files, stage_plan
 
 CONFIG=r.PRIVATE/'pipeline.json'
 PLATFORMS=('windows','linux','mac-arm64','mac-x86_64')
+MAC_PLATFORMS=PLATFORMS[2:]
+WINDOWS_LINUX_LINKS=('platforms/windows.json','platforms/linux.json','updates/stable.json','updates/linux-x64/stable.json')
 REPOSITORY='Dorfhaus/ML-Studio'
 
 
@@ -29,6 +32,15 @@ def live_versions():
 def engine_id():return r.git('rev-parse','HEAD:plugins/lemon-master-assistant')
 
 
+def mix_reference_pack(config):
+    entry = config['mix_reference_pack']
+    source = Path(entry['path'])
+    if not source.is_file() or digest(source) != entry['sha256']:
+        raise RuntimeError('Website Mix References pack is missing or changed')
+    r.verify_mix_reference_pack(source)
+    return source
+
+
 def probe(mac=False):
     c=config();required=PLATFORMS[2:] if mac else PLATFORMS[:2]
     if not Path(c['juce_source'],'modules/juce_core/juce_core.h').is_file():raise RuntimeError('Matching JUCE source is missing')
@@ -41,6 +53,7 @@ def probe(mac=False):
             if (m['os'],m['arch'])!=expected:raise RuntimeError('Wrong engine architecture: '+p)
             for f in m['files']:
                 if hashlib.sha256(z.read(f['path'])).hexdigest()!=f['sha256']:raise RuntimeError('Damaged native engine archive')
+        b.verify_score_bundle(c, p)
     from cryptography.hazmat.primitives.serialization import load_pem_private_key,Encoding,PublicFormat
     key=r.PRIVATE/('mac-update-signing-key.pem' if mac else 'update-signing-key.pem')
     expected=r.ROOT/'crates/os-app/src'/('update-mac-public-key.hex' if mac else 'update-public-key.hex')
@@ -53,6 +66,8 @@ def probe(mac=False):
         if not all(t in targets for t in ['aarch64-apple-darwin','x86_64-apple-darwin']):raise RuntimeError('Both Mac Rust targets must be installed')
         r.check_connection()
     else:
+        b.visualizer_inputs(c)
+        mix_reference_pack(c)
         cfg=r.read_config()
         for k in ('llvm','nsis','runtime'):
             if not Path(cfg[k]).exists():raise RuntimeError('Missing build tool: '+k)
@@ -94,18 +109,21 @@ def release_notes():
     return sections[0]
 
 
-def prepare(notes, no_changelog=False):
+def prepare(notes, no_changelog=False, mac_only=False):
     live=live_versions();v=r.version()
     if no_changelog:
         v=max(v,max(live.values())+1,int(datetime.date.today().strftime('%Y%m%d')+'01'))
         version_path=r.ROOT/'crates/os-app/src/updates.rs'
         version_path.write_text(re.sub(r'pub const VERSION: u64 = \d+;',f'pub const VERSION: u64 = {v};',version_path.read_text(encoding='utf-8')),encoding='utf-8')
         label=f'{str(v)[:4]}.{str(v)[4:6]}.{str(v)[6:8]}.{int(str(v)[8:])}'
-        installer=r.ROOT/'packaging/windows/LemonStudio.nsi'
-        installer.write_text(re.sub(r'("DisplayVersion" ")[^"]+',lambda m:m[1]+label,installer.read_text(encoding='utf-8')),encoding='utf-8')
+        installers=[]
+        if not mac_only:
+            installer=r.ROOT/'packaging/windows/LemonStudio.nsi'
+            installer.write_text(re.sub(r'("DisplayVersion" ")[^"]+',lambda m:m[1]+label,installer.read_text(encoding='utf-8')),encoding='utf-8')
+            installers.append(installer)
         marker=r.ROOT/'packaging/maintenance-build.txt'
         marker.write_text(f'{v}\n',encoding='utf-8')
-        r.run('git','add',version_path,installer,marker)
+        r.run('git','add',version_path,marker,*installers)
         r.run('git','commit','-m',f'Prepare maintenance release {v}')
     elif notes:
         n=json.loads(Path(notes).read_text(encoding='utf-8-sig'))
@@ -115,14 +133,17 @@ def prepare(notes, no_changelog=False):
         if any(str(v) in section['title'] for section in history['sections']):raise RuntimeError('This build already has release notes; run without --notes')
         p=r.ROOT/'crates/os-app/src/updates.rs';p.write_text(re.sub(r'pub const VERSION: u64 = \d+;',f'pub const VERSION: u64 = {v};',p.read_text(encoding='utf-8')),encoding='utf-8')
         label=f'{str(v)[:4]}.{str(v)[4:6]}.{str(v)[6:8]}.{int(str(v)[8:])}'
-        p=r.ROOT/'packaging/windows/LemonStudio.nsi';p.write_text(re.sub(r'("DisplayVersion" ")[^"]+',lambda m:m[1]+label,p.read_text(encoding='utf-8')),encoding='utf-8')
+        installers=[]
+        if not mac_only:
+            p=r.ROOT/'packaging/windows/LemonStudio.nsi';p.write_text(re.sub(r'("DisplayVersion" ")[^"]+',lambda m:m[1]+label,p.read_text(encoding='utf-8')),encoding='utf-8')
+            installers.append(p)
         p=r.ROOT/'packaging/changelog.json';history=json.loads(p.read_text(encoding='utf-8'))
         if any(str(v) in s['title'] for s in history['sections']):raise RuntimeError('This build already has release notes; preserve them and run without --notes')
         history['sections'].insert(0,dict(date=datetime.date.today().isoformat(),title=n['title']+' · public build '+str(v),changes=n['changes']))
         atomic_json(p,history)
         r.run(sys.executable,r.ROOT/'packaging/render-changelog.py')
-        r.run('git','add','crates/os-app/src/updates.rs','packaging/windows/LemonStudio.nsi','packaging/changelog.json','packaging/download-page.html')
-        r.run('git','commit','-m',f'Prepare complete release {v}')
+        r.run('git','add','crates/os-app/src/updates.rs','packaging/changelog.json','packaging/download-page.html',*installers)
+        r.run('git','commit','-m',f'Prepare {"macOS" if mac_only else "complete"} release {v}')
     elif v<=max(live.values()):raise RuntimeError('This build is already published. Supply --notes with the new changes to prepare a new release.')
     release_notes()
     r.run('git','push','--receive-pack=git -c receive.autogc=false receive-pack','home','HEAD:main')
@@ -154,13 +175,13 @@ def stage(path,name):
     return str(dest),plan_files(dest)
 
 
-def worker(arch):
+def worker(arch,mac_only=False):
     if platform.system()!='Darwin':raise RuntimeError('Mac worker requires macOS')
     root=output_root()/('mac-'+arch);root.mkdir(parents=True,exist_ok=True)
     with exclusive(r.PRIVATE/('pipeline-mac-'+arch+'.lock')), storage.active_release(root.parent.parent):
         j=Journal(root/'state.json',identity())
         def build(attempt):
-            plan=b.mac(config(),arch,root/f'build-{attempt}',root/'build.log');return str(plan),plan_files(plan)
+            plan=b.mac(config(),arch,root/f'build-{attempt}',root/'build.log',verify_au=mac_only);return str(plan),plan_files(plan)
         plan=j.step('Build mac-'+arch,build)
         if r.git('status','--porcelain') or r.git('rev-parse','HEAD')!=j.data['identity']['commit']:raise RuntimeError('Mac source changed during build; publication stopped')
         j.step('Stage mac-'+arch,lambda _:stage(plan,'mac-'+arch))
@@ -170,13 +191,13 @@ def publish_shared(name):
     path=shared_run()/name/'publish-plan.json';r.publish(path)
 
 
-def artifacts(plans):
+def artifacts(plans,platforms=PLATFORMS):
     index={}
     for path in plans:
         p=json.loads(Path(path).read_text())
         for e in p['files']:index[e['path']]=(Path(path).parent/e['local'],e['sha256'])
     assets=[]
-    for name in PLATFORMS:
+    for name in platforms:
         manifest=json.loads(index['platforms/'+name+'.json'][0].read_text())
         for rel in (manifest['url'],manifest['source']):
             f,h=index[rel]
@@ -206,10 +227,18 @@ def helper_stage(out):
     return stage(r.write_plan(site,folder,'helper'),'helper')
 
 
-def verify_live(plans,out):
+def download_digests(paths):
+    return {rel:hashlib.sha256(read_url(r.BASE+rel+'?verify='+str(time.time_ns()))).hexdigest() for rel in paths}
+
+
+def verify_live(plans,out,website_plan,protected=None):
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
-    index,assets=artifacts(plans)
-    for rel in ['platforms/'+p+'.json' for p in PLATFORMS]+['updates/stable.json','updates/linux-x64/stable.json','mac/updates/arm64/stable.json','mac/updates/x86_64/stable.json']:
+    mac_only=protected is not None
+    platforms=MAC_PLATFORMS if mac_only else PLATFORMS
+    index,assets=artifacts(plans,platforms)
+    feeds=['mac/updates/arm64/stable.json','mac/updates/x86_64/stable.json']
+    if not mac_only: feeds+=['updates/stable.json','updates/linux-x64/stable.json']
+    for rel in ['platforms/'+p+'.json' for p in platforms]+feeds:
         data=read_url(r.BASE+rel+'?verify='+str(time.time_ns()))
         if hashlib.sha256(data).hexdigest()!=index[rel][1]:raise RuntimeError('Live feed or manifest differs: '+rel)
         value=json.loads(data)
@@ -219,8 +248,18 @@ def verify_live(plans,out):
             value=json.loads(value['payload'])
         if value['version']!=r.version():raise RuntimeError('Wrong live release version')
     if read_url(r.DOWNLOAD_PAGE+'?verify='+str(time.time_ns()))!=(r.ROOT/'packaging/download-page.html').read_bytes():raise RuntimeError('Live changelog page differs')
+    website = json.loads(Path(website_plan).read_text())
+    reference_hash = None
+    if mac_only:
+        if protected != download_digests(WINDOWS_LINUX_LINKS):
+            raise RuntimeError('Windows or Linux public feed or manifest changed during the Mac release')
+    else:
+        reference_hash = next(entry['sha256'] for entry in website['files'] if entry['path'] == r.MIX_REFERENCE_PATH)
+        reference = read_url(r.BASE+urllib.parse.quote(r.MIX_REFERENCE_PATH)+'?verify='+str(time.time_ns()))
+        if hashlib.sha256(reference).hexdigest() != reference_hash:
+            raise RuntimeError('Website Mix References download differs')
     # Artifact bytes were verified over HTTPS by each publisher before its manifest became live.
-    for path in plans:
+    for path in [*plans, website_plan]:
         p=json.loads(Path(path).read_text());receipt=json.loads(Path(path).with_name('PUBLISHED.json').read_text())
         if any(receipt[k]!=p[k] for k in ('version','commit','scope','files')):raise RuntimeError('Publication receipt does not match prepared artifacts')
     for a in assets:
@@ -229,7 +268,9 @@ def verify_live(plans,out):
         if digest(dest)!=a['sha256']:raise RuntimeError('Desktop artifact hash differs')
     notes=release_notes();v=str(r.version());label=f'{v[:4]}.{v[4:6]}.{v[6:8]}.{int(v[8:])}'
     plan=dict(tag='v'+label,title='AQUILA '+label,notes='\n'.join('- '+x for x in notes['changes'])+'\n\n'+r.DOWNLOAD_PAGE,assets=[{k:a[k] for k in ('name','url','sha256')} for a in assets])
-    atomic_json(out/'github-release.json',plan);atomic_json(out/'VERIFIED.json',{'version':r.version(),'platforms':list(PLATFORMS),'signatures':4,'download_hashes_verified_by_publishers':True,'website_exact':True})
+    if mac_only:
+        plan.update(title=plan['title']+' for macOS', latest=False)
+    atomic_json(out/'github-release.json',plan);atomic_json(out/'VERIFIED.json',{'version':r.version(),'platforms':list(platforms),'signatures':len(feeds),'download_hashes_verified_by_publishers':True,'website_exact':True,'website_mix_references_sha256':reference_hash,'protected_platform_manifests_and_feeds':protected})
     return str(out/'github-release.json'),[out/'github-release.json',out/'VERIFIED.json']+[out/'Downloads'/a['name'] for a in assets]
 
 
@@ -244,7 +285,12 @@ def github_stage(plan_path,plans,out,attempt,force=False):
     work=Path(c['cache'])/('github-'+str(r.version())+'-'+str(attempt))
     if work.exists():raise RuntimeError('Preserving existing GitHub worktree; retry creates a fresh attempt')
     b.command(out/'github.log','git','worktree','add','--detach',work,'FETCH_HEAD',cwd=public)
-    index,_=artifacts(plans);source=index['updates/'+str(r.version())+'/Lemon Studio Source.zip'][0]
+    if plan.get('latest') is False:
+        index,_=artifacts(plans,MAC_PLATFORMS)
+        manifest=json.loads(index['platforms/mac-arm64.json'][0].read_text())
+        source=index[manifest['source']][0]
+    else:
+        index,_=artifacts(plans);source=index['updates/'+str(r.version())+'/Lemon Studio Source.zip'][0]
     expected=set()
     with zipfile.ZipFile(source) as z:
         for entry in z.infolist():
@@ -259,7 +305,7 @@ def github_stage(plan_path,plans,out,attempt,force=False):
     atomic_json(work/'packaging/github-release.json',dict(plan,publication_attempt=attempt) if force else plan)
     b.command(out/'github.log','git','add','-A',cwd=work)
     b.command(out/'github.log',sys.executable,'packaging/private_build.py','--check-source',cwd=work)
-    b.command(out/'github.log','git','commit','-m','Publish complete DAW '+plan['tag'],cwd=work)
+    b.command(out/'github.log','git','commit','-m','Publish '+plan['title'],cwd=work)
     b.command(out/'github.log','git','push','github','HEAD:michael-lane',cwd=work)
     head=subprocess.check_output(['git','rev-parse','HEAD'],cwd=work,text=True).strip()
     return {'tag':plan['tag'],'commit':head},[Path(plan_path)]
@@ -291,7 +337,7 @@ def github_verify(plan_path,out,commit=None):
     return release['html_url'],[dest]
 
 
-def coordinator(notes=None,check=False,no_changelog=False):
+def coordinator(notes=None,check=False,no_changelog=False,mac_only=False):
     if platform.system()!='Windows':raise RuntimeError('Run the complete release from the Windows coordinator; this Mac provides native workers.')
     with exclusive(r.PRIVATE/'pipeline.lock'):
         if r.git('status','--porcelain'):raise RuntimeError('Commit intended source changes first; nothing was stashed or reset')
@@ -305,40 +351,65 @@ def coordinator(notes=None,check=False,no_changelog=False):
         previous=json.loads(state.read_text()) if state.exists() else None
         if previous and previous['identity']['commit']==r.git('rev-parse','HEAD'):
             if notes or no_changelog:raise RuntimeError('Resume this reserved run with plain run')
+            pinned_mac=previous['identity'].get('mac_only',False)
+            if mac_only and not pinned_mac:raise RuntimeError('This run already has the full release scope')
+            mac_only=pinned_mac
         else:
             if previous and previous['steps'].get('Back up source',{}).get('status')!='complete':raise RuntimeError('An unfinished release belongs to another revision; resume that revision first')
-            if no_changelog:
+            if mac_only:
+                prepare(notes,no_changelog=no_changelog,mac_only=True)
+            elif no_changelog:
                 prepare(None, no_changelog=True)
             else:
                 prepare(notes)
             out=output_root();state=out/'state.json'
-        release_notes();remote(['probe'],prelog,sync=True)
-        out.mkdir(parents=True,exist_ok=True);j=Journal(state,identity())
+        release_notes()
+        run_identity=identity()
+        if mac_only:run_identity['mac_only']=True
+        out.mkdir(parents=True,exist_ok=True);j=Journal(state,run_identity)
+        remote(['probe'],prelog,sync=True)
         def win(attempt):
             p=b.windows(c,out/f'windows-{attempt}',out/'windows.log');return str(p),plan_files(p)
         def lin(_):
             p=b.linux_compile(c,out/'linux.log');return str(p),[p]
         def mac(arch):
             def action(_):
-                remote(['worker',arch],out/('mac-'+arch+'.log'));p=shared_run()/('mac-'+arch)/'publish-plan.json';return str(p),plan_files(p)
+                args=['worker',arch]+(['--mac-only'] if mac_only else [])
+                remote(args,out/('mac-'+arch+'.log'));p=shared_run()/('mac-'+arch)/'publish-plan.json';return str(p),plan_files(p)
             return j.step('Build mac-'+arch,action)
         with storage.active_release(out.parent), ThreadPoolExecutor(max_workers=4) as pool:
-            winjob=pool.submit(j.step,'Build Windows',win);linjob=pool.submit(j.step,'Build Linux',lin)
+            if not mac_only:
+                winjob=pool.submit(j.step,'Build Windows',win);linjob=pool.submit(j.step,'Build Linux',lin)
             macjobs=[pool.submit(mac,a) for a in ('arm64','x86_64')]
-            wp=winjob.result();binary=linjob.result();macplans=[job.result() for job in macjobs]
-        def package(attempt):
-            p=b.linux_package(c,binary,wp,out/f'linux-{attempt}',out/'linux.log');return str(p),plan_files(p)
-        lp=j.step('Package Linux',package)
-        def merged(_):
-            p=b.merged_plan([wp,lp],out);return str(p),plan_files(p)
-        combined=j.step('Combine Windows and Linux',merged)
-        win_shared=j.step('Stage Windows and Linux',lambda _:stage(combined,'windows-linux'))
+            macplans=[job.result() for job in macjobs]
+            if not mac_only:wp=winjob.result();binary=linjob.result()
+        plans=macplans
+        helper=None
+        if not mac_only:
+            def package(attempt):
+                p=b.linux_package(c,binary,wp,out/f'linux-{attempt}',out/'linux.log');return str(p),plan_files(p)
+            lp=j.step('Package Linux',package)
+            def merged(_):
+                p=b.merged_plan([wp,lp],out);return str(p),plan_files(p)
+            combined=j.step('Combine Windows and Linux',merged)
+            win_shared=j.step('Stage Windows and Linux',lambda _:stage(combined,'windows-linux'))
+            helper=j.step('Stage optional Melli',lambda _:helper_stage(out))
+            plans=[win_shared,*macplans]
         def website(_):
             folder=out/'website';site=folder/'lemon-studio';site.mkdir(parents=True,exist_ok=True);shutil.copy2(r.ROOT/'packaging/download-page.html',site/'index.html')
+            if not mac_only:
+                target = site / r.MIX_REFERENCE_PATH
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(mix_reference_pack(c), target)
             p=r.write_plan(site,folder,'website');return stage(p,'website')
         webplan=j.step('Stage website',website)
-        helper=j.step('Stage optional Melli',lambda _:helper_stage(out))
-        plans=[win_shared,*macplans,helper]
+        protected=None
+        if mac_only:
+            def capture(_):
+                before=download_digests(WINDOWS_LINUX_LINKS)
+                dest=out/'windows-linux-before.json';atomic_json(dest,before)
+                return before,[dest]
+            protected=j.step('Record Windows and Linux feeds',capture)
         if r.git('status','--porcelain') or r.git('rev-parse','HEAD')!=j.data['identity']['commit']:raise RuntimeError('Source changed during the release; no packages will be published')
         def publish(p):
             name=json.loads(Path(p).read_text())['scope']
@@ -346,10 +417,14 @@ def coordinator(notes=None,check=False,no_changelog=False):
                 remote(['publish-worker',name],out/('publish-'+name+'.log'));receipt=Path(p).with_name('PUBLISHED.json');return str(receipt),[receipt]
             return j.step('Publish '+name,action)
         # All optional files must be live before any DAW feed advertises this build.
-        publish(helper)
-        with ThreadPoolExecutor(max_workers=3) as pool:list(pool.map(publish,plans[:-1]))
+        if helper:publish(helper)
+        with ThreadPoolExecutor(max_workers=3) as pool:list(pool.map(publish,plans))
         publish(webplan)
-        gp=j.step('Verify live downloads and feeds',lambda _:verify_live(plans,out))
+        if helper:plans=[*plans,helper]
+        def verify(_):
+            if mac_only:return verify_live(plans,out,webplan,protected)
+            return verify_live(plans,out,webplan)
+        gp=j.step('Verify live downloads and feeds',verify)
         publication=j.step('Publish GitHub',lambda attempt:github_stage(gp,plans,out,attempt))
         def finish_github(attempt):
             commit=publication['commit']
@@ -360,6 +435,17 @@ def coordinator(notes=None,check=False,no_changelog=False):
                     result,_=github_stage(gp,plans,out,1000+attempt*10+retry,force=True)
                     commit=result['commit']
         j.step('Verify GitHub',finish_github)
+        def post_discord(_):
+            result = discord_changelog.publish(
+                discord_changelog.bot_api(c['source_sync']),
+                r.version(), release_notes(), r.DOWNLOAD_PAGE,
+            )
+            receipt = out / 'DISCORD-VERIFIED.json'
+            atomic_json(receipt, result)
+            return result, [receipt]
+        maintenance = is_maintenance_build(r.ROOT, r.version())
+        if not maintenance:
+            j.step('Post Discord changelog', post_discord)
         def backup(_):
             env=dict(os.environ,LEMON_JUCE_SOURCE=c['juce_source'],PYTHONUTF8='1')
             b.command(out/'backup.log','powershell','-NoProfile','-ExecutionPolicy','Bypass','-File',c['source_sync'],'-Source',r.ROOT,env=env)
@@ -369,22 +455,25 @@ def coordinator(notes=None,check=False,no_changelog=False):
             atomic_json(r.shared_folder()/'LATEST.json',latest)
             receipt=out/'BACKUP-VERIFIED.json';atomic_json(receipt,latest);return str(p),[p,receipt]
         j.step('Back up source',backup)
-        print('COMPLETE: website, Windows, Linux, both Macs, GitHub, signed feeds and backup verified. '+str(out),flush=True)
+        discord = '' if maintenance else ', Discord changelog'
+        scope = 'both Mac architectures' if mac_only else 'Windows, Linux, both Mac architectures'
+        print('COMPLETE: website, '+scope+', GitHub, signed feeds'+discord+' and backup verified. '+str(out),flush=True)
 
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('action',choices=['run','check','status','probe','worker','publish-worker']);parser.add_argument('worker',nargs='?');options=parser.add_mutually_exclusive_group();options.add_argument('--notes',type=Path);options.add_argument('--no-changelog',action='store_true');a=parser.parse_args()
+    parser=argparse.ArgumentParser();parser.add_argument('action',choices=['run','check','status','probe','worker','publish-worker']);parser.add_argument('worker',nargs='?');options=parser.add_mutually_exclusive_group();options.add_argument('--notes',type=Path);options.add_argument('--no-changelog',action='store_true');parser.add_argument('--mac-only',action='store_true');a=parser.parse_args()
     if a.no_changelog and a.action!='run':parser.error('--no-changelog requires run')
+    if a.mac_only and a.action not in ('run','worker'):parser.error('--mac-only requires run')
     if a.action=='probe':print(json.dumps(probe(mac=platform.system()=='Darwin')))
     elif a.action=='worker':
         if a.worker not in ('arm64','x86_64'):parser.error('Choose arm64 or x86_64')
-        worker(a.worker)
+        worker(a.worker,a.mac_only)
     elif a.action=='publish-worker':
         if a.worker not in ('windows-linux','mac-arm64','mac-x86_64','website','helper'):parser.error('Invalid scope')
         publish_shared(a.worker)
     elif a.action=='status':
         p=output_root()/'Progress.txt';print(p.read_text(encoding='utf-8') if p.exists() else 'No pipeline run for the current source version.')
-    else:coordinator(a.notes,a.action=='check',a.no_changelog)
+    else:coordinator(a.notes,a.action=='check',a.no_changelog,a.mac_only)
 
 if __name__=='__main__':
     try:main()

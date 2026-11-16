@@ -149,13 +149,29 @@ pub fn instrument(app:&mut App,index:usize,row:u16,tick:u32,sample:Option<String
     let desc=app.plugins.available.get(index)?.desc.clone();
     if super::owner(&app.state,row).is_none() && mixer::inserts(&app.state)>=4093 {return Some("The mixer has reached its track limit".into());}
     let Some(pattern)=app.state.project.patterns.iter().map(|p|p.number).max().unwrap_or(0).checked_add(1) else {return Some("No pattern number is available".into());};
-    let name=sample.as_ref().map_or(desc.name,|p|sample_name(p));
+    let name=sample.as_ref().map_or_else(|| desc.name.clone(),|p|sample_name(p));
     let before=pl::capture(&app.state);
     let selected=app.state.selected_mixer;
     let creates_output=super::owner(&app.state,row).is_none();
     let previous=app.state.history.begin_sequence();
-    crate::playlist_links::snapshot(&mut app.state,"Drop instrument on track header");
-    crate::plugin_menu::add_generator(app,index,None);
+    let sampler = desc.name == crate::plugins::LEMON_SAMPLER && crate::project_plugins::is_builtin(&desc);
+    if sampler {
+        // A Tail snapshot restores a batch of sampler rows together.
+        crate::playlist_links::snapshot(&mut app.state, "Drop instrument on track header");
+    } else {
+        // A generator snapshot restores the plugin row and schedules its host on redo.
+        let s = &mut app.state;
+        use crate::history::Snap;
+        let extra = Snap::Several(vec![
+            Snap::Vocals(s.project.vocal_edits.clone()),
+            Snap::AudioEdits(s.project.audio_edits.clone()),
+            Snap::Patterns { patterns: s.project.patterns.clone(), current: s.pattern },
+            Snap::ClipFxTargets(s.project.automations.clone(), s.project.init_controls.clone(), s.project.peak_links.clone()),
+        ]);
+        pl::snapshot_with(s, "Drop instrument on track header", extra);
+        crate::history::add_channel(s, Some(index), None);
+    }
+    crate::plugin_menu::add_generator_for_playlist(app,index);
     let s=&mut app.state;
     let ch=s.selected_channel;
     let n=super::owner(s,row).unwrap_or_else(||mixer::add_track(s,None));
@@ -407,7 +423,9 @@ mod tests {
         crate::workspace_visibility::toggle("visible_playlist-header-drop-options");
         assert!(menu().children.is_empty());assert_eq!(a.state.project,after);
         crate::workspace_visibility::toggle("visible_playlist-header-drop-options");
+        a.state.pending_plugin = None;
         crate::history::undo(&mut a.state).unwrap();assert_eq!(a.state.project,before);
         crate::history::redo(&mut a.state).unwrap();assert_eq!(a.state.project,after);
+        assert_eq!(a.state.pending_plugin, Some((before.channels.len(), index)), "redo must rehost the generator");
     }
 }

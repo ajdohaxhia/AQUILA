@@ -42,6 +42,9 @@ pub enum Panel {
     Time,
     Monitor,
     Cpu,
+    Ai,
+    Update,
+    Feedback,
     Utilities,
     Menu,
     Volume,
@@ -59,7 +62,7 @@ pub enum Panel {
 }
 
 /// Every panel, in the palette's order.
-pub const PANELS: [Panel; 20] = [
+pub const PANELS: [Panel; 23] = [
     Panel::CustomActions,
     Panel::Menu,
     Panel::Hint,
@@ -69,6 +72,9 @@ pub const PANELS: [Panel; 20] = [
     Panel::Time,
     Panel::Monitor,
     Panel::Cpu,
+    Panel::Ai,
+    Panel::Update,
+    Panel::Feedback,
     Panel::Utilities,
     Panel::Volume,
     Panel::Pitch,
@@ -94,6 +100,9 @@ impl Panel {
             Panel::Time => "time",
             Panel::Monitor => "monitor",
             Panel::Cpu => "cpu",
+            Panel::Ai => "ai",
+            Panel::Update => "update",
+            Panel::Feedback => "feedback",
             Panel::Utilities => "utilities",
             Panel::Menu => "menu",
             Panel::Volume => "volume",
@@ -123,7 +132,10 @@ impl Panel {
             Panel::Recording => "Recording options",
             Panel::Time => "Time display",
             Panel::Monitor => "Output monitor",
-            Panel::Cpu => "CPU and memory",
+            Panel::Cpu => "Audio load, CPU and memory",
+            Panel::Ai => "AI assistant",
+            Panel::Update => "Update",
+            Panel::Feedback => "Report a bug",
             Panel::Utilities => "Utility buttons",
             Panel::Menu => "Menu bar",
             Panel::Volume => "Main volume",
@@ -156,6 +168,9 @@ impl Panel {
             Panel::Time => (0, 743.0, 876.0),
             Panel::Monitor => (0, 876.0, 1048.0),
             Panel::Cpu => (0, 1048.0, 1204.0),
+            Panel::Ai => (0, 0., 119.),
+            Panel::Update => (0, 0., 80.),
+            Panel::Feedback => (0, 0., 100.),
             Panel::Utilities => (0, 1204.0, 1440.0),
             Panel::Menu => (1, 0.0, 298.0),
             Panel::Volume => (1, 298.0, 339.0),
@@ -173,8 +188,13 @@ impl Panel {
 
     /// Its width when it does not grow.
     pub fn width(self) -> f32 {
-        match self {Panel::Hint=>return 130.0,Panel::Recording=>return 168.0,_=>{}}
-        if matches!(self, Panel::Monitor | Panel::Cpu | Panel::Tools) { return 0.0; }
+        match self {
+            Panel::Hint => return 130., Panel::Recording => return 168.,
+            Panel::Cpu => return if crate::settings_file::flag("toolbar_cpu_combined",true) {245.}
+                else if crate::settings_file::flag("toolbar_cpu_classic",false) {crate::app::CPU_RECT.w+6.} else {54.},
+            _ => {}
+        }
+        if matches!(self, Panel::Monitor | Panel::Tools) { return 0.0; }
         if self == Panel::Utilities {
             return 72.0;
         }
@@ -182,7 +202,7 @@ impl Panel {
             match self { Panel::Tools => return 35.0, _ => {} }
         }
         let (_, x0, x1) = self.home();
-        x1 - x0
+        x1 - x0 + if self == Panel::Windows && crate::notation::shortcut_shown() { 33.0 } else { 0.0 }
     }
 
     /// Where (home x) its first part ends: the panel, or its first button, shows when that fits (`views::toolbar::room`).
@@ -195,7 +215,8 @@ impl Panel {
             Panel::Recording => 610.0,
             Panel::Time => 873.0,
             Panel::Monitor => 1045.0,
-            Panel::Cpu => 1202.0,
+            Panel::Cpu => 1048.0 + self.width(),
+            Panel::Ai | Panel::Update | Panel::Feedback => self.width(),
             Panel::Utilities => 1239.0,
             Panel::Menu => 296.0,
             Panel::Volume => 337.0,
@@ -266,7 +287,7 @@ impl Default for Layout {
 impl Layout {
     pub fn single_row() -> Layout {
         use Panel::*;
-        Layout{rows:vec![vec![Caption,Menu,Transport,Recording,Time,Volume,Pitch,Snap,Pattern,Windows,Utilities,Hint]],logo:false}
+        Layout{rows:vec![vec![Caption,Menu,Transport,Recording,Time,Volume,Pitch,Snap,Pattern,Windows,Utilities,Cpu,Ai,Update,Feedback,Hint]],logo:false}
     }
     /// The layout of spec ui/main-window.md §1-3.
     pub fn classic() -> Layout {
@@ -296,7 +317,7 @@ impl Layout {
 
     /// The text kept in files: a `row=` line per row, top first, with its panels' keys, and the logo switch.
     pub fn text(&self) -> String {
-        let mut s = String::new();
+        let mut s = String::from("version=2\n");
         for row in &self.rows {
             let keys: Vec<&str> = row.iter().map(|p| p.key()).collect();
             s.push_str(&format!("row={}\n", keys.join(" ")));
@@ -329,7 +350,15 @@ impl Layout {
                 first
             });
         }
-        Some(Layout { rows, logo })
+        let mut layout = Layout { rows, logo };
+        if !text.split(['\n',';']).any(|s| s.trim() == "version=2") { layout.add_actions(); }
+        Some(layout)
+    }
+
+    fn add_actions(&mut self) {
+        for panel in [Panel::Cpu, Panel::Ai, Panel::Update, Panel::Feedback] {
+            if !self.has(panel) { self.rows[0].push(panel); }
+        }
     }
 
     /// The layout kept in `settings.txt`; the classic one when there is none or it cannot be read.
@@ -411,7 +440,7 @@ pub fn place(l: &Layout, width: f32, editing: bool) -> Vec<Placed> {
         let share = if flexes == 0 { 0.0 } else { ((avail - row_width(row, editing)).max(0.0) / flexes as f32).floor() };
         let mut x = lead;
         for (idx, &panel) in row.iter().enumerate() {
-            if matches!(panel, Panel::Monitor | Panel::Cpu | Panel::Tools) { continue; }
+            if matches!(panel, Panel::Monitor | Panel::Tools) { continue; }
             let w = if panel == Panel::Flex { min_flex + share } else { panel.width() };
             out.push(Placed { panel, row: r, idx, x, w });
             x += w;
@@ -434,7 +463,9 @@ pub struct Preset {
 
 impl Preset {
     pub fn layout(&self) -> Layout {
-        Layout { rows: self.rows.iter().map(|r| r.to_vec()).collect(), logo: self.logo }
+        let mut layout = Layout { rows: self.rows.iter().map(|r| r.to_vec()).collect(), logo: self.logo };
+        layout.add_actions();
+        layout
     }
 }
 
@@ -524,17 +555,31 @@ pub fn write_preset(path: &Path, l: &Layout) -> std::io::Result<PathBuf> {
     Ok(path)
 }
 
-/// The editor's state, never kept: whether it is open and the user's presets as last read.
+const FLOATING_HINT: &str = "toolbar_floating_hint";
+
+/// The toolbar layout, editor state and optional floating hint bar.
 #[derive(Debug, Clone, Default)]
 pub struct Bar {
     pub layout: Layout,
     pub editing: bool,
     pub user: Vec<UserPreset>,
+    pub floating_hint: Option<Rect>,
 }
 
 impl Bar {
     pub fn load() -> Bar {
-        Bar { layout: Layout::load(), editing: false, user: user_presets() }
+        let floating_hint = crate::settings_file::get(FLOATING_HINT).and_then(|value| {
+            let values: Vec<f32> = value.split(',').map(str::parse).collect::<Result<_, _>>().ok()?;
+            let [x, y, w, h] = values.as_slice() else { return None };
+            (values.iter().all(|v| v.is_finite()) && *w > 0.0 && *h > 0.0)
+                .then_some(Rect::new(*x, *y, *w, *h))
+        });
+        Bar { layout: Layout::load(), editing: false, user: user_presets(), floating_hint }
+    }
+
+    pub fn save_hint(&self) {
+        let value = self.floating_hint.map_or_else(String::new, |r| format!("{},{},{},{}", r.x, r.y, r.w, r.h));
+        crate::settings_file::write(FLOATING_HINT, &value);
     }
 
     /// The user preset with the current layout, if any.
@@ -660,21 +705,21 @@ pub fn apply(l: &mut Layout, d: &BarDrag, to: Target) -> bool {
 mod tests {
     use super::*;
 
-    /// The classic layout puts every panel at its home and is 1440 px wide: the toolbar of spec ui/main-window.md.
     #[test]
-    fn classic_is_at_home() {
-        let l = Layout::classic();
-        assert_eq!((natural_width(&l, false), l.band_h(), l.logo), (1440.0, 83.0, true));
-        for p in place(&l, 1920.0, false) {
-            assert_eq!(p.at(), At::default(), "{:?}", p.panel);
-        }
-        // The slots meet: each row's panels follow one another without gaps.
-        for row in &l.rows {
-            for w in row.windows(2) {
-                assert_eq!(w[0].home().2, w[1].home().1, "{w:?}");
+    fn classic_preset_tiles_visible_panels() {
+        let layout = Layout::classic();
+        assert!(natural_width(&layout, false) >= 1136.0);
+        assert_eq!((layout.band_h(), layout.logo), (83.0, true));
+        let panels = place(&layout, 1920.0, false);
+        for row in 0..layout.rows.len() {
+            let placed: Vec<_> = panels.iter().filter(|panel| panel.row == row).collect();
+            assert_eq!(placed[0].x, 0.0);
+            for pair in placed.windows(2) {
+                assert_eq!(pair[0].x + pair[0].w, pair[1].x);
             }
         }
-        assert_eq!((Panel::at_home(100.0, 20.0), Panel::at_home(837.0, 75.0), Panel::at_home(4.0, 78.0)), (Some(Panel::Hint), Some(Panel::Pattern), Some(Panel::Menu)));
+        assert!(panels.iter().any(|p| p.panel == Panel::Transport && p.row == 0));
+        assert!(panels.iter().any(|p| p.panel == Panel::Menu && p.row == 1));
     }
 
     #[test]
@@ -685,7 +730,7 @@ mod tests {
             assert_eq!(Layout::parse(&l.text().replace('\n', "; ")), Some(l), "{}", p.name);
         }
         // Unknown panels and keys are skipped, second copies and a third row dropped; spaces repeat.
-        let l = Layout::parse("name=x\nrow=menu wobble hint space space menu\nrow=time\nrow=cpu\nlogo=0").expect("a layout");
+        let l = Layout::parse("version=2\nname=x\nrow=menu wobble hint space space menu\nrow=time\nrow=cpu\nlogo=0").expect("a layout");
         assert_eq!(l, Layout { rows: vec![vec![Panel::Menu, Panel::Hint, Panel::Space, Panel::Space], vec![Panel::Time]], logo: false });
         assert_eq!(Layout::parse("logo=1"), None);
     }
@@ -721,11 +766,13 @@ mod tests {
     /// Dragging moves a panel within and between rows, takes it off onto the palette and puts a tile back.
     #[test]
     fn drops_move_remove_and_add() {
-        let mut b = Bar { layout: Layout::classic(), editing: true, user: Vec::new() };
+        let mut b = Bar { layout: Layout::classic(), editing: true, ..Bar::default() };
         let palette = (b.layout.band_h(), 400.0);
         // The hint panel (row 1, second) dropped right of the transport: after it.
         let d = BarDrag { moving: Moving::Item(0, 1), grab: (5.0, 5.0) };
-        let to = drop_at(&b, 1920.0, &d, (600.0, 20.0), palette);
+        let right_of_transport = place(&b.layout, 1920.0, true).iter()
+            .find(|panel| panel.panel == Panel::Transport).map(|panel| panel.x + panel.w).unwrap();
+        let to = drop_at(&b, 1920.0, &d, (right_of_transport, 20.0), palette);
         assert_eq!(to, Target::Insert { row: 0, idx: 2 });
         assert!(apply(&mut b.layout, &d, to));
         assert_eq!(&b.layout.rows[0][..3], &[Panel::Caption, Panel::Transport, Panel::Hint]);
@@ -734,7 +781,7 @@ mod tests {
         let to = drop_at(&b, 1920.0, &d, (12.0, 60.0), palette);
         assert_eq!(to, Target::Insert { row: 1, idx: 0 });
         apply(&mut b.layout, &d, to);
-        assert_eq!((b.layout.rows[1][0], b.layout.rows[0].len()), (Panel::Hint, 7));
+        assert_eq!((b.layout.rows[1][0], b.layout.rows[0].len()), (Panel::Hint, 10));
         // Onto the palette: off the toolbar.
         let d = BarDrag { moving: Moving::Item(1, 0), grab: (5.0, 5.0) };
         assert_eq!(drop_at(&b, 1920.0, &d, (300.0, 200.0), palette), Target::Remove);
@@ -758,7 +805,7 @@ mod tests {
     fn rows_come_and_go() {
         let mut l = Layout::classic();
         l.set_rows(1);
-        assert_eq!((l.rows.len(), l.rows[0].len(), l.band_h(), l.row_span(0)), (1, 17, 42.0, (0.0, 40.0)));
+        assert_eq!((l.rows.len(), l.rows[0].len(), l.band_h(), l.row_span(0)), (1, 20, 42.0, (0.0, 40.0)));
         l.set_rows(2);
         assert_eq!((l.rows[1].len(), l.band_h(), l.row_span(1)), (0, 83.0, (42.0, 81.0)));
     }

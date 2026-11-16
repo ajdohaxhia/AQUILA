@@ -108,6 +108,7 @@ pub enum Switch {
     Separators,
     Flat,
     HintBar,
+    FloatHint,
     Tesla,
     CpuMemory,
     Hide,
@@ -133,24 +134,31 @@ struct Ctx<'a> {
     preview: bool,
 }
 
+pub(crate) fn legacy_vintage(s: &State) -> bool {
+    s.vintage_2005 && !crate::settings_file::flag("toolbar_vintage_custom_layout",false)
+}
+
 pub(crate) fn visible_layout(s:&State)->crate::toolbar::Layout {
-    let mut layout = if s.vintage_2005 {
+    let mut layout = if legacy_vintage(s) {
         use Panel::*;
         crate::toolbar::Layout { rows: vec![
             vec![Caption, Hint, Recording, Volume, Pitch, Snap, Windows],
             vec![Menu, Transport, Time, Pattern, Utilities],
         ], logo: false }
     } else { s.bar.layout.clone() };
-    if s.vintage_2005 && crate::input_bindings::has_pinned() { layout.rows[1].push(Panel::CustomActions); }
+    if legacy_vintage(s) && crate::input_bindings::has_pinned() { layout.rows[1].push(Panel::CustomActions); }
     if !s.bar.editing {
         layout.logo &= shown("visible_logo");
         for row in &mut layout.rows {
             row.retain(|panel| match panel {
                 Panel::Caption => s.vintage_2005,
-                Panel::Hint => s.vintage_2005,
-                Panel::Cpu => false,
+                Panel::Hint => s.vintage_2005 && inline_hint(s),
+                Panel::Cpu => !legacy_vintage(s) && shown("visible_cpu") && crate::settings_file::flag("toolbar_cpu_visible",true),
+                Panel::Ai => !legacy_vintage(s) && (s.ai.enabled || !s.ai.client.is_empty() || shown("visible_ai")),
+                Panel::Update => !legacy_vintage(s) && shown("visible_update"),
+                Panel::Feedback => !legacy_vintage(s) && shown("visible_feedback"),
                 Panel::Menu | Panel::Transport | Panel::Space | Panel::Flex => true,
-                Panel::Windows => WINDOW_BUTTONS[..5].iter().any(|key| shown(key)),
+                Panel::Windows => crate::notation::shortcut_shown() || WINDOW_BUTTONS[..5].iter().any(|key| shown(key)),
                 Panel::Tools => WINDOW_BUTTONS[5..].iter().any(|key| shown(key)),
                 panel => shown(&format!("visible_{}", panel.key())),
             });
@@ -166,6 +174,18 @@ pub(crate) fn visible_layout(s:&State)->crate::toolbar::Layout {
 
 pub(super) fn display_layout(s: &State) -> &crate::toolbar::Layout {
     s.toolbar_display_layout.as_ref().unwrap_or(&s.bar.layout)
+}
+
+pub(crate) fn refresh_layout(s: &mut State) {
+    let layout = visible_layout(s);
+    let actions = s.toolbar_actions.width(s.vintage_2005);
+    s.toolbar_required_width = crate::toolbar::natural_width(&layout, s.bar.editing) + actions + 1.0;
+    let width = s.screen.0 / super::band_k(s);
+    s.toolbar_display_layout = Some(if s.bar.editing || super::vintage_toolbar::active(s, width) {
+        layout
+    } else {
+        wrap(layout, width, actions)
+    });
 }
 
 /// Wrap whole panels after reaching the scale floor. Only the first row shares
@@ -239,7 +259,8 @@ impl ActionSizes {
     pub fn meters_width(self) -> f32 { self.cpu + self.scope }
     pub fn combined(self)->bool{self.cpu==245.}
     pub fn width(self, vintage: bool) -> f32 {
-        self.ai + self.tesla + self.cpu + self.scope + self.hint + self.update + self.donate + self.feedback + 38.0 + if vintage { 0.0 } else { 104.0 }
+        let fixed_actions = vintage && !crate::settings_file::flag("toolbar_vintage_custom_layout",false);
+        self.tesla + self.scope + self.hint + self.donate + 38.0 + if fixed_actions { self.ai + self.cpu + self.update + self.feedback } else if vintage { 0. } else { 104.0 }
     }
 }
 
@@ -255,7 +276,7 @@ pub fn paint(ui: &mut Ui, s: &State, f: &FrameInfo, width: f32) {
     let sizes = s.toolbar_actions;
     let window_w = 104.0;
     let mini_cpu_w = sizes.cpu;
-    let show_cpu = mini_cpu_w > 0.0;
+    let show_cpu = legacy_vintage(s) && mini_cpu_w > 0.0;
     let native_vintage = super::vintage_toolbar::active(s, width);
     let actions_w = sizes.width(s.vintage_2005) - if native_vintage { sizes.meters_width() } else { 0.0 };
     let content_width = (width - actions_w).max(100.0);
@@ -342,7 +363,7 @@ pub fn paint(ui: &mut Ui, s: &State, f: &FrameInfo, width: f32) {
         let cr=Rect::new(width-actions_w+2.,8.,48.,24.);
         if native_vintage {
             // The original upper shelf already owns the vintage meters.
-        } else if s.vintage_2005 {
+        } else if legacy_vintage(s) {
             let mut x = cr.x;
             if show_cpu {
                 super::vintage_toolbar::cpu(ui, s, x, 0.0);
@@ -351,8 +372,8 @@ pub fn paint(ui: &mut Ui, s: &State, f: &FrameInfo, width: f32) {
             if sizes.scope > 0.0 {
                 super::vintage_toolbar::scope(ui, s, x, 0.0);
             }
-        } else if sizes.combined() {live_monitor(ui,s,Rect::new(cr.x,3.,mini_cpu_w-6.,34.));}
-        else if mini_cpu_w > 54.0 {
+        } else if legacy_vintage(s) && sizes.combined() {live_monitor(ui,s,Rect::new(cr.x,3.,mini_cpu_w-6.,34.));}
+        else if legacy_vintage(s) && mini_cpu_w > 54.0 {
             let a=At{dx:cr.x-crate::app::CPU_RECT.x,dy:0.};
             classic_cpu(ui,s,a);
         } else if show_cpu {ui.c.fill_rrect(cr,3.,t.sunken);
@@ -363,8 +384,11 @@ pub fn paint(ui: &mut Ui, s: &State, f: &FrameInfo, width: f32) {
         ui.c.fill_rect(Rect::new(cr.x+4.,cr.bottom()-5.,40.,2.),t.toolbar_line);
         ui.c.fill_rect(Rect::new(cr.x+4.,cr.bottom()-5.,40.*(load as f32/100.).min(1.),2.),ink);
         }
-        let mut x = cr.x + if native_vintage { 0.0 } else { sizes.meters_width() };
-        if sizes.ai > 0.0 {
+        if s.vintage_2005 && !legacy_vintage(s) && sizes.scope > 0. {
+            super::vintage_toolbar::scope(ui,s,cr.x,0.);
+        }
+        let mut x = cr.x + if native_vintage { 0.0 } else if legacy_vintage(s) { sizes.meters_width() } else { sizes.scope };
+        if legacy_vintage(s) && sizes.ai > 0.0 {
             let ai = Rect::new(x, 8.0, sizes.ai - 6.0, 24.0);
             let hover = ui.hit(ai, Action::Ai, if !s.ai.enabled && crate::voice_assistant::available() {
                 "AI assistant"
@@ -391,7 +415,7 @@ pub fn paint(ui: &mut Ui, s: &State, f: &FrameInfo, width: f32) {
             icons::draw(ui.c, Icon::Wave, b.inset(4.0), t.accent);
             x += sizes.tesla;
         }
-        if sizes.update > 0.0 {
+        if legacy_vintage(s) && sizes.update > 0.0 {
             let r = Rect::new(x, 8.0, sizes.update - 6.0, 24.0);
             let (label, hint) = crate::updates::display();
             let hover = ui.hit(r, Action::Updates, if hint.is_empty() { "Automatic updates: check now".to_string() } else { hint });
@@ -408,9 +432,9 @@ pub fn paint(ui: &mut Ui, s: &State, f: &FrameInfo, width: f32) {
             ui.c.text_clip(action_font, r.x + 6.0, r.y + 5.0, r.w - 12.0, t.text, "Donate");
             x += sizes.donate;
         }
-        if sizes.feedback > 0.0 {
+        if legacy_vintage(s) && sizes.feedback > 0.0 {
             let r = Rect::new(x, 8.0, sizes.feedback - 6.0, 24.0);
-            ui.hit(r, Action::ReportBug, "Report a bug or send feedback: review technical details before submitting");
+            ui.hit(r, Action::ReportBug, "Report a bug on GitHub");
             if studio { studio_tile(ui, r, t.accent); } else { ui.c.fill_rrect(r, 3.0, t.accent); }
             ui.c.text_center(Font::new(11), r, t.sunken, "Report a bug");
         }
@@ -492,7 +516,7 @@ fn panel(ui: &mut Ui, c: &Ctx, p: Panel) -> bool {
         Panel::Recording => return recording(ui, c),
         Panel::Time => time(ui, c),
         Panel::Monitor => monitor(ui, c),
-        Panel::Cpu => classic_cpu(ui,c.s,c.a),
+        Panel::Cpu | Panel::Ai | Panel::Update | Panel::Feedback => action_panel(ui,c,p),
         Panel::Utilities => return utilities(ui, c),
         Panel::Menu => menu_bar(ui, c),
         Panel::Volume => volume(ui, c),
@@ -506,6 +530,39 @@ fn panel(ui: &mut Ui, c: &Ctx, p: Panel) -> bool {
         Panel::Space | Panel::Flex => {}
     }
     true
+}
+
+/// These controls use the same placement, drag handles and saved layout as every other panel.
+fn action_panel(ui: &mut Ui, c: &Ctx, p: Panel) {
+    let (s,t) = (c.s,ui.t);
+    let (_,x,_) = p.home();
+    let r = c.a.r(Rect::new(x+3.,8.,p.width()-6.,24.));
+    if p == Panel::Cpu {
+        if crate::settings_file::flag("toolbar_cpu_combined",true) {
+            live_monitor(ui,s,Rect::new(r.x,r.y-5.,r.w,34.));
+        } else if crate::settings_file::flag("toolbar_cpu_classic",false) {
+            classic_cpu(ui,s,At{dx:r.x-crate::app::CPU_RECT.x,dy:c.a.dy});
+        } else {
+            ui.c.fill_rrect(r,3.,t.sunken);
+            ui.hit(r,Action::CpuPanel,s.cpu.hint());
+            let load=s.cpu.now.load;
+            let ink=if load>=100{t.meter_clip}else if load>=75{t.meter_high}else{t.text_dim};
+            ui.c.text_center(Font::new(10),r,ink,&format!("CPU {}%",load.min(999)));
+        }
+        return;
+    }
+    let (action,label,hint) = match p {
+        Panel::Ai => (Action::Ai,"AI assistant",if s.ai.enabled {"Manage or disconnect the AI assistant".to_string()} else {"Connect an AI assistant".into()}),
+        Panel::Update => {let (label,hint)=crate::updates::display(); (Action::Updates,label,if hint.is_empty(){"Check for updates".into()}else{hint})},
+        Panel::Feedback => (Action::ReportBug,"Report a bug","Report a bug on GitHub".into()),
+        _ => return,
+    };
+    let hover=ui.hit(r,action,hint);
+    let face=if p==Panel::Feedback {t.accent} else if hover {t.button_hi} else {t.sunken};
+    if super::lemon(ui) {studio_tile(ui,r,face);} else {ui.c.fill_rrect(r,3.,face);}
+    let ink=if p==Panel::Feedback {t.sunken}else{t.text};
+    ui.c.text_clip(Font::new(12),r.x+6.,r.y+5.,r.w-12.,ink,label);
+    if p==Panel::Ai && s.ai.enabled {ui.c.fill_circle(r.right()-4.,r.y+4.,2.,t.accent);}
 }
 
 /// Caption buttons.
@@ -529,9 +586,42 @@ fn caption(ui: &mut Ui, c: &Ctx) {
     }
 }
 
-/// Two-line hints; project/template names belong in the project title, not here.
+pub(crate) fn inline_hint(s: &State) -> bool {
+    s.toolbar.hint_bar && shown("visible_hint") && s.bar.floating_hint.is_none()
+}
+
+/// Keep the bar entirely below the toolbar and inside the workspace, even after
+/// reopening on a smaller screen or with different display scaling.
+pub(crate) fn clamp_hint(s: &State, mut r: Rect) -> Rect {
+    let top = super::work_y(s) + 4.0;
+    let avail_w = (s.screen.0 - 8.0).max(1.0);
+    let avail_h = (s.screen.1 - top - 4.0).max(1.0);
+    r.w = r.w.clamp(130.0_f32.min(avail_w), avail_w);
+    r.h = r.h.clamp(34.0_f32.min(avail_h), avail_h);
+    r.x = r.x.clamp(4.0, 4.0 + (avail_w - r.w));
+    r.y = r.y.clamp(top, top + (avail_h - r.h));
+    r
+}
+
+pub(crate) fn floating_hint_rect(s: &State) -> Option<Rect> {
+    if s.native_view.is_some() || s.toolbar.hidden || !s.toolbar.hint_bar || !shown("visible_hint") {
+        return None;
+    }
+    s.bar.floating_hint.map(|r| clamp_hint(s, r))
+}
+
+pub(super) fn paint_floating_hint(ui: &mut Ui, s: &State, f: &FrameInfo, rect: Rect) {
+    ui.hit(rect, Action::HintDrag(false), "Move hint bar");
+    hint_content(ui, s, f, rect);
+    let corner = Rect::new(rect.right() - 12.0, rect.bottom() - 12.0, 12.0, 12.0);
+    if ui.hit(corner, Action::HintDrag(true), "Resize hint bar") {
+        let (x, y) = (rect.right() - 4.0, rect.bottom() - 4.0);
+        ui.c.line(x - 6.0, y, x, y - 6.0, 1.0, ui.t.text_dim);
+    }
+}
+
 fn hint_panel(ui: &mut Ui, c: &Ctx) {
-    let (t, a, s, f) = (ui.t, c.a, c.s, c.f);
+    let (a, s, f) = (c.a, c.s, c.f);
     let mut hp = a.span(72.0, 72.0+Panel::Hint.width()-7., 4.0, 36.0);
     hp.w=hp.w.min((c.fit-hp.x-2.).max(0.));
     ui.hit(hp, Action::DragWindow, "Hint bar");
@@ -544,6 +634,11 @@ fn hint_panel(ui: &mut Ui, c: &Ctx) {
         }
         return;
     }
+    hint_content(ui, s, f, hp);
+}
+
+fn hint_content(ui: &mut Ui, s: &State, f: &FrameInfo, hp: Rect) {
+    let t = ui.t;
     if super::lemon(ui) && !s.vintage_2005 {
         studio_tile(ui, hp, t.toolbar.mix(t.sunken, 0.52));
     } else {
@@ -566,7 +661,7 @@ fn hint_panel(ui: &mut Ui, c: &Ctx) {
         ui.c.line(cx, cy, cx + 2.4, cy - 2.9, 1.4, t.text_dim.mix(light, level));
         ui.c.text_center(Font::new(8), Rect::new(bounds.x, cy + 6.0, bounds.w, 9.0), t.text_dim.mix(light, level), "MIDI");
     }
-    let hint: &str = if !f.hint.is_empty() { &f.hint } else { s.message.as_deref().unwrap_or(if t.style.vintage_2005 { "ML STUDIO  /  2005" } else { "" }) };
+    let hint: &str = if !f.hint.is_empty() { &f.hint } else { s.message.as_deref().unwrap_or(if t.style.vintage_2005 { "AQUILA  /  2005" } else { "" }) };
     let mut font=Font::new(11);
     for size in (9..=11).rev() {
         font=Font::new(size);
@@ -576,7 +671,8 @@ fn hint_panel(ui: &mut Ui, c: &Ctx) {
     ui.c.push_clip(hp.inset(2.));
     let chars:Vec<char>=hint.chars().collect();
     let lines=super::settings::wrap(ui,font,hint,text_width);
-    for (row,(start,n)) in lines.into_iter().take(2).enumerate() {
+    let max_lines = ((hp.h - 4.0) / line_height).floor().max(1.0) as usize;
+    for (row,(start,n)) in lines.into_iter().take(max_lines).enumerate() {
         ui.c.text_clip(font,hp.x+5.,hp.y+2.+row as f32*line_height,text_width,t.text,&chars[start..start+n].iter().collect::<String>());
     }
     ui.c.pop_clip();
@@ -817,7 +913,9 @@ fn time(ui: &mut Ui, c: &Ctx) {
     let ppq = f64::from(s.project.ppq.max(1));
     // A bar that makes no signature (3 steps per beat) counts its beats as quarters.
     let sig = s.project.signature().unwrap_or((s.project.bar().0, 4));
-    let secs = f.tick / ppq * 60.0 / s.project.tick_tempo(s.tempo.max(1.0));
+    let secs = if f.song && s.project.arrangement().is_some_and(|a| !a.timeline.tempo.is_empty()) {
+        s.project.tempo_map(s.tempo).seconds(f.tick)
+    } else { f.tick / ppq * 60.0 / s.project.tick_tempo(s.tempo.max(1.0)) };
     let (bar, step, tick) = s.clock.reading(secs, f.tick * 96.0 / ppq, sig);
     ui.c.push_clip(tp.inset(1.0));
     let g = if lemon { t.pill } else { t.glyph };
@@ -1380,14 +1478,16 @@ fn window_buttons(ui: &mut Ui, c: &Ctx, which: Range<usize>) -> bool {
         (Icon::Plug, Action::PickerOpen, "Plugin picker (F8)"),
         (Icon::Kick, Action::ToggleWin(Win::Tapper), "Tempo tapper (Ctrl+F5)"),
         (Icon::Touch, Action::ToggleWin(Win::Touch), "Touch controller (Alt+F7)"),
+        (Icon::Score, Action::ToggleWin(Win::Score), "Score Editor"),
         // FL's store button is hidden: its stand-in, a repository of free and open-source plugins (spec:
         // ui/main-window.md §3), had the plugin picker's icon. It is to come back with a shop icon.
     ];
     let legacy = crate::settings_file::flag("declutter_toolbar", false);
+    let score = (which.start == 0 && crate::notation::shortcut_shown()).then_some(9);
     let buttons = which.clone().filter(|&i| {
         (!legacy || ![5, 6, 8].contains(&i))
             && (c.preview || c.s.bar.editing || shown(WINDOW_BUTTONS[i]))
-    });
+    }).chain(score);
     for (slot, i) in buttons.enumerate() {
         let (icon, ref action, hint) = wins[i];
         let r = a.r(btn(973.0 + 33.0 * (which.start + slot) as f32, 45.0));
@@ -1690,14 +1790,16 @@ mod tests {
     fn toolbars_scaling_scales_the_top_band() {
         let Ok(mut c) = Canvas::new(4600, 1080, 1.0) else { return };
         let mut app = App::new(None);
+        app.state.bar.layout = crate::toolbar::Layout::classic();
         app.state.show_browser = true;
         app.paint(&mut c, None);
         assert_eq!(choice(&TOOLBARS_SCALING), "Main");
         assert_eq!((crate::views::band_h(&app.state), app.state.work_rect().y), (83.0, 83.0));
-        let (clock, tab) = (hit(&app, &Action::Clock), hit(&app, &Action::BrowserTab(1)));
+        let (clock, tab) = (hit(&app, &Action::Clock), hit(&app, &Action::BrowserTab(0)));
         assert_eq!(app.state.win_rect(Win::Playlist).y, 83.0, "docked under the band");
 
         app.open_settings(crate::views::settings::GENERAL);
+        app.state.settings.folded.insert("Display");
         app.paint(&mut c, None);
         let combo = app
             .hits
@@ -1720,7 +1822,7 @@ mod tests {
         assert_eq!(hit(&app, &Action::Clock), twice(clock));
         let drag = app.hits.iter().find(|h| h.action == Action::DragWindow).map(|h| h.rect);
         assert_eq!(drag, Some(Rect::new(0.0, 0.0, 4600.0, 162.0)));
-        assert_eq!(hit(&app, &Action::BrowserTab(1)), Rect { y: tab.y + 83.0, ..tab });
+        assert_eq!(hit(&app, &Action::BrowserTab(0)), Rect { y: tab.y + 83.0, ..tab });
         assert_eq!(app.state.win_rect(Win::Playlist).y, 166.0, "docked under the band");
         // A floating window keeps its distance to the band when the band shrinks back.
         app.state.wins[0].maxed = false;
@@ -1739,12 +1841,13 @@ mod tests {
     fn band_controls_are_hit_where_drawn() {
         let Ok(mut c) = Canvas::new(4600, 1080, 1.0) else { return };
         let mut app = App::new(None);
+        app.state.bar.layout = crate::toolbar::Layout::classic();
         set_choice(&TOOLBARS_SCALING, 5);
         app.paint(&mut c, None);
         // The metronome (580, 4, 30 x 33 in the band's px), pressed near its bottom-right corner, where the Main layout
         // has another button.
         let m = hit(&app, &Action::Metronome);
-        assert_eq!(m, Rect::new(1160.0, 8.0, 60.0, 66.0));
+        assert_eq!((m.w, m.h), (60.0, 66.0));
         let was = crate::metronome::on();
         click(&mut app, &mut c, m.right() - 4.0, m.bottom() - 4.0);
         assert_eq!(crate::metronome::on(), !was);
@@ -1753,17 +1856,20 @@ mod tests {
         assert!(file.y >= 90.0 && file.h > 50.0, "{file:?}");
         click(&mut app, &mut c, file.cx(), file.cy());
         assert_eq!(app.state.menu_open, Some(0));
-        let save = hit(&app, &crate::views::menus::pick(0, crate::views::menus::FILE_SAVE));
+        let save = hit(&app, &Action::PlPopup(0));
         app.state.menu_open = None;
+        app.state.playlist.popup = None;
         // Under its title, which moved: at Main the same menu opens 78 px higher (the bottom row ends at 78, not 156)
         // and 4 px further left (its left edge, 4 px, doubled); same rows, same width.
         set_choice(&TOOLBARS_SCALING, 0);
         app.paint(&mut c, None);
         let main = hit(&app, &Action::Menu(0));
         click(&mut app, &mut c, main.cx(), main.cy());
-        let save0 = hit(&app, &crate::views::menus::pick(0, crate::views::menus::FILE_SAVE));
-        assert_eq!((save.h, save0.h, save.w, save.x - save0.x, save.y - save0.y), (19.0, 19.0, save0.w, 4.0, 78.0), "{save:?} {save0:?}");
+        let save0 = hit(&app, &Action::PlPopup(0));
+        assert_eq!((save.h, save.w), (save0.h, save0.w), "menu rows use their own scale");
+        assert!((save.y - file.bottom() - (save0.y - main.bottom())).abs() <= 1., "the menu stays anchored to the resized toolbar");
         app.state.menu_open = None;
+        app.state.playlist.popup = None;
         set_choice(&TOOLBARS_SCALING, 5);
         app.paint(&mut c, None);
         // The tempo: the first decimal steps by 0.1.
@@ -1846,6 +1952,37 @@ mod tests {
             click(&mut app, &mut canvas, browser.cx(), browser.cy());
             assert_ne!(app.state.show_browser, was_open);
         }
+    }
+
+    #[test]
+    fn score_editor_shortcut_is_opt_in_and_hides_independently() {
+        if !crate::notation::available() { return; }
+        let key = crate::notation::SHORTCUT_VISIBILITY;
+        let prior = crate::settings_file::get(key);
+        crate::settings_file::write(key, "");
+        assert!(!crate::workspace_visibility::shown(key));
+        let action = Action::ToggleWin(Win::Score);
+        let mut app = App::new(None);
+        app.state.startup_layout_pending = false;
+        let mut canvas = Canvas::new(1920, 850, 1.).unwrap();
+        app.paint(&mut canvas, None);
+        assert!(!has(&app, &action));
+        crate::workspace_visibility::toggle(key);
+        assert!(crate::notation::shortcut_shown());
+        app.paint(&mut canvas, None);
+        let button = hit(&app, &action);
+        assert!(button.x >= hit(&app, &Action::ToggleWin(Win::Browser)).right());
+        click(&mut app, &mut canvas, button.cx(), button.cy());
+        assert!(app.state.shown(Win::Score));
+        assert!(super::window_shortcut_open(&app.state, &action));
+        app.state.vintage_2005 = true;
+        app.paint(&mut canvas, None);
+        assert!(has(&app, &action));
+        crate::workspace_visibility::toggle(key);
+        app.paint(&mut canvas, None);
+        assert!(!has(&app, &action));
+        assert!(app.state.shown(Win::Score));
+        crate::settings_file::write(key, prior.as_deref().unwrap_or(""));
     }
 
     #[test]

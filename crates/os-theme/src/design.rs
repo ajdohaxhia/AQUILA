@@ -386,6 +386,29 @@ fn overrides(d: Design) -> Vec<(&'static str, Color)> {
 pub fn palette(design: Design, theme: Option<&FlTheme>) -> Palette {
     let mut p = skin_palette(design, theme);
     p.wallpaper = theme.and_then(fl::wallpaper);
+    // Keep the inherited Traditional meter colors identical to its stock painter.
+    p.trad_meter_low_bottom = p.a(0xb6db4d);
+    p.trad_meter_low_top = p.a(0xa0db40);
+    p.trad_meter_hot_bottom = Color::rgb(0xfac050);
+    p.trad_meter_hot_top = Color::rgb(0xeec757);
+    p.trad_meter_clip_bottom = p.meter_clip;
+    p.trad_meter_clip_top = p.meter_clip;
+    p.trad_meter_well = p.s(0x232729);
+    p.trad_meter_frame = p.s(0x191d1e);
+    p.trad_meter_ticks = p.s(0x111315);
+    p.trad_meter_hold = p.h(0xe16e2f);
+    p.trad_meter_cap = p.s(0x181c1e);
+    p.trad_meter_scale_bg = p.s(0x222527);
+    p.trad_meter_scale_text = p.s(0x7f8a90);
+    if let Some(theme) = theme {
+        for (slot, &color) in [
+            &mut p.trad_meter_low_bottom, &mut p.trad_meter_low_top,
+            &mut p.trad_meter_hot_bottom, &mut p.trad_meter_hot_top,
+            &mut p.trad_meter_clip_bottom, &mut p.trad_meter_clip_top,
+        ].into_iter().zip(&theme.meters) {
+            *slot = color;
+        }
+    }
     if let Some(theme) = theme {
         theme.appearance.apply(&mut p, &theme.color_overrides);
         crate::regions::apply(&mut p, &theme.area_tones);
@@ -425,7 +448,17 @@ fn skin_palette(design: Design, theme: Option<&FlTheme>) -> Palette {
     }
     p.style = design.style();
     if let Some(th) = theme.filter(|t| !t.is_stock()) {
-        retint(&mut p, th);
+        static LEMON_DEFAULT: std::sync::OnceLock<FlTheme> = std::sync::OnceLock::new();
+        let base = LEMON_DEFAULT.get_or_init(|| FlTheme::parse(&default_text(Design::Lemon)));
+        let own_colours = th.same_colours(&FlTheme {
+            appearance: th.appearance,
+            area_tones: th.area_tones,
+            color_overrides: th.color_overrides.clone(),
+            ..base.clone()
+        });
+        if !own_colours {
+            retint(&mut p, th);
+        }
     }
     p
 }

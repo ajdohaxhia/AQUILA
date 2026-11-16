@@ -364,6 +364,7 @@ const VIEW_ITEMS: &[Item] = &[
     it("Effects in use", "").cmd(MenuCmd::Jump(crate::browser::Jump::Section("Effects"))),
     it("Remote control", "").cmd(MenuCmd::Jump(crate::browser::Jump::Section(crate::views::browser::REMOTE_CONTROL))),
     it("Plugin library", "Shift+F8").cmd(MenuCmd::Jump(crate::browser::Jump::PluginDb)),
+    it("Score Editor", "").on().tick().cmd(MenuCmd::Window(Win::Score)),
 ];
 
 const OPTIONS: &[Item] = &[
@@ -621,6 +622,9 @@ pub fn label_now(s: &State, menu: usize, item: &Item) -> std::borrow::Cow<'stati
 pub fn in_menu(s: &State, menu: usize, item: &Item) -> bool {
     // ML Studio's helper (Melli) installs its files from ML Studio's own server: not offered in AQUILA.
     if menu == HELP_MENU && item.label == crate::studio_helper::LABEL { return false; }
+    if menu == VIEW && item.label == "Score Editor" { return crate::notation::available() && crate::workspace_visibility::shown(crate::notation::VISIBILITY); }
+    if menu == PATTERNS && item.label == "Split by channel" { return crate::workspace_visibility::shown(crate::patterns::SPLIT_VISIBILITY); }
+    if menu == VIEW && item.label == "Arrange windows" { return crate::workspace_visibility::shown(crate::workspace_layout::VISIBILITY); }
     if item.label==crate::collaboration::LABEL {return s.collaborating || crate::workspace_visibility::shown(crate::collaboration::VISIBLE);}
     if menu == HELP_MENU && item.label == crate::change_log::LABEL {
         return crate::workspace_visibility::shown(crate::change_log::VISIBILITY);
@@ -912,7 +916,7 @@ pub(crate) fn default_organized_items(s:&State,menu:usize,catalog:bool)->Vec<cra
  let groups:Vec<(&str,Vec<usize>)>=match menu {
   0=>vec![("",vec![0,1,2]),("Save",vec![4,5,6,7,8]),("Import / export",vec![11,12,13,14,15]),("Project maintenance",vec![9,17])],
   PATTERNS=>vec![("Find empty pattern",vec![0,1,2]),("Edit pattern",vec![4,5,6,7,8,9,10,12,13,14]),("Arrange",vec![16,17,19]),("Render",vec![20,21,22])],
-  VIEW=>vec![("",(1..=11).collect()),("Window layout",(14..=20).collect()),("Browser shortcuts",(22..all.len()).collect())],
+  VIEW=>vec![("",(1..=11).chain(std::iter::once(all.len()-1)).collect()),("Window layout",(14..=20).collect()),("Browser shortcuts",(22..all.len()-1).collect())],
   OPTIONS_MENU=>vec![("Settings",vec![1,2,3,OPT_AI_ASSISTANT,4,5,6]),("CPU meter",vec![OPT_CPU_COMPACT,OPT_CPU_CLASSIC,OPT_CPU_COMBINED]),("Project",vec![8,9]),("MIDI",vec![13,14,15]),("Recording / transport",(17..OPT_CPU_COMPACT-1).collect())],
   TOOLS_MENU=>vec![("Recording",vec![1,8,9]),("Parameters",vec![15,16]),("Audio clips",vec![26,27,35]),("Project cleanup",vec![23,24,30,31,32]),("",vec![18,19]),("Plugin windows",vec![33,34])],
   _=>vec![("",(0..all.len()).collect())],
@@ -922,6 +926,10 @@ pub(crate) fn default_organized_items(s:&State,menu:usize,catalog:bool)->Vec<cra
  // Retain any implemented command not covered by a group as menus grow.
  for i in 0..all.len(){if !included.contains(&i)&&!(menu==0&&i==FILE_EXIT){if let Some(p)=entry(i){out.push(p);}}}
  if menu==PATTERNS {out.insert(0,PItem::sub("Select pattern",crate::patterns::listed(s).into_iter().map(|n|PItem::new(crate::patterns::name_of(s,n),Cmd::MainMenu(menu,PATTERN_PICK+n as usize)).mark(PM::Radio(n==s.pattern))).collect()));}
+ if menu == VIEW && (catalog || crate::visual_scenes::available()) {
+     out.insert(0, PItem::new("ML Visualizer", Cmd::Visual(crate::visual_scenes::Command::Open))
+         .mark(crate::playlist::Mark::Check(s.shown(Win::Visualizer))));
+ }
  if menu==0 {let recent=recent_rows().into_iter().filter_map(|r|match r{Recent::Head=>None,Recent::More=>Some(PItem::sub(Language::current().text("Older projects"),crate::recent::more_items(s))),_=>{let(label,key,_)=recent_text(&r);Some(PItem::new(label,Cmd::MainMenu(0,match r{Recent::Project(n,_)=>RECENT_PICK+n,_=>RECENT_MORE})).key(key))}}).collect::<Vec<_>>();if catalog||!recent.is_empty(){out.push(PItem::sub(Language::current().text("Recent projects"),recent));}out.push(PItem::sep());if let Some(p)=entry(FILE_EXIT){out.push(p);}}
  out
 }
@@ -1380,6 +1388,7 @@ pub fn pattern_popup(x: f32, y: f32) -> crate::playlist::Popup {
     use crate::playlist::{Cmd, PItem, Popup};
     let items = PAT_CMDS
         .iter()
+        .filter(|it| it.label != "Split by channel" || crate::workspace_visibility::shown(crate::patterns::SPLIT_VISIBILITY))
         .map(|it| match it.kind {
             Kind::Sep => PItem::sep(),
             Kind::Head => PItem::head(it.label),
@@ -1422,6 +1431,10 @@ pub fn toolbar_items(s: &State) -> Vec<crate::playlist::PItem> {
         // A command: always the dim mark (§1).
         switch("Hide", Switch::Hide, false).key("Ctrl+F11"),
     ];
+    if o.hint_bar && crate::workspace_visibility::shown("visible_hint") {
+        let label = if s.bar.floating_hint.is_some() { "Dock hint bar" } else { "Float hint bar" };
+        items.push(PItem::new(label, Cmd::Toolbar(Switch::FloatHint)));
+    }
     items.push(PItem::sub("Layout presets",preset_items(s)));
     items
 }

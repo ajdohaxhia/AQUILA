@@ -1,62 +1,28 @@
 {
-  "tag": "v2026.11.14.3",
-  "title": "AQUILA 2026.11.14.3",
-  "notes": "- Bounced Playlist tracks and instruments now keep their original Mixer routing by default, leaving Mixer effects live. An optional setting prints the processing and routes the bounce to a clean free insert, with undo and redo support.\n- Added optional automatic project-tempo fitting for samples dropped into the Playlist, using filename BPM or detected rhythm. Unrecognized material keeps its original speed.\n- Added visible drag handles across Mixer layouts, clearer insertion markers and cancellation when dropping outside the Mixer. Selected insert groups keep their routing when moved.\n- Windows Open and Save dialogs now offer Explorer context menus and file copy, cut and paste shortcuts. Added F2 file/folder renaming with collision protection on all platforms.\n- Menus open on hover by default for new profiles. Existing saved choices remain respected; the option is available under General > Input.\n- Added six Mixer recording pickup points and Off, When armed and On input-monitoring modes, with per-channel saved settings and undo support.\n- Fixed Melli sending basic AQUILA routing and recording questions into generic conversation. Follow-up questions about missing controls now retain guide context instead of inventing buttons.\n- Expanded the bundled User Guide to 624 articles, including every Workspace Visibility switch, missing-control troubleshooting and detailed documentation for the new workflows. Added visibility controls for the new preferences, Mixer grips and file-management actions.\n\nhttps://michaellanemusic.de/ml-studio/",
+  "tag": "v2026.11.16.4",
+  "title": "AQUILA 2026.11.16.4",
+  "notes": "- Find installed AUv2 instruments and effects in Plugin Manager, then load instruments in the Channel Rack and effects in the Mixer.\n- Audio Unit parameter automation and plug-in settings are saved with the project. Plug-ins that provide a compatible Cocoa editor can open their own controls.\n- Available in the Apple silicon and Intel macOS builds.\n\nhttps://michaellanemusic.de/ml-studio/",
   "assets": [
     {
-      "name": "ML-Studio-Windows-Setup-2026.11.14.3.exe",
-      "url": "https://michaellanemusic.de/lemon-studio/downloads/2026111403/ML-Studio-Windows-Setup-2026.11.14.3.exe",
-      "sha256": "710046ce3545d6d2da61aa56e53a4267fe3db29596bf474c8862e8ba1d1eefd6"
+      "name": "ML-Studio-Mac-arm64-2026111604.dmg",
+      "url": "https://michaellanemusic.de/lemon-studio/mac/2026111604/ML-Studio-Mac-arm64-2026111604.dmg",
+      "sha256": "b917bdb499657d11951d218834f2431378d70068f5c4204900d0146ce069c65e"
     },
     {
-      "name": "ML-Studio-Source-2026111403.zip",
-      "url": "https://michaellanemusic.de/lemon-studio/updates/2026111403/Lemon%20Studio%20Source.zip",
-      "sha256": "d298850092df734a3b60187a9b7227d13f9829c10576a65e4eccc7633fbddc9e"
+      "name": "ML-Studio-Source-Mac-arm64-2026111604.zip",
+      "url": "https://michaellanemusic.de/lemon-studio/mac/2026111604/ML-Studio-Source-Mac-arm64-2026111604.zip",
+      "sha256": "34014a92728b0a0e97d1aab3c9cc9f525672c5c35b6f3866222516c2c3bd09e6"
     },
     {
-      "name": "ML-Studio-Linux-x86_64-2026111403.tar.gz",
-      "url": "https://michaellanemusic.de/lemon-studio/linux/2026111403/ML-Studio-Linux-x86_64-2026111403.tar.gz",
-      "sha256": "f00a20944124ebfdb9784ca9971a9323906abc09f34cc70ac3e6e16f44ec69c6"
+      "name": "ML-Studio-Mac-x86_64-2026111604.dmg",
+      "url": "https://michaellanemusic.de/lemon-studio/mac/2026111604/ML-Studio-Mac-x86_64-2026111604.dmg",
+      "sha256": "071e3eb063ebea30e337496088d87156b87811a571846510e52912f7978c295c"
     },
     {
-      "name": "ML-Studio-Mac-arm64-2026111403.dmg",
-      "url": "https://michaellanemusic.de/lemon-studio/mac/2026111403/ML-Studio-Mac-arm64-2026111403.dmg",
-      "sha256": "15227b17821f53bd284671eacec91416575f4b2effa035a95604e3bb5e3f299c"
-    },
-    {
-      "name": "ML-Studio-Source-Mac-arm64-2026111403.zip",
-      "url": "https://michaellanemusic.de/lemon-studio/mac/2026111403/ML-Studio-Source-Mac-arm64-2026111403.zip",
-      "sha256": "a54428c576e304ba07edc19da95c6ea147cb5252972a800acf9aacccf931a586"
-    },
-    {
-      "name": "ML-Studio-Mac-x86_64-2026111403.dmg",
-      "url": "https://michaellanemusic.de/lemon-studio/mac/2026111403/ML-Studio-Mac-x86_64-2026111403.dmg",
-      "sha256": "cd69de70ba1ef088991f3a0a4b66202d690bf8fac2c73a55f55c8f06f643cc4a"
-    },
-    {
-      "name": "ML-Studio-Source-Mac-x86_64-2026111403.zip",
-      "url": "https://michaellanemusic.de/lemon-studio/mac/2026111403/ML-Studio-Source-Mac-x86_64-2026111403.zip",
-      "sha256": "970b3441193542eebb47534d39cf8f79e27d3f2a619790000595fe5412c2bef0"
-    },
-    {
-      "name": "melli-linux-v4.zip",
-      "url": "https://michaellanemusic.de/lemon-studio/helper/4/melli-linux-v4.zip",
-      "sha256": "96ab349c56dc53fb06ad208dafa244d9cd22a811f71781e39815903ebe88137e"
-    },
-    {
-      "name": "melli-mac-arm64-v4.zip",
-      "url": "https://michaellanemusic.de/lemon-studio/helper/4/melli-mac-arm64-v4.zip",
-      "sha256": "37b236d930dfa6b6b2c97d3d7f1ccf547e67da0aa1a23fb49c1579065bc56ae1"
-    },
-    {
-      "name": "melli-mac-x86_64-v4.zip",
-      "url": "https://michaellanemusic.de/lemon-studio/helper/4/melli-mac-x86_64-v4.zip",
-      "sha256": "d1384657be36efa328c00477e098e423b7151f62bf0e66218a82d0b3f2607913"
-    },
-    {
-      "name": "melli-windows-v4.zip",
-      "url": "https://michaellanemusic.de/lemon-studio/helper/4/melli-windows-v4.zip",
-      "sha256": "71a11ba0f52dba034dfc218ccdb1da818747f729fb1bd934697ac2ec9d1c90d2"
+      "name": "ML-Studio-Source-Mac-x86_64-2026111604.zip",
+      "url": "https://michaellanemusic.de/lemon-studio/mac/2026111604/ML-Studio-Source-Mac-x86_64-2026111604.zip",
+      "sha256": "df1177188d5abe0e50702baa12400215d4ba1911f8013de53051cc51b190195c"
     }
-  ]
+  ],
+  "latest": true
 }

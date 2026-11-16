@@ -451,7 +451,7 @@ fn real_power(x: &[f32], window: &[f32], twiddle: &[(f32, f32)], re: &mut [f32],
     }
 }
 
-fn fft_in_place(re: &mut [f32], im: &mut [f32]) {
+pub(crate) fn fft_in_place(re: &mut [f32], im: &mut [f32]) {
     let n = re.len();
     let mut j = 0;
     for i in 1..n {

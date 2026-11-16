@@ -25,6 +25,7 @@ pub enum Prefer {
     Vst3,
     Clap,
     Vst2,
+    AudioUnit,
 }
 
 impl Prefer {
@@ -33,6 +34,7 @@ impl Prefer {
             Prefer::Vst3 => "VST3",
             Prefer::Clap => "CLAP",
             Prefer::Vst2 => "VST2",
+            Prefer::AudioUnit => "AU",
         }
     }
 }
@@ -332,7 +334,9 @@ impl Cache {
         self.files
             .iter()
             .filter(|f| f.status == Status::Ok)
-            .flat_map(|f| f.plugins.iter().filter(|r| r.usable()).map(move |r| format!("{}:{}", f.format, r.id)))
+            .filter_map(|f| Format::parse(&f.format).map(|format| (f, format)))
+            .flat_map(|(f, format)| f.plugins.iter().filter(|r| r.usable())
+                .map(move |r| r.descriptor(format, Path::new(&f.path)).uid()))
             .collect()
     }
 
@@ -365,6 +369,7 @@ impl SearchDir {
             DirKind::Standard(Format::Clap) => "CLAP",
             DirKind::Standard(Format::Vst3) => "VST3",
             DirKind::Standard(Format::Vst2) => "VST2",
+            DirKind::Standard(Format::AudioUnit) => "AU",
             DirKind::Standard(Format::Native) => "native",
             DirKind::Added => "All formats",
         }
@@ -384,6 +389,12 @@ pub fn search_dirs(p: &Prefs) -> Vec<SearchDir> {
             let on = !p.standard_off.iter().any(|o| same_path(Path::new(o), &path));
             v.push(SearchDir { path, kind: DirKind::Standard(f), on });
         }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let path = PathBuf::from(os_host::audio_unit::REGISTRY_PATH);
+        let on = !p.standard_off.iter().any(|off| same_path(Path::new(off), &path));
+        v.push(SearchDir { path, kind: DirKind::Standard(Format::AudioUnit), on });
     }
     v.extend(p.folders.iter().map(|f| SearchDir { path: PathBuf::from(&f.path), kind: DirKind::Added, on: f.on }));
     v
@@ -423,11 +434,15 @@ pub fn discover(dirs: &[SearchDir], native: Vec<PathBuf>) -> Vec<Found> {
     let mut seen = HashSet::new();
     let mut walked = HashSet::new();
     for d in dirs.iter().filter(|d| d.on) {
+        if d.kind == DirKind::Standard(Format::AudioUnit) {
+            out.push(Found { path: d.path.clone(), format: Format::AudioUnit });
+            continue;
+        }
         let formats = match d.kind {
             DirKind::Standard(Format::Clap) => Formats { clap: true, ..Formats::NONE },
             DirKind::Standard(Format::Vst3) => Formats { vst3: true, ..Formats::NONE },
             DirKind::Standard(Format::Vst2) => Formats { vst2: true, ..Formats::NONE },
-            DirKind::Standard(Format::Native) => Formats::NONE,
+            DirKind::Standard(Format::Native | Format::AudioUnit) => Formats::NONE,
             DirKind::Added => Formats { clap: true, vst3: true, vst2: true },
         };
         walk(&d.path, 0, formats, &mut walked, &mut seen, &mut out);
@@ -497,7 +512,7 @@ pub fn stamp(path: &Path, format: Format) -> (u64, u64) {
         Format::Vst3 => os_vst3::module_file(path),
         Format::Clap => os_clap::module_file(path),
         Format::Vst2 => os_vst2::module_file(path),
-        Format::Native => path.to_path_buf(),
+        Format::Native | Format::AudioUnit => path.to_path_buf(),
     };
     let file = if module.exists() { module } else { path.to_path_buf() };
     let Ok(md) = std::fs::metadata(&file) else { return (0, 0) };
@@ -550,7 +565,8 @@ pub fn sweep(
         let (size, modified) = stamp(&f.path, f.format);
         let prev = old_by.get(&(path_key(&f.path), f.format.as_str()));
         match prev {
-            Some(p) if mode == Mode::Changed && p.size == size && p.modified == modified && !(p.status.failed() && rescan_errors) => {
+            Some(p) if mode == Mode::Changed && f.format != Format::AudioUnit
+                && p.size == size && p.modified == modified && !(p.status.failed() && rescan_errors) => {
                 files[i] = Some((*p).clone());
             }
             _ => todo.push((i, size, modified)),
@@ -662,6 +678,7 @@ fn rank(d: &Descriptor, prefer: Prefer) -> usize {
         Prefer::Vst3 => Some(Format::Vst3),
         Prefer::Clap => Some(Format::Clap),
         Prefer::Vst2 => Some(Format::Vst2),
+        Prefer::AudioUnit => Some(Format::AudioUnit),
     };
     if Some(d.format) == preferred {
         return 1;
@@ -670,7 +687,8 @@ fn rank(d: &Descriptor, prefer: Prefer) -> usize {
         Format::Vst3 => 2,
         Format::Clap => 3,
         Format::Vst2 => 4,
-        Format::Native => 5,
+        Format::AudioUnit => 5,
+        Format::Native => 6,
     }
 }
 
@@ -687,8 +705,15 @@ pub fn combined_into(list: &[Available], prefs: &Prefs, missing: &HashSet<String
     let ranks: Vec<usize> = list.iter().map(|a| rank(&a.desc, prefs.prefer)).collect();
     for i in (0..list.len()).filter(|&i| live[i]) {
         let better = (0..list.len())
-            .filter(|&j| j != i && live[j] && base[j] == base[i] && list[j].desc.format != list[i].desc.format)
-            .filter(|&j| ranks[j] < ranks[i] && vendors_match(&list[j].desc.vendor, &list[i].desc.vendor))
+            .filter(|&j| j != i && live[j] && base[j] == base[i] && vendors_match(&list[j].desc.vendor, &list[i].desc.vendor))
+            .filter(|&j| {
+                let (candidate, current) = (&list[j].desc, &list[i].desc);
+                if candidate.format == current.format {
+                    current.is_vst2_x86() && !candidate.is_vst2_x86() && candidate.id.eq_ignore_ascii_case(&current.id)
+                } else {
+                    ranks[j] < ranks[i]
+                }
+            })
             .min_by_key(|&j| (ranks[j], j));
         out[i] = better;
     }
@@ -778,7 +803,13 @@ fn entries(list: &[Available], prefs: &Prefs, missing: &HashSet<String>) -> Vec<
         .map(|&i| {
             let d = &list[i].desc;
             let twin = shown.iter().any(|&k| k != i && list[k].desc.format != d.format && base_name(&list[k].desc.name) == base_name(&d.name));
-            let label = if twin { format!("{} ({})", strip_marker(&d.name), format_label(d.format)) } else { d.name.clone() };
+            let label = if d.is_vst2_x86() {
+                format!("{} (32-bit VST2)", strip_marker(&d.name))
+            } else if twin {
+                format!("{} ({})", strip_marker(&d.name), format_label(d.format))
+            } else {
+                d.name.clone()
+            };
             let builtin = crate::project_plugins::is_builtin(d);
             let vendor = if builtin {
                 BUILTIN_VENDOR.to_string()
@@ -872,7 +903,7 @@ pub fn table(available: &[Available], effects: &[Available], cache: &Cache, pref
                 format: format_label(d.format),
                 kind: kind_label(kind),
                 vendor: if builtin { BUILTIN_VENDOR.into() } else { d.vendor.clone() },
-                status: if builtin { "built in".into() } else { "ok".into() },
+                status: if builtin { "built in" } else if d.is_vst2_x86() { "32-bit bridged" } else { "ok" }.into(),
                 file: if builtin { "(built in)".into() } else { file_name(&path) },
                 path: if builtin { String::new() } else { path },
                 note,
@@ -967,6 +998,8 @@ pub struct Progress {
 pub struct Db {
     pub prefs: Prefs,
     pub cache: Cache,
+    /// Catalog rows matched to usable plug-ins by the last scan.
+    pub installed_downloads: HashSet<usize>,
     pub lists: Lists,
     pub blacklisted:Lists,
     /// Every table row (`table`); `rows` = these sorted and filtered.
@@ -987,6 +1020,7 @@ impl Default for Db {
         Db {
             prefs: Prefs::default(),
             cache: Cache::default(),
+            installed_downloads: HashSet::new(),
             lists: Lists::default(),
             blacklisted:Lists::default(),
             all_rows: Vec::new(),
@@ -1003,6 +1037,7 @@ impl Default for Db {
 impl Db {
     /// Rebuilds the lists and the table from the plugins the host knows.
     pub fn rebuild(&mut self, plugins: &crate::plugins::Plugins) {
+        self.installed_downloads = crate::plugin_downloads::installed_entries(&self.cache);
         self.lists = lists(&plugins.available, &plugins.effects, &self.prefs, &plugins.missing);
         let mut visible=self.prefs.clone();visible.hidden.clear();visible.combine=false;
         self.blacklisted=lists(&plugins.available,&plugins.effects,&visible,&plugins.missing);

@@ -20,6 +20,8 @@
 
 #[cfg(target_os = "macos")]
 pub mod bundle;
+#[cfg(target_os = "macos")]
+pub mod audio_unit;
 pub mod guard;
 mod guarded;
 mod meter;
@@ -42,6 +44,7 @@ pub enum Format {
     Clap,
     Vst3,
     Vst2,
+    AudioUnit,
     /// Plugins written against the native SDK of the DAW whose projects Lemon Studio opens (`os-native`).
     Native,
 }
@@ -53,13 +56,14 @@ impl Format {
             Format::Clap => "clap",
             Format::Vst3 => "vst3",
             Format::Vst2 => "vst2",
+            Format::AudioUnit => "au",
             Format::Native => "native",
         }
     }
 
     /// The format named by `as_str`.
     pub fn parse(s: &str) -> Option<Format> {
-        [Format::Clap, Format::Vst3, Format::Vst2, Format::Native].into_iter().find(|f| f.as_str() == s)
+        [Format::Clap, Format::Vst3, Format::Vst2, Format::AudioUnit, Format::Native].into_iter().find(|f| f.as_str() == s)
     }
 }
 
@@ -74,6 +78,9 @@ pub enum Kind {
     #[default]
     Other,
 }
+
+/// Scan-cache marker for a Windows x86 VST2 hosted by the optional bridge.
+pub const VST2_X86: &str = "windows-vst2-x86";
 
 /// A plugin a library offers.
 #[derive(Debug, Clone, PartialEq)]
@@ -106,7 +113,12 @@ impl Descriptor {
     /// The plugin's identity for project files and plugin lists: `format:id` (e.g. `clap:org.openstudio.open-sampler`,
     /// `vst3:` + 32 hex digits). The path is not part of it (plugins move between folders and machines).
     pub fn uid(&self) -> String {
-        format!("{}:{}", self.format.as_str(), self.id)
+        let architecture = if self.is_vst2_x86() { ":x86" } else { "" };
+        format!("{}:{}{architecture}", self.format.as_str(), self.id)
+    }
+
+    pub fn is_vst2_x86(&self) -> bool {
+        self.format == Format::Vst2 && self.features.iter().any(|f| f == VST2_X86)
     }
 }
 

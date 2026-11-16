@@ -148,6 +148,25 @@ fn main() {
             "Release requires Master Assistant and LEMON_MASTER_BUNDLE");
     }
     std::fs::write(PathBuf::from(std::env::var_os("OUT_DIR").unwrap()).join("master-engine.zip"), bytes).unwrap();
+    let score_out = PathBuf::from(std::env::var_os("OUT_DIR").unwrap()).join("score-engine.zip");
+    println!("cargo:rerun-if-env-changed=LEMON_SCORE_BUNDLE");
+    if let Some(path) = std::env::var_os("LEMON_SCORE_BUNDLE") {
+        println!("cargo:rerun-if-changed={}", PathBuf::from(&path).display());
+        std::fs::copy(path, score_out).expect("Could not embed Verovio score bundle");
+    } else {
+        std::fs::write(score_out, []).unwrap();
+    }
+    println!("cargo:rerun-if-env-changed=LEMON_VISUALIZER_WORKER");
+    let worker_out = PathBuf::from(std::env::var("OUT_DIR").unwrap()).join("visualizer-worker.exe");
+    let windows_x64 = std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows")
+        && std::env::var("CARGO_CFG_TARGET_ARCH").as_deref() == Ok("x86_64");
+    if let Some(path) = std::env::var_os("LEMON_VISUALIZER_WORKER").filter(|_| windows_x64) {
+        let path = PathBuf::from(path);
+        println!("cargo:rerun-if-changed={}", path.display());
+        std::fs::copy(path, worker_out).expect("Could not embed the Visualizer renderer");
+    } else {
+        std::fs::write(worker_out, []).unwrap();
+    }
     factory_presets();
     updater();
     let version = version();

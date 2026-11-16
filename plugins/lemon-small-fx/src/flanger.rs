@@ -74,6 +74,7 @@ pub const SPEC: &Spec = &Spec {
     word: "FLANGER",
     about: "AQUILA's flanger",
     settings: &SETTINGS,
+    studio_settings: 0,
     version: Some(dsp::VERSION),
     any_version: false,
     fields: &[],

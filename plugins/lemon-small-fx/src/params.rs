@@ -146,7 +146,7 @@ pub fn int_of(spec: &Spec, k: usize) -> usize {
 /// those the description leaves out.
 pub fn ints(spec: &Spec) -> usize {
     let bytes = spec.fields.iter().filter(|&&i| byte_of(i).is_some()).count();
-    spec.fields.iter().filter(|&&i| byte_of(i).is_none()).map(|&i| i + 1).max().unwrap_or(0).max(spec.settings.len() - bytes)
+    spec.fields.iter().filter(|&&i| byte_of(i).is_none()).map(|&i| i + 1).max().unwrap_or(0).max(spec.legacy_settings() - bytes)
 }
 
 /// Where the settings' ints start in `b`: after the version and the head, or where the description finds them
@@ -178,6 +178,9 @@ pub fn normalized(spec: &Spec, b: Vec<u8>) -> Vec<u8> {
 
 /// Setting `k`'s stored value.
 pub fn setting(spec: &Spec, b: &[u8], k: usize) -> i32 {
+    if k >= spec.legacy_settings() {
+        return studio_options(spec, b).map_or(spec.settings[k].start, |opts| field(opts, k - spec.legacy_settings()));
+    }
     let i = int_of(spec, k);
     match byte_of(i) {
         Some(n) => b.get(byte_at(spec, b, n)).map_or(0, |x| i32::from(x & 1)),
@@ -239,7 +242,12 @@ pub fn decode(spec: &Spec, k: usize, s: i32) -> i32 {
 /// (out-of-range values), the rest are written from the parameters.
 pub fn to_fl(spec: &Spec, vals: &[i32], raw: &[u8]) -> Vec<u8> {
     let mut b = normalized(spec, raw.to_vec());
-    for (k, &v) in vals.iter().enumerate().take(spec.settings.len()) {
+    let options: Vec<_> = (spec.legacy_settings()..spec.settings.len())
+        .map(|k| vals.get(k).copied().unwrap_or_else(|| setting(spec, &b, k)))
+        .collect();
+    let legacy_len = studio_base_len(spec, &b);
+    b.truncate(legacy_len);
+    for (k, &v) in vals.iter().enumerate().take(spec.legacy_settings()) {
         if decode(spec, k, setting(spec, &b, k)) != v {
             // A state of the version before the byte gains it, and the version that has it.
             if let Some(n) = byte_of(int_of(spec, k)).filter(|&n| b.len() <= byte_at(spec, &b, n)) {
@@ -251,7 +259,27 @@ pub fn to_fl(spec: &Spec, vals: &[i32], raw: &[u8]) -> Vec<u8> {
             set_setting(spec, &mut b, k, v);
         }
     }
+    if options.iter().zip(&spec.settings[spec.legacy_settings()..]).any(|(&v, s)| v != s.start) {
+        b.extend(options.iter().flat_map(|v| v.to_le_bytes()));
+        b.extend_from_slice(STUDIO_OPTIONS_TAG);
+    }
     b
+}
+
+const STUDIO_OPTIONS_TAG: &[u8; 8] = b"MLDSP1\0\0";
+
+fn studio_options<'a>(spec: &Spec, raw: &'a [u8]) -> Option<&'a [u8]> {
+    if spec.studio_settings == 0 {
+        return None;
+    }
+    let data = raw.strip_suffix(STUDIO_OPTIONS_TAG)?;
+    let start = data.len().checked_sub(4 * spec.studio_settings)?;
+    (start >= state_len(spec)).then_some(&data[start..])
+}
+
+/// Length of the original effect state without the optional ML-only settings.
+pub fn studio_base_len(spec: &Spec, raw: &[u8]) -> usize {
+    studio_options(spec, raw).map_or(raw.len(), |opts| raw.len() - opts.len() - STUDIO_OPTIONS_TAG.len())
 }
 
 /// Parameter values of a saved state.

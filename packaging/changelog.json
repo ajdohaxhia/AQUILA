@@ -3,6 +3,73 @@
   "intro": "The recorded history of the Michael Lane edition, from 28 October 2026. Related iterations are grouped into user-facing changes. Dates describe development; public build numbers identify published milestones. Original Lemon Studio development predates this edition.",
   "sections": [
     {
+      "date": "2026-11-16",
+      "title": "Audio Unit plug-in support for macOS \u00b7 public build 2026111604",
+      "changes": [
+        "Find installed AUv2 instruments and effects in Plugin Manager, then load instruments in the Channel Rack and effects in the Mixer.",
+        "Audio Unit parameter automation and plug-in settings are saved with the project. Plug-ins that provide a compatible Cocoa editor can open their own controls.",
+        "Available in the Apple silicon and Intel macOS builds."
+      ]
+    },
+    {
+      "date": "2026-11-16",
+      "title": "Permanent supporter activation, flexible menus and toolbar, and Windows legacy plug-in support \u00b7 public build 2026111602",
+      "changes": [
+        "ML Studio remains free. Optional lifetime supporter activation (\u20ac10 or more) removes the Donate button and reminders after successful song and Visualizer exports. Activation stays valid across future updates and works offline after import.",
+        "Settings > Menus now supports dragging entries to reorder them or move them into submenus, with drop indicators, Escape to cancel, Undo and saved per-profile layouts. Extract Chords is included in audio and pattern clip menu customization.",
+        "Send to mixer track / Drag to Mixer is now the first action in the default audio clip menu. Mixer send knobs respond 15% faster to dragging and scrolling; Shift still provides fine adjustment.",
+        "Audio load/CPU/memory, AI assistant, Update and Report a bug can be rearranged or removed using the toolbar editor. Existing layouts migrate without losing their saved panels. Report a bug now opens the ML Studio Discord community.",
+        "Workspace shortcuts open with one click when a transient menu is open. Fixed missing UI symbol glyphs, replaced menu reorder arrows with drawn icons, and cleaned up the Mixer effects panel's borders and input selector.",
+        "Console LED is the default record-light style for the Playlist and Traditional Mixer when no explicit style is saved. Existing theme choices, custom colors, size and glow remain available.",
+        "Windows: optional Carla hosting adds 32-bit VST2 support with setup available from the app. Native 64-bit plug-ins keep their normal hosting path. Carla is not a loader for FL Studio's native-only plug-ins.",
+        "macOS: temporary installer staging is removed after use, and abandoned installer copies are cleaned up."
+      ]
+    },
+    {
+      "date": "2026-11-15",
+      "title": "Custom record lights and Mixer appearance, plus macOS and Windows fixes \u00b7 public build 2026111503",
+      "changes": [
+        "Choose Console LED, Backlit Square or REC Badge for the Playlist and Channel Rack. Customize each view\u2019s idle, armed and recording colors, light size and glow in Settings > Theme > Record lights.",
+        "Drag effect names to reorder them on the same Mixer insert. Long effect names keep their normal text size and clip to the available space.",
+        "Customize Traditional Mixer insert knobs and stereo peak meters, including knob faces, pointers and rings, meter colors and shape, and peak lines.",
+        "Added quick theme colors for Mixer labels and buttons, the Playlist toolbar and overview, and Settings headings and tabs. The color picker now has a hue and saturation wheel with a brightness slider.",
+        "The Plug-in Picker accepts spaces in searches and effect-chain names.",
+        "On Windows x64, the app now includes the renderer needed for ML Visualizer MP4 export. First-time setup can install AudioVisualizer and FFmpeg together.",
+        "Rebuilt the bundled ML Plasma plug-in for macOS 12 compatibility on Intel and Apple silicon, addressing a startup crash on older macOS versions."
+      ]
+    },
+    {
+      "date": "2026-11-15",
+      "title": "macOS-only rollout \u00b7 public build 2026111502",
+      "changes": [
+        "Choose Console LED, Backlit Square or REC Badge for the Playlist and Channel Rack. Customize each view\u2019s idle, armed and recording colors, light size and glow in Settings > Theme > Record lights.",
+        "Drag effect names to reorder them on the same Mixer insert. Long effect names keep their normal text size and clip to the available space.",
+        "Customize Traditional Mixer insert knobs and stereo peak meters, including knob faces, pointers and rings, meter colors and shape, and peak lines.",
+        "Added quick theme colors for Mixer labels and buttons, the Playlist toolbar and overview, and Settings headings and tabs. The color picker now has a hue and saturation wheel with a brightness slider.",
+        "The Plug-in Picker accepts spaces in searches and effect-chain names.",
+        "Rebuilt the bundled ML Plasma plug-in for macOS 12 compatibility on Intel and Apple silicon, addressing a startup crash on older macOS versions."
+      ]
+    },
+    {
+      "date": "2026-11-15",
+      "title": "Mix Assistant, Score Editor, custom mixer pages and creative workflow updates \u00b7 public build 2026111501",
+      "changes": [
+        "Added an offline Mix Assistant. Review detected sources and routing, confirm roles and focus, include or exclude buses, choose a genre, then preview and apply gain and stock processing in one undoable step.",
+        "Mix Assistant measures the song before suggesting compressor, EQ and level changes. Its review explains skipped processing. The optional Mix References pack is available on the download website.",
+        "Added a detachable Score Editor and Arrangement Score for editing written parts, importing MusicXML, and exporting scores and parts. Added Playlist chord, tempo, hit-point and reference video tools for scoring to picture.",
+        "Channel Strip Mixer adds SSL 360 Link pages for Filters/EQ, Dynamics and Fader. All effects lists available insert effects. Dock a compatible editor and save custom page widths per plug-in and editor shape.",
+        "Plugin Downloads shows which plug-ins were found by the scanner and offers clearer Favorites controls. Updates preserve ordinary and portable plug-in files.",
+        "Plug-in delay compensation now refreshes during playback when an effect slot or the whole chain is bypassed.",
+        "Playlist audio and MIDI selections transpose together by semitones with Alt+Up/Down or by octaves with Ctrl+Alt+Up/Down. Fixed clip dragging, automation redraw, Quick Chop Undo and Redo, and sample waveform refresh.",
+        "New Channel Rack samples and instruments can route to a free Mixer insert or the insert linked to an attached Playlist lane. On Windows, samples can also be dragged from a detached Browser. Added a compact Channel Rack.",
+        "Added Full Mixer size presets and a movable, resizable floating Hint Bar. Removed the visible Mixer drag grips while retaining insert reordering. Fader wheel changes are grouped for Undo.",
+        "Added a detachable ML Visualizer workspace with Playlist scene sequencing, fades and dissolves. Windows x64 can export the built-in visualizer with the song mix to MP4.",
+        "Added optional stock DSP controls including distortion and clipping oversampling, true-peak limiting, cleaner delay and chorus modes, stereo bass-to-mono, and external sidechain detection for ML EQ dynamic bands.",
+        "Added Mixer shortcuts for clip ARA editing, Split by Channel for patterns, and Tesla Deverb. Improved compatible plug-in resizing.",
+        "Improved autosave during playback, export cleanup and recovery of interrupted jobs. Reorganized General settings and expanded the bundled User Guide with the new controls and workflows."
+      ]
+    },
+    {
       "date": "2026-11-14",
       "title": "Bounce routing, sample fitting, Mixer dragging and a more helpful Melli \u00b7 public build 2026111403",
       "changes": [

@@ -38,11 +38,13 @@ pub enum Layout {
 const KEY: &str = "window_layout";
 
 /// The windows of a new install: Playlist, Mixer, Piano roll (`State::wins` order), all maximized.
-pub fn default_wins() -> [WinState; 3] {
+pub fn default_wins() -> [WinState; 5] {
     [
         WinState { rect: Rect::new(693.0, 101.0, 1126.0, 378.0), maxed: true, mini: false },
         WinState { rect: Rect::new(231.0, 565.0, 1552.0, 435.0), maxed: true, mini: false },
         WinState { rect: Rect::new(480.0, 140.0, 1000.0, 640.0), maxed: true, mini: false },
+        WinState { rect: Rect::new(290.0, 120.0, 960.0, 590.0), maxed: false, mini: false },
+        WinState { rect: Rect::new(300.0, 150.0, 920.0, 510.0), maxed: false, mini: false },
     ]
 }
 
@@ -92,12 +94,12 @@ impl App {
                 let top = (w.h * 0.55).round();
                 let left = (w.w * 0.6).round();
                 let float = |x: f32, y: f32, ww: f32, hh: f32| WinState { rect: Rect::new(x, y, ww, hh), maxed: false, mini: false };
-                s.wins = [float(w.x, w.y, w.w, top), float(w.x + left, w.y + top, w.w - left, w.h - top), float(w.x, w.y + top, left, w.h - top)];
+                s.wins[..3].copy_from_slice(&[float(w.x, w.y, w.w, top), float(w.x + left, w.y + top, w.w - left, w.h - top), float(w.x, w.y + top, left, w.h - top)]);
                 s.rack_pos = RACK_POS;
             }
             Layout::Custom => {
                 let Some((wins, rack)) = saved() else { return };
-                s.wins = wins;
+                s.wins[..3].copy_from_slice(&wins);
                 s.rack_pos = (rack.x, rack.y);
                 s.rack_size = (rack.w, rack.h);
                 // A layout saved on a larger screen comes back inside this one.
@@ -105,7 +107,7 @@ impl App {
             }
             Layout::SaveCustom => {
                 let win = |w: &WinState| format!("{} {} {} {} {} {}", w.rect.x, w.rect.y, w.rect.w, w.rect.h, u8::from(w.maxed), u8::from(w.mini));
-                let mut parts: Vec<String> = s.wins.iter().map(win).collect();
+                let mut parts: Vec<String> = s.wins[..3].iter().map(win).collect();
                 parts.push(format!("{} {} {} {}", s.rack_pos.0, s.rack_pos.1, s.rack_size.0, s.rack_size.1));
                 crate::prefs::set_text(KEY, &parts.join(";"));
                 s.message = Some("Custom layout saved".into());
@@ -161,7 +163,7 @@ mod tests {
         let s = &app.state;
         let work = s.work_rect();
         let [pl, mx, pr] = [Win::Playlist, Win::Mixer, Win::PianoRoll].map(|w| s.win_rect(w));
-        assert!(s.wins.iter().all(|w| !w.maxed && !w.mini));
+        assert!(s.wins[..3].iter().all(|w| !w.maxed && !w.mini));
         assert_eq!((pl.x, pl.y, pl.w), (work.x, work.y, work.w));
         assert_eq!((pr.y, pr.right(), mx.x, mx.right()), (pl.bottom(), mx.x, pr.right(), work.right()));
         assert_eq!(mx.bottom(), work.bottom());
@@ -171,7 +173,7 @@ mod tests {
         app.arrange(Layout::SaveCustom);
         assert!(enabled("Custom"), "saved in the settings");
         app.arrange(Layout::Realign);
-        assert!(app.state.wins.iter().all(|w| w.maxed));
+        assert!(app.state.wins[..3].iter().all(|w| w.maxed));
         assert_eq!(app.state.wins[0].rect, default_wins()[0].rect);
         assert_eq!(app.state.rack_pos, RACK_POS);
         app.arrange(Layout::Custom);

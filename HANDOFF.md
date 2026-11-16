@@ -635,3 +635,57 @@ run `aquila-release.yml`.
   (vintage seams, modern numbers, selected outline, separator, routing deck, traditional readouts, channel layout),
   menus (titles on first press, wheel rows, wide menus, nested plugin folders) and `recent::file_menu_section`.
 - `newfail.sh`: the 17 of section 14 plus the two parallel-only flaky tests of section 15.
+
+## 17. ML Studio v2026.11.16.4 merge — IN PROGRESS, paused for Codex (2026-11-16)
+
+### State
+- Branch `michael-lane`. Merge is **open**: `git merge --no-ff --no-commit origin/michael-lane` (MERGE_HEAD = 4da9381d, ML 15.1→16.4). Lemon `upstream/main` has nothing new.
+- **Do not `git checkout`/`reset`/`merge --abort`** — about 35 conflicted files are already resolved by hand in the working tree.
+- Last pushed/released AQUILA: ac430960, tag `aquila-v2026.11.14.3` (CI green on 3 OS).
+- Version is already set to **2026.11.16.4**: packaging/github-release.json (tag v2026.11.16.4, title "AQUILA 2026.11.16.4"; `latest` is false, inherited from ML — set it to **true**), NSIS 2026.11.16.4, updates.rs VERSION 2026111604.
+
+### Still conflicted (file: number of hunks)
+```
+crates/os-app/src/app.rs 20      crates/os-app/src/mixer.rs 11
+crates/os-app/src/playlist.rs 9  crates/os-app/assets/native-effects-groups.json 8
+THIRD-PARTY-NOTICES.txt 7        crates/os-app/src/prefs.rs 6
+docs/user-guide.md 5             crates/os-app/src/history.rs 3
+crates/os-app/src/views/menus.rs 3  views/playlist.rs 3  views/settings.rs 3
+crates/os-engine/src/engine.rs 3 crates/os-engine/src/engine/pdc.rs 2
+crates/os-app/src/plugin_menu.rs 2  plugin_window/mod.rs 2  project_plugins.rs 2
+crates/os-app/assets/native-generators-groups.json 2   Cargo.lock 2
+```
+List them with `git diff --name-only --diff-filter=U` and `grep -c '^<<<<<<< '`. Markers are diff3 style (`<<<<<<<` AQUILA / `|||||||` base / `=======` / `>>>>>>>` ML).
+
+### Resolution rules (applied so far, keep applying)
+- Default: take ML's new logic/features, keep AQUILA names, labels, branding and AQUILA-only features.
+- Text "ML Studio" → "AQUILA" in UI strings; keep author credits and license texts; keep donate.rs PayPal link.
+- **AQUILA must never contact michaellanemusic.de.** updates.rs is already resolved: no network, manual check only shows the GitHub releases URL. feedback.rs keeps the GitHub issue link (not ML's Discord).
+- If an AQUILA-only test breaks because of ML changes, fix the test, not shared ML code.
+- Hints for open files:
+  - **prefs.rs**: AQUILA keeps ROUTE_EDGE_SCROLL, ROUTE_RACK_SAMPLES, TEST_CHECK and its labels ("Select linked controls automatically", "Name channels after their sample or plugin", "Use the high-performance power plan"); take ML's other additions. AUTO_CHECK_UPDATES/AUTO_DOWNLOAD_UPDATES appear twice (≈ lines 304/308 and 675/677) — deduplicate.
+  - **history.rs**: h1 needs **both** AQUILA's `RackSide` and ML's `Rows` (with new `ara_links` field). h2/h3: keep AQUILA's `track_io_of`, adopt ML's new `route: Option<(u16,bool)>` parameter on `add_channel`/`insert_channel` (uses `crate::sample_route::with_route`); keep replace_channel/timebase/project_info/project_settings wherever AQUILA has them. plugin_menu.rs calls must match (ML side passes `route`).
+  - JSON group files / THIRD-PARTY-NOTICES / user-guide: union of both sides, AQUILA naming.
+  - Cargo.lock: take either side, then let cargo regenerate.
+
+### After all conflicts are resolved
+1. `grep -rn '^<<<<<<<\|^>>>>>>>\|^=======$' crates plugins packaging docs` must be empty.
+2. Build check on the external disk (needs `/Volumes/aquilabuild` mounted from `"/Volumes/SanDisk EXTREME SSD/aquila-build/aquilabuild.sparseimage"`):
+   `./chk.sh check --workspace --lib --bins --tests` (or `chk-fast.sh` for incremental).
+3. Tests: `work/newfail.sh --workspace --lib --bins --tests --no-fail-fast` → prints failures not in `work/base-sorted.txt` (log in work/last.log).
+   Classify each new failure on a clean ML tree: `git archive 4da9381d | tar -x -C /Volumes/aquilabuild/work/ml164src`, rsync it into `/Volumes/aquilabuild/tree`, run the same cargo test with the same CARGO_TARGET_DIR. Fails on ML too → add to baseline with reason here; passes → fix AQUILA. Batch test names after `--`. tempo_tapper and Melli archive tests are flaky only in parallel.
+4. Windows-only code can't compile on Mac: scan every plugin's host-link `match cmd` (cfg `plugin_windows`) for missing `os_hostlink::Cmd` variants, and Windows-only tests for new struct fields.
+5. `grep -rn michaellanemusic crates/os-app/src` → only test refusals and the PayPal link allowed.
+6. Commit "Merge ML Studio v2026.11.16.4 into AQUILA" (end with `Co-Authored-By:` line), **only after the user confirms**.
+7. Push to `ade` (michael-lane and main), check CI (`gh run list -R ajdohaxhia/AQUILA`). Step "Test" has continue-on-error; exit-101 annotations on a green run are expected.
+8. When green: `gh workflow run aquila-release.yml -R ajdohaxhia/AQUILA --ref michael-lane` → tag aquila-v2026.11.16.4. Update README version line.
+
+### Do not
+- `rm -rf` on /Volumes/aquilabuild (leave removals to the user; use new dirs).
+- Generate or embed signing keys.
+
+### Codex continuation (2026-11-16)
+- Conflict markers resolved; workspace check passed on macOS. ML Plasma's native build was placed at `/Volumes/SanDisk EXTREME SSD/aquila-build/ml-plasma-merge-161604` because `/Volumes/aquilabuild` fell below its 6 GiB native-build preflight threshold. Set `ML_PLASMA_NATIVE_DIR` to that path when using the build scripts.
+- Clean ML `4da9381d` full test comparison: seven `audio_edits::tests`, `warp::tests::legacy_tuned_warp_recovers_original_controls`, and `zipped::tests::audio_edits_portable_pending_revision_keeps_history_and_source` fail because the signed vocal tuning engine is absent. `helper_install::tests::melli_archive_validation_and_owned_extraction` and `app::tests::tempo_tapper_flash_repaints_the_pad` are parallel flakes. `app::tests::transport_clock_digits_share_a_bottom_line`, `mixer::tests::mixer_track_menu_renames_and_applies_custom_color_with_undo`, and `plugin_downloads::tests::catalog_browser_search_and_layout` also fail on clean ML in this environment. These 14 names were added to `/Volumes/aquilabuild/work/base-sorted.txt`; upstream log: `/Volumes/aquilabuild/work/ml164-full-tests.log`.
+- Final full AQUILA run before the last fixes: 3,327 passed, 44 failed, 143 ignored. After comparing against clean ML and the existing baseline, the six remaining AQUILA-specific failures were addressed; focused reruns passed: 26 attached-mixer tests, 5 playlist header-drop tests, animation and fine-drag tests, and the small-effects layout test. A full suite was not rerun after those last focused fixes. The header-drop fix also adds a regression check that redo rehosts a dropped plug-in.
+- Packaging Python tests: 27 passed. Windows host-link scan found no missing command variants; Windows-only struct literals were inspected but not compiled on Windows. Conflict-marker scan is clear. No merge commit or push has been made; section 17 requires user confirmation before committing.

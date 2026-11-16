@@ -1159,12 +1159,29 @@ pub fn auto_height(s: &State) -> Option<f32> {
 
 /// Keep the inline lane inside the rack when it opens in Auto resize mode.
 pub fn set_graph_open(s: &mut State, open: bool) {
+    if !show_steps() {
+        return;
+    }
     s.rack.graph_open = open;
     if !s.vintage_2005 {
         if let Some(height) = auto_height(s) {
             s.rack_size.1 = height;
         }
     }
+}
+
+pub(crate) const STEP_GRID_VISIBILITY: &str = "visible_rack-steps";
+
+pub(crate) fn show_steps() -> bool {
+    crate::workspace_visibility::shown(STEP_GRID_VISIBILITY)
+}
+
+/// Keep the expanded width while the compact rack is being resized vertically.
+pub(crate) fn set_window_size(s: &mut State, width: f32, height: f32) {
+    if show_steps() {
+        s.rack_size.0 = width;
+    }
+    s.rack_size.1 = height;
 }
 
 /// Apply Auto resize after the shown rows changed.
@@ -1208,6 +1225,17 @@ pub fn relayout(s: &mut State, f: impl FnOnce(&mut State)) {
 pub fn remap_project(p: &mut Project, map: &[Option<usize>]) {
     let idx: BTreeMap<u16, u16> =
         p.channels.iter().enumerate().filter_map(|(pos, c)| map.get(pos).copied().flatten().map(|n| (c.index, n as u16))).collect();
+    for track in &mut p.mixer {
+        for slot in &mut track.slots {
+            if let Some(id) = slot.as_ref().and_then(crate::ara::link_source) {
+                if let Some(new_id) = idx.get(&id) {
+                    slot.as_mut().unwrap().state[..2].copy_from_slice(&new_id.to_le_bytes());
+                } else {
+                    *slot = None;
+                }
+            }
+        }
+    }
     p.mpe.channels.retain_mut(|v|map.get(usize::from(v.0)).copied().flatten().map(|id|v.0=id as u16).is_some());
     p.audio_edits.retain_mut(|d|idx.get(&d.channel).map(|ch|d.channel=*ch).is_some());
     p.clip_fx_channels=p.clip_fx_channels.iter().filter_map(|c|idx.get(c).copied()).collect();
@@ -2003,6 +2031,7 @@ pub enum RCmd {
     SizeToFit,
     AlignLeft(bool),
     ShowMixer,
+    ShowSteps,
     Colorful,
     /// Tick or untick a check option of `LIVE_OPTS`.
     Opt(&'static str),
@@ -2042,7 +2071,7 @@ pub(crate) fn default_options_menu(s: &State, x: f32, y: f32) -> Popup {
     width.push(it(if custom { format!("Custom ({}%)", r.name_pct) } else { "Custom".into() }, RCmd::NameWidthBox).mark(Mark::Radio(custom)));
     width.push(PItem::sep());
     width.push(it("Size to fit", RCmd::SizeToFit));
-    let items = vec![
+    let mut items = vec![
         PItem::sub("Add instrument", add_one_items(s)),
         PItem::sub("Edit channels", vec![
             it("Select unused channels", RCmd::SelectUnused),
@@ -2097,6 +2126,7 @@ pub(crate) fn default_options_menu(s: &State, x: f32, y: f32) -> Popup {
         },
         ]),
         PItem::sub("View",vec![
+            it("Show step grid",RCmd::ShowSteps).mark(Mark::Check(show_steps())),
             off(it("Zip selected",RCmd::ZipSel).key("Alt+Z"),none),
             it("Unzip all",RCmd::UnzipAll).key("Alt+U"),
             it("Show mixer track selectors",RCmd::ShowMixer).key("Alt+M").mark(Mark::Check(r.show_mixer)),
@@ -2111,6 +2141,9 @@ pub(crate) fn default_options_menu(s: &State, x: f32, y: f32) -> Popup {
             PItem::sub(crate::views::menus::EDITORS_LABEL,editor_items()),
         ]),
     ];
+    if crate::workspace_visibility::shown(crate::patterns::SPLIT_VISIBILITY) {
+        items.insert(1, PItem::new("Split by channel", Cmd::Pattern(crate::patterns::Cmd::SplitByChannel)));
+    }
     Popup { x, y, items, sub: None, scroll: [0; 2], cascade: Vec::new() }
 }
 
@@ -2254,7 +2287,7 @@ pub(crate) fn default_channel_menu(s: &State, r: usize, x: f32, y: f32, catalog:
     let mut items = vec![
         it("Piano roll", RCmd::PianoRoll(r)).key("F7").mark(Mark::Check(piano_on)),
         PItem::new("Plugin picker - replace instrument...", Cmd::Plugin(PlugCmd::Picker(Target::Replace(r)))),
-        it("Step parameters", RCmd::Graph(r)),
+        if show_steps() { it("Step parameters", RCmd::Graph(r)) } else { it("Step parameters", RCmd::Graph(r)).off() },
         it("Follow global pitch", RCmd::PitchFollow(r)).mark(Mark::Check(channel.is_some_and(|c| c.misc.main_pitch))),
         PItem::sep(),
     ];
@@ -3042,6 +3075,11 @@ fn run_now(app: &mut App, c: RCmd) -> Option<String> {
             relayout(s, |s| s.rack.show_mixer = !s.rack.show_mixer);
             None
         }
+        RCmd::ShowSteps => {
+            crate::workspace_visibility::toggle(STEP_GRID_VISIBILITY);
+            autosize(s);
+            None
+        }
         RCmd::Colorful => {
             s.rack.colorful = !s.rack.colorful;
             None
@@ -3138,6 +3176,7 @@ fn tempo_fitted(c: &os_model::Channel) -> bool {
 /// steps across the pattern (polyrhythms).
 pub fn play_project(s: &State) -> Project {
     let mut p = s.project.clone();
+    for m in &mut p.mixer { m.enabled = crate::mixer::audible(s, m.index); }
     // An ARA source has its own timing/pitch edits. Sampler transforms must not change the
     // engine's source window calculations behind the ARA renderer's back.
     for ch in p.channels.iter_mut().filter(|c|crate::ara::is(c)) {
@@ -3727,7 +3766,7 @@ mod tests {
         a.state.path = None;
         // A pattern with nothing in it is not saved: pattern 2 gets a note.
         let ch = a.state.project.channels[0].index;
-        let note = os_model::Note { position: 0, length: 96, channel: ch, key: 60, fine_pitch: 120, release: 64, pan: 64, velocity: 100, mod_x: 128, mod_y: 128, flags: 0x4000, group: 0, unk14: 0, repeat: 0, drive: 0, expression: 0 };
+        let note = os_model::Note { notation: Default::default(), position: 0, length: 96, channel: ch, key: 60, fine_pitch: 120, release: 64, pan: 64, velocity: 100, mod_x: 128, mod_y: 128, flags: 0x4000, group: 0, unk14: 0, repeat: 0, drive: 0, expression: 0 };
         crate::patterns::pat_mut(&mut a.state, 2).notes.push(note);
         a.state.pattern = 2;
         follow_pattern(&mut a.state);

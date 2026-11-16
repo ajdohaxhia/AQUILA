@@ -16,8 +16,8 @@ struct Pane {
     guide_scroll: Option<(f32, f32, f32)>,
     motion:Option<(f32,f32)>, hover:Option<Action>, refresh_editors:bool, frame:MainWin, mouse:(f32,f32), mods:ModifiersState, last:Instant, painted:Instant,
 }
-fn key(w:Win)-> &'static str {match w {Win::Guide=>"native_user_guide",Win::Browser=>"native_browser",Win::Mixer=>"native_mixer",Win::PianoRoll=>"native_piano",_=>"native_playlist"}}
-fn title(w:Win)-> &'static str {match w {Win::Guide=>"AQUILA - User Guide",Win::Browser=>"AQUILA - Browser",Win::Mixer=>"AQUILA - Mixer",Win::PianoRoll=>"AQUILA - Piano roll",_=>"AQUILA - Playlist"}}
+fn key(w:Win)-> &'static str {match w {Win::Guide=>"native_user_guide",Win::Visualizer=>"native_visualizer",Win::Score=>"native_score_editor",Win::Browser=>"native_browser",Win::Mixer=>"native_mixer",Win::PianoRoll=>"native_piano",_=>"native_playlist"}}
+fn title(w:Win)-> &'static str {match w {Win::Guide=>"AQUILA - User Guide",Win::Visualizer=>"AQUILA - Visualizer",Win::Score=>"AQUILA - Score Editor",Win::Browser=>"AQUILA - Browser",Win::Mixer=>"AQUILA - Mixer",Win::PianoRoll=>"AQUILA - Piano roll",_=>"AQUILA - Playlist"}}
 impl Windows {
     pub fn flush_stems(&mut self,app:&mut App){
         if let Some((row,paths))=self.header_samples.take(){crate::playlist_tracks::drops::samples(app,paths,row);self.changed=true;}
@@ -87,6 +87,10 @@ impl Windows {
             pane.window.set_minimized(false);
             pane.window.focus_window();
         }
+        if std::mem::take(&mut app.state.playlist.visuals.focus) && let Some(pane) = self.panes.iter().find(|pane| pane.kind == Win::Visualizer) {
+            pane.window.set_minimized(false);
+            pane.window.focus_window();
+        }
         app.detached_eq_visible = self.panes.iter().any(|p| {
             matches!(p.kind,Win::Mixer|Win::Playlist) && p.eq_visible && p.window.is_minimized() != Some(true)
         });
@@ -142,7 +146,10 @@ impl Windows {
                     }}
                 }
             }
-            WindowEvent::Focused(false)=>app.mouse_up(),
+            WindowEvent::Focused(false)=>{
+                app.cancel_effect_drag();
+                app.mouse_up();
+            }
             WindowEvent::CursorMoved{position,..}=>{p.mouse=(position.x as f32/scale,position.y as f32/scale);app.mouse_move(p.mouse.0,p.mouse.1);}
             WindowEvent::ModifiersChanged(m)=>{p.mods=m.state();app.ctrl=crate::ctrl(p.mods);app.shift=p.mods.shift_key();app.alt=p.mods.alt_key();}
             WindowEvent::MouseInput{state,button,..}=>{
