@@ -1074,6 +1074,7 @@ mod tests {
         app.transport.set_effects(app.plugins.effects());
         let track = mx::track_mut(&mut app.state, 3).unwrap();
         track.slots[0] = Some(os_model::SlotPlugin {
+            id: os_model::Id::default(),
             name: os_flp::wrapper::WRAPPER.into(),
             state: os_flp::wrapper::encode(None, &reference),
         });
@@ -1094,14 +1095,14 @@ mod tests {
         use crate::settings_file::set_flag;
         set_flag(VISIBILITY, false);
         assert!(
-            !mx::default_slot_menu(&app.state, 0, 0., 0.)
+            !mx::default_slot_menu(&app.state, Some(&app), 0, 0., 0.)
                 .items
                 .iter()
                 .any(|item| item.label.starts_with(TITLE))
         );
         set_flag(VISIBILITY, true);
         assert!(
-            mx::default_slot_menu(&app.state, 0, 0., 0.)
+            mx::default_slot_menu(&app.state, Some(&app), 0, 0., 0.)
                 .items
                 .iter()
                 .any(|item| item.label.starts_with(TITLE))
