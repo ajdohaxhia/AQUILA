@@ -31,7 +31,7 @@ AQUILA brings together two lines of development:
 - **ML Studio** by Michael Lane, which added analog-style channel strips, the Master Assistant, comping, time stretching, MPE, ARA, stem separation, vocal tuning, live collaboration, a redesigned browser and many workflow tools.
 - **Lemon Studio** by ItsAlphaNeon and contributors, the project both are built on. AQUILA includes Lemon Studio's development through November 2026, including multi-core mixing and its newest built-in plugins.
 
-The current release, **AQUILA 2026.11.14.3**, includes ML Studio up to v2026.11.14.3 and Lemon Studio's `main` branch as of 15 November 2026.
+The current release, **AQUILA 2026.11.17.3**, includes ML Studio up to v2026.11.17.3 and Lemon Studio's `main` branch as of 17 November 2026.
 
 > **Status:** pre-release. AQUILA is usable for real work, but keep backups and work on copies of important projects, especially when moving them between AQUILA, Lemon Studio and FL Studio.
 
@@ -52,7 +52,7 @@ AQUILA does not update itself. **Help ▸ Updates** opens the releases page, whe
 
 ## Why AQUILA
 
-ML Studio is a fork of Lemon Studio that went its own way. AQUILA starts from ML Studio and brings Lemon Studio's later work back in, so it has **everything ML Studio 2026.11.14.3 has, plus the following**:
+ML Studio is a fork of Lemon Studio that went its own way. AQUILA starts from ML Studio and brings Lemon Studio's later work back in, so it has **everything ML Studio 2026.11.17.3 has, plus the following**:
 
 **Ten more built-in plugins from Lemon Studio**, none of which ship with ML Studio:
 
@@ -168,13 +168,15 @@ Every AQUILA install includes these, with no extra downloads.
 | Category | Plugins |
 | --- | --- |
 | EQ and filters | ML EQ (7-band parametric with dynamic EQ and analyzer), ML Pulp Filter, Lemon Filter |
-| Dynamics | ML Limiter, ML Press, ML Transient Processor, ML Soft Clipper |
-| Space | ML Reverb, ML Hall, ML Delay |
+| Dynamics | ML Limiter, ML Press, ML Transient Processor, ML Soft Clipper, ML De-Esser |
+| Space | ML Reverb, ML Hall, ML Delay, ML Multiband Delay, ML Convolver (impulse-response reverb) |
 | Modulation | ML Chorus, Lemon Flanger, Lemon Phaser |
-| Colour and stereo | ML Tape, ML Fast Distortion, ML Stereo Enhancer, ML Stereo Shaper, ML Balance |
-| Creative | Lemon Vocoder |
+| Colour and stereo | ML Tape, ML Fast Distortion, ML Amp, ML Waveshaper, ML Stereo Enhancer, ML Stereo Shaper, ML Balance |
+| Creative | Lemon Vocoder, ML Vocoder, ML Time Shaper, ML Pitch Shift, ML Frequency Shift |
+| Vocals | ML Vocal Tune |
 | Control | Lemon Peak Controller, Lemon Formula Controller |
-| Analysis and editing | Lemon Drop (spectrum and waveform view), ML Tesla (audio editor) |
+| Routing and utility | ML Split (multiband crossover), ML Phase |
+| Analysis and editing | Lemon Drop (spectrum and waveform view), ML Meter, ML Tuner, ML Reference (A/B against a reference song), ML Tesla (audio editor) |
 | Mastering | Master Assistant |
 
 ## System requirements
@@ -210,6 +212,7 @@ The first build compiles the ML Plasma engine natively. Before it starts, it che
 
 - **macOS app bundle:** `cargo run -p bundle-app` builds `AQUILA.app` with the AQUILA icon; add `-- --install` to copy it to `~/Applications`.
 - **Windows installer:** `packaging/windows/LemonStudio.nsi` (NSIS).
+- **GitHub release after a green CI:** `packaging/release-when-green.sh [commit] [version]` waits for that commit's CI run and, only if it succeeds, starts the *AQUILA release* workflow (`.github/workflows/aquila-release.yml`). It needs the GitHub CLI (`gh`).
 - **Master Assistant engine** (release builds): compile `plugins/lemon-master-assistant` with CMake and JUCE 8.0.9, package it with `python packaging/bundle-master-engine.py`, then set `LEMON_MASTER_BUNDLE` to the ZIP and `LEMON_RELEASE=1` before building `os-app`.
 
 ### Icons
@@ -266,6 +269,8 @@ Where ML Studio and Lemon Studio built the same area differently, AQUILA keeps M
 - Playback uses ML Studio's audio transport. Lemon Studio's disk recording into armed mixer tracks, count-in and multi-output devices are not active; ML Studio's own mixer recording is.
 - The file browser is ML Studio's, with its own favourites and tags.
 - Projects are saved as `.lmn`; `.lemon` files open but are saved as `.lmn`.
+- Multi-output plugins use ML Studio's design. Lemon Studio's own multi-output routing (November 2026) is not merged, because the two are incompatible.
+- The factory template is still **Lemon Starter**: ML Studio's newer "ML Mix Template" is not published in its source.
 
 ## Credits and license
 
