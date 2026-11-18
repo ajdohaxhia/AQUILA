@@ -586,6 +586,21 @@ fn follow_places(s: &mut State, track: &dyn Fn(u16) -> Option<u16>, slot: &dyn F
         s.events.target = t;
     }
     crate::remote::follow(s, |l| moved_link(l, track, slot));
+    // The container window follows its slot, and the palette the track a container's pick goes to; a place that goes
+    // closes them.
+    let (t, k) = s.container.at;
+    if k != crate::container::CHANNEL {
+        match slot(t, k) {
+            Some(at) => s.container.at = at,
+            None => s.hide(crate::app::Win::Container),
+        }
+    }
+    if let Some(t) = s.palette.track {
+        match track(t) {
+            Some(n) => s.palette.track = Some(n),
+            None => s.hide(crate::app::Win::PluginPalette),
+        }
+    }
 }
 
 /// Where remote control link target `l` goes as mixer places move (`follow_places`); `None`: its place went.
@@ -1784,6 +1799,7 @@ pub fn solo_with(s: &mut State, n: u16, alt: bool) {
     let mut keep=Vec::new();for t in group{keep.extend(reach(s,t,true));if alt{keep.extend(reach(s,t,false));}}
     keep.sort_unstable();keep.dedup();
     keep.push(0);
+    s.control.settle(&mut s.project);
     let soloed = audible_set(s, &keep);
     // A solo still in effect (the last solo's set, untouched since) keeps the states saved when it started.
     let in_solo = s.mixer.solo.as_ref().is_some_and(|(k, _)| audible_set(s, k));
@@ -3786,6 +3802,7 @@ impl App {
                         // Kept for an undo that brings the slot back (`control::host`).
                         self.plugins.keep(key);
                         self.plugins.drop_key(key);
+                        self.state.params.remap(|k| (k != key).then_some(k));
                         relink = true;
                     }
                 }
@@ -3797,6 +3814,10 @@ impl App {
                             (*track, *slot) = slot_at(*track, *slot);
                         }
                     }
+                    self.state.params.remap(|key| match crate::plugins::fx_of(key) {
+                        Some(at) => Some(map.iter().find(|(a, _)| *a == at).map_or(at, |&(_, b)| b)).map(|(t, k)| crate::plugins::fx_key(t, k)),
+                        None => Some(key),
+                    });
                     relink = true;
                 }
             }
@@ -5035,6 +5056,30 @@ mod tests {
         assert_eq!(on(&a).len(), a.state.project.mixer.len());
         run(&mut a, MCmd::Solo(5));
         assert_eq!(on(&a), vec![0, 3, 5], "Solo keeps where 5 sends");
+    }
+
+    /// The container window follows its slot when its track moves, and so does the palette picking for it.
+    #[test]
+    fn the_container_window_follows_its_track() {
+        let mut a = app();
+        a.state.container.at = (3, 1);
+        a.state.raise(crate::app::Win::Container);
+        a.state.palette.track = Some(3);
+        a.state.raise(crate::app::Win::PluginPalette);
+        run(&mut a, MCmd::MoveLeft(3));
+        assert_eq!((a.state.container.at, a.state.palette.track), ((2, 1), Some(2)));
+        assert!(a.state.shown(crate::app::Win::Container) && a.state.shown(crate::app::Win::PluginPalette));
+    }
+
+    /// "Most recent" follows its effect's parameter when the effect's track moves.
+    #[test]
+    fn the_most_recent_parameter_follows_its_track() {
+        use crate::params::Tweak;
+        let mut a = app();
+        a.state.params.last = vec![Tweak::Plugin { key: crate::plugins::fx_key(3, 1), index: 2 }];
+        run(&mut a, MCmd::MoveLeft(3));
+        a.mixer_requests();
+        assert_eq!(a.state.params.last, vec![Tweak::Plugin { key: crate::plugins::fx_key(2, 1), index: 2 }]);
     }
 
     #[test]

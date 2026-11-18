@@ -1687,7 +1687,11 @@ impl Plugins {
             #[cfg(plugin_windows)] let mut editor_layout = None;
             #[cfg(any(windows,target_os="macos"))] let mut embedded_size = None;
             if let Some(mut p) = look.and_then(|_| lock_for_tick(&h.plugin, h.meter.as_deref())) {
-                let t0 = Instant::now();
+                // The dropout log is Linux only; elsewhere the hold is only timed.
+                #[cfg(target_os = "linux")]
+                let t0 = crate::dropout_log::Hold::start();
+                #[cfg(not(target_os = "linux"))]
+                let t0 = std::time::Instant::now();
                 h.seen = look.unwrap_or(h.seen);
                 // A crash stopped it (spec: plugins/plugin-formats.md, "Crash containment"): said once, window closed.
                 if let (Some(code), false) = (p.stopped(), h.stop_told) {
@@ -1738,7 +1742,7 @@ impl Plugins {
                     m.note_hold(t0.elapsed());
                 }
                 #[cfg(target_os = "linux")]
-                crate::dropout_log::held(&p.desc().name, "the UI's tick", t0.elapsed());
+                crate::dropout_log::held(&p.desc().name, "the UI's tick", t0);
             }
             // Native window moves/repaints may block in the OS. Do them after
             // releasing the audio plugin instance, not inside its processing lock.

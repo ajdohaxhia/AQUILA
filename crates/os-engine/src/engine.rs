@@ -363,6 +363,9 @@ struct ChannelState {
     own_tuning: bool,
     sampler_notes: Option<sampler_notes::Settings>,
     instrument: Slot,
+    /// Where each extra output of the instrument goes: the port of output k + 1, the number of mixer tracks after the
+    /// channel's own it plays into, 0 for none (`Engine::set_channel_outputs`; spec: audio/multi-output.md).
+    outputs: Vec<usize>,
     /// Polyphony, mono, portamento and cut group rules for the instrument's notes (spec: audio/channel-voices.md).
     rules: notes::Rules,
     /// Trim positions (source frames) times this are positions in what the channel plays: the stretch factor when
@@ -492,6 +495,13 @@ fn stretched_frames(frames: usize, factor: f64) -> usize {
 }
 
 impl ChannelState {
+    /// The mixer track extra output `k` plays into, of `tracks`: `outputs[k]` tracks after the channel's own; `None` for
+    /// none or one past the last track (spec: audio/multi-output.md).
+    fn output_track(&self, k: usize, tracks: usize) -> Option<usize> {
+        let port = *self.outputs.get(k)?;
+        (port > 0).then_some(self.insert + port).filter(|&t| t < tracks)
+    }
+
     /// The buffer a voice plays (`Trigger::buf`).
     fn buffer(&self, buf: u16) -> Option<&Arc<Sample>> {
         match buf {
@@ -1652,6 +1662,7 @@ impl Engine {
                     own_tuning: ch.kind.is_sampler(),
                     sampler_notes: ch.kind.is_sampler().then(|| sampler_notes::Settings::of(&ch.misc)).flatten(),
                     instrument: Slot::default(),
+                    outputs: Vec::new(),
                     rules: notes::Rules::new(&ch.misc, ppq),
                     from_scale,
                     realtime,
@@ -2190,6 +2201,24 @@ impl Engine {
                 fx.ports = [main, aux];
                 self.pdc.due = true;
             }
+        }
+    }
+
+    /// Where generator channel `channel`'s instrument's extra outputs go (spec: audio/multi-output.md): `ports[k]` for
+    /// extra output `k` (the plugin's output bus `k + 2`), the number of mixer tracks after the channel's own track it
+    /// plays into, 0 for none. An output past the last track goes nowhere.
+    pub fn set_channel_outputs(&mut self, channel: usize, ports: Vec<usize>) {
+        let Some(ch) = self.channels.get_mut(channel) else { return };
+        let ports = {
+            let mut p = ports;
+            while p.last() == Some(&0) {
+                p.pop();
+            }
+            p
+        };
+        if ch.outputs != ports {
+            ch.outputs = ports;
+            self.pdc.due = true;
         }
     }
 
@@ -5636,6 +5665,11 @@ fn send_note(inst: &mut dyn Instrument, off: u32, note: notes::Note, fines: &mut
     }
 }
 
+/// How long the audio thread sleeps between tries for a plugin the UI thread holds. It sleeps rather than yields: a
+/// real-time thread that yields keeps the CPU, so a UI thread holding the plugin on the same core could not run until
+/// the wait ran out, and the plugin missed the tick.
+const BUSY_RETRY: Duration = Duration::from_micros(50);
+
 /// Locks a hosted plugin the UI thread also uses. While it is busy there the tick waits, until `until` (set at the
 /// tick's first wait, `wait` from then); `None` once that has passed. An export waits as long as it takes.
 fn lock_busy<'a, T: ?Sized>(m: &'a Mutex<T>, until: &mut Option<Instant>, wait: Duration, export: bool) -> Option<MutexGuard<'a, T>> {
@@ -6245,6 +6279,52 @@ mod tests {
 
     // spec: audio/pattern-controls.md (note repeat and channel control points, measured in FL)
     use super::*;
+
+    /// A real-time audio thread waiting for a plugin gets it once the UI thread holding it on the same core is done,
+    /// not after the whole wait. Linux; skipped where the test may not run real-time.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_waiting_audio_thread_lets_the_holder_on_its_core_finish() {
+        use std::sync::{Arc, Barrier};
+        #[repr(C)]
+        struct Param {
+            priority: i32,
+        }
+        unsafe extern "C" {
+            fn sched_setscheduler(pid: i32, policy: i32, param: *const Param) -> i32;
+            fn sched_setaffinity(pid: i32, size: usize, mask: *const u64) -> i32;
+            fn sched_getcpu() -> i32;
+        }
+        const SCHED_FIFO: i32 = 1;
+        let core = unsafe { sched_getcpu() }.clamp(0, 63) as u32;
+        let pin = move || {
+            let mask = 1u64 << core;
+            unsafe { sched_setaffinity(0, size_of::<u64>(), &mask) };
+        };
+        let m = Arc::new(Mutex::new(0u64));
+        let started = Arc::new(Barrier::new(2));
+        let (m2, started2) = (m.clone(), started.clone());
+        let ui = std::thread::spawn(move || {
+            pin();
+            let mut g = m2.lock().unwrap();
+            started2.wait();
+            let t = Instant::now();
+            while t.elapsed() < Duration::from_micros(200) {
+                *g = std::hint::black_box(g.wrapping_add(1));
+            }
+        });
+        let audio = std::thread::spawn(move || {
+            pin();
+            let rt = unsafe { sched_setscheduler(0, SCHED_FIFO, &Param { priority: 10 }) } == 0;
+            started.wait();
+            rt.then(|| lock_busy(&m, &mut None, BUSY_WAIT, false).is_some())
+        });
+        ui.join().unwrap();
+        match audio.join().unwrap() {
+            Some(got) => assert!(got, "the audio thread gave up on a plugin held for 0.2 ms"),
+            None => eprintln!("no real-time priority here; skipped"),
+        }
+    }
     use os_model::{Channel, Note, Pattern};
 
     fn channel() -> Channel {

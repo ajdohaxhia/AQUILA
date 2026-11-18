@@ -702,3 +702,11 @@ List them with `git diff --name-only --diff-filter=U` and `grep -c '^<<<<<<< '`.
   `rsync -a --exclude .git --exclude target ./ /Users/ade/aqbuild/tree/` then in that folder
   `DEVELOPER_DIR=/Library/Developer/CommandLineTools CMAKE_GENERATOR=Ninja PYTHON=python3 CARGO_TARGET_DIR=/Users/ade/aqbuild/target cargo test --workspace --lib --bins --tests --no-fail-fast`.
 - Tests on macOS: 3446 pass, 56 fail. 44 also fail on clean ML 17.3 (`/Users/ade/aqbuild/mlfails.txt`); the other 12 already failed before this merge (add_audio_and_automation_clip_channels, browser_commands_jump_into_the_browser, playlist_time_markers, settings_window, tempo_tapper_window, toolbar_buttons_left_and_right, optional_parameters_tab…, slot_plugin_parameters…, declarations_match_the_settings_pages, lemon-small-fx menus_offer_reset… and the_effects_are_described_whole, linked_effects_save_wrapped_and_reopen).
+
+## 19. Lemon Studio upstream merged (2026-11-18, upstream/main 6dfa0b3e)
+
+- Taken: recording fixes (edits made during a take stay; a growing take clip leaves a taken track), `leave_project` (opening/New forgets the old project's interface state; AQUILA's smart cancel, mixer layout, harmony and references are kept in it), clips of every arrangement follow pattern moves, event editor / container / palette / "most recent" parameters follow moves, channel colour `for_channel`, plugin hold timing and the 0.1 ms parameter read, default recording input fixes.
+- Not taken: Lemon's multi-output plugins (b42b1d8c). AQUILA already has ML Studio's multi-output design (`extra_outputs`/`extra_output`, instrument workers, `aux_pad`); the two are incompatible. multicore.rs stays deleted.
+- Not taken: Lemon's solo-by-track-id (88c73d7d); AQUILA's solo logic (locked tracks, `audible`) stays index-based.
+- The split workflow no longer remaps inactive arrangements by hand, since `renumber` now covers every arrangement.
+- Tests: no new failures compared with section 18 (`added_mixer_tracks_save_and_reopen` fixed).

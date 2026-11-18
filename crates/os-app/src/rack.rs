@@ -941,7 +941,7 @@ fn seed() -> u64 {
 
 pub fn random_color(s: &mut State, r: usize, salt: u64) {
     if let Some(c) = s.project.channels.get_mut(r) {
-        c.color = Some(crate::patterns::random_color(seed() ^ salt.wrapping_mul(0x9e37_79b9)));
+        c.color = Some(crate::patterns::random_color(seed() ^ salt.wrapping_mul(0x9e37_79b9)).for_channel());
     }
 }
 
@@ -954,8 +954,8 @@ pub fn gradient(s: &mut State) {
     }
     let (a, b) = (s.project.channels[rows[0]].color, s.project.channels[*rows.last().expect("len >= 2")].color);
     for (c, &r) in gradient_colors(a, b, rows.len()).into_iter().zip(&rows) {
-        s.project.channels[r].color = Some(c);
-        s.project.channels[r].rack.stored_color = Some(c);
+        s.project.channels[r].color = Some(c.for_channel());
+        s.project.channels[r].rack.stored_color = Some(c.for_channel());
     }
 }
 
@@ -1261,14 +1261,7 @@ pub fn remap_project(p: &mut Project, map: &[Option<usize>]) {
     p.automations.retain_mut(|a| {
         let Some(&m) = idx.get(&a.channel) else { return false };
         a.channel = m;
-        // Channel targets keep the channel in the high half (spec: flp/events/automation.md "Targets").
-        a.targets.retain_mut(|t| {
-            let hi = (*t >> 16) as u16;
-            if *t == target::TEMPO || hi >= 0x4000 {
-                return true;
-            }
-            idx.get(&hi).map(|&n| *t = target::channel(n, *t as u16)).is_some()
-        });
+        a.targets.retain_mut(|t| target::moved_channel(*t, |c| idx.get(&c).copied()).map(|n| *t = n).is_some());
         true
     });
     for arr in &mut p.arrangements {
@@ -1390,6 +1383,35 @@ pub(crate) fn remap_ui(s: &mut State, map: &[Option<usize>]) {
     s.sample_loads = std::mem::take(&mut s.sample_loads).into_iter().filter_map(|(r, p)| m(r).map(|r| (r, p))).collect();
     s.pending_open = s.pending_open.and_then(m);
     s.pending_plugin = s.pending_plugin.and_then(|(r, i)| m(r).map(|r| (r, i)));
+    // The playlist's Draw source and its locked clip length follow their channel; a channel that goes takes them.
+    let follow = |c: ClipSource| match c {
+        ClipSource::Channel(ch) => m(usize::from(ch)).map(|r| ClipSource::Channel(r as u16)),
+        c => Some(c),
+    };
+    s.playlist.source = s.playlist.source.and_then(follow);
+    s.playlist.lock_len = s.playlist.lock_len.and_then(|(c, len)| Some((follow(c)?, len)));
+    // The container window of a channel's container follows its channel, and the palette's row its row; a row that
+    // goes closes them.
+    let (r, k) = s.container.at;
+    if k == crate::container::CHANNEL {
+        match m(usize::from(r)) {
+            Some(n) => s.container.at = (n as u16, k),
+            None => s.hide(Win::Container),
+        }
+    }
+    use crate::plugin_menu::Target as Pick;
+    match s.palette.target {
+        Pick::Gen(Some(r)) | Pick::Replace(r) => match m(r) {
+            Some(n) => s.palette.target = if matches!(s.palette.target, Pick::Replace(_)) { Pick::Replace(n) } else { Pick::Gen(Some(n)) },
+            None => s.hide(Win::PluginPalette),
+        },
+        _ => {}
+    }
+    // The event editor's target follows its channel; a channel that goes closes it.
+    match target::moved_channel(s.events.target, |c| m(usize::from(c)).map(|r| r as u16)) {
+        Some(t) => s.events.target = t,
+        None => s.hide(Win::Events),
+    }
     s.piano.clear_selection();
     s.piano.dirty = true;
     s.playlist.sel.clear();
@@ -4363,6 +4385,65 @@ mod tests {
     }
 
     /// Clone, move and delete renumber the channels' notes so each note keeps its channel (§17-18).
+    /// The container window of a channel's container follows the channel when it moves, and so does the palette
+    /// replacing a row's generator; both close when the row is deleted.
+    #[test]
+    fn the_container_window_follows_its_channel() {
+        let mut app = App::new(None);
+        app.state.container.at = (2, crate::container::CHANNEL);
+        app.state.raise(Win::Container);
+        app.state.palette.target = crate::plugin_menu::Target::Replace(2);
+        app.state.raise(Win::PluginPalette);
+        app.state.rack.select_only(2);
+        move_selected(&mut app, -1);
+        assert_eq!((app.state.container.at, app.state.palette.target), ((1, crate::container::CHANNEL), crate::plugin_menu::Target::Replace(1)));
+        delete_rows(&mut app, &[1]);
+        assert!(!app.state.shown(Win::Container) && !app.state.shown(Win::PluginPalette), "their row went");
+    }
+
+    /// Multilink's controls waiting for their controller follow their channel or mixer track when it moves.
+    #[test]
+    fn multilink_waiting_controls_follow_their_place() {
+        use crate::typein::Target as T;
+        let mut app = App::new(None);
+        app.state.multilink.queue = [T::Knob(KnobId::ChanVol(2)), T::Fader(3)].into();
+        app.state.rack.select_only(2);
+        move_selected(&mut app, -1);
+        crate::mixer::run(&mut app, crate::mixer::MCmd::MoveLeft(3));
+        assert_eq!(app.state.multilink.queue, [T::Knob(KnobId::ChanVol(1)), T::Fader(2)]);
+    }
+
+    /// The event editor shows its channel's events after the channel moves, and closes when the channel is deleted.
+    #[test]
+    fn the_event_editor_follows_its_channel() {
+        use os_model::target::{channel, CHANNEL_VOLUME};
+        let mut app = App::new(None);
+        app.state.events.target = channel(2, CHANNEL_VOLUME);
+        app.state.raise(Win::Events);
+        app.state.rack.select_only(2);
+        move_selected(&mut app, -1);
+        assert_eq!(app.state.events.target, channel(1, CHANNEL_VOLUME));
+        delete_rows(&mut app, &[1]);
+        assert!(!app.state.shown(Win::Events), "its channel went");
+    }
+
+    /// The playlist's Draw source and its locked clip length, an audio or automation channel's, follow it when it moves
+    /// and go when it is deleted.
+    #[test]
+    fn the_draw_source_follows_its_channel() {
+        let mut app = App::new(None);
+        assert!(app.state.project.channels.len() >= 3);
+        app.state.playlist.source = Some(ClipSource::Channel(2));
+        app.state.playlist.lock_len = Some((ClipSource::Channel(2), 96));
+        app.state.rack.select_only(2);
+        move_selected(&mut app, -1);
+        let s = &app.state;
+        assert_eq!((s.playlist.source, s.playlist.lock_len), (Some(ClipSource::Channel(1)), Some((ClipSource::Channel(1), 96))));
+        delete_rows(&mut app, &[1]);
+        let s = &app.state;
+        assert_eq!((s.playlist.source, s.playlist.lock_len), (None, None), "the source went with its channel");
+    }
+
     #[test]
     fn restructuring_keeps_notes_with_their_channel() {
         let mut app = App::new(None);
