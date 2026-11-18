@@ -10,6 +10,11 @@
 # POLL (seconds between checks, default 60), WAIT_START (seconds to wait for the run to appear, default 600).
 set -euo pipefail
 
+# Keep the Mac awake while waiting (a sleeping Mac cannot see the CI finish).
+if [ "$(uname)" = Darwin ] && [ -z "${CAFFEINATED:-}" ] && command -v caffeinate >/dev/null; then
+  CAFFEINATED=1 exec caffeinate -i "$0" "$@"
+fi
+
 REPO="${REPO:-ajdohaxhia/AQUILA}"
 REF="${REF:-michael-lane}"
 POLL="${POLL:-60}"

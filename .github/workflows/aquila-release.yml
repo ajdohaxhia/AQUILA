@@ -61,9 +61,10 @@ jobs:
           - name: Windows x86_64
             os: windows-2022
             platform: windows-x86_64
-          # An older Ubuntu: the program runs where the C and C++ runtimes are at least this old.
+          # Ubuntu 24.04, as the CI: GCC 11 on 22.04 rejects the C++ of ML Studio's NAM engine (ml-performance-core).
+          # The program runs where the C and C++ runtimes are at least this new (glibc 2.39).
           - name: Linux x86_64
-            os: ubuntu-22.04
+            os: ubuntu-24.04
             platform: linux-x86_64
           - name: macOS Apple silicon
             os: macos-latest

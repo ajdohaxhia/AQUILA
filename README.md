@@ -183,7 +183,7 @@ Every AQUILA install includes these, with no extra downloads.
 
 - **Windows** 10 or 11, x86-64. ASIO and WASAPI audio.
 - **macOS** 12 or later, Apple silicon or Intel. Core Audio.
-- **Linux** x86-64 with ALSA, PipeWire or PulseAudio.
+- **Linux** x86-64 with glibc 2.39 or newer (Ubuntu 24.04, Debian 13, Fedora 40 or later) and ALSA, PipeWire or PulseAudio.
 - A 64-bit CPU with several cores benefits from multi-core mixing. 8 GB of RAM is a comfortable minimum for larger projects.
 
 ## Building from source
