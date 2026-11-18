@@ -38,7 +38,13 @@ say "CI run $run_id for ${SHA:0:8}: https://github.com/$REPO/actions/runs/$run_i
 
 # Wait for it to finish.
 while :; do
-  read -r status conclusion < <(gh run view "$run_id" -R "$REPO" --json status,conclusion -q '"\(.status) \(.conclusion)"')
+  # A network hiccup must not end the wait: try again on the next poll.
+  if ! state="$(gh run view "$run_id" -R "$REPO" --json status,conclusion -q '"\(.status) \(.conclusion)"' 2>/dev/null)"; then
+    say "GitHub not reachable, retrying..."
+    sleep "$POLL"
+    continue
+  fi
+  read -r status conclusion <<<"$state"
   [ "$status" = "completed" ] && break
   say "CI is $status..."
   sleep "$POLL"
