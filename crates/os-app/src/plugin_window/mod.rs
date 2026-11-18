@@ -28,12 +28,14 @@ use os_ui::{Canvas, Color, Font, Rect};
 #[cfg(windows)]
 mod win32;
 #[cfg(windows)]
-pub use win32::{clicked_strip,chop_placement,prepare_embedded,embedded_exposed,default_position, first_position, focus_main, lift_hide, lift_show, stack, take_exposed, take_keys, take_link, FrameWindow};
+pub use win32::{clicked_strip,chop_placement,prepare_embedded,embedded_exposed,default_position, first_position, focus_main, lift_hide, lift_show, stack, take_exposed, take_keys, take_link, take_state_links, FrameWindow};
 
 #[cfg(target_os = "linux")]
 mod x11;
 #[cfg(target_os = "linux")]
 mod hyprland;
+#[cfg(target_os = "linux")]
+pub(crate) use x11::drop_browser_files;
 #[cfg(target_os = "linux")]
 pub use x11::{
     busy, default_position, exposed, focus_main, in_keymap, keys_down, lift_hide, lift_show, main_focused, paint_dirty, pointer, pointer_in_docked, pump, screen_to_main,
@@ -78,6 +80,7 @@ pub fn moved_to(p: (i32, i32), from: [i32; 4], to: [i32; 4], keep: (i32, i32)) -
 /// A message a Lemon plugin's editor sent to its frame (host link, plugin -> host).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LinkMsg {
+    StateEdit(usize),
     SampleFit(isize),
     BrowseSample,
     LocateSample,
@@ -118,6 +121,7 @@ pub fn take_link() -> Vec<(isize, LinkMsg)> {
                 }
                 os_hostlink::Cmd::Automate => LinkMsg::Automate(arg.max(0) as usize),
                 os_hostlink::Cmd::Audio => LinkMsg::Audio(arg != 0),
+                os_hostlink::Cmd::StateEdit => LinkMsg::StateEdit(arg as usize),
                 os_hostlink::Cmd::SampleFit => LinkMsg::SampleFit(arg),
                 os_hostlink::Cmd::BrowseSample if arg==1 => LinkMsg::LocateSample,
                 os_hostlink::Cmd::BrowseSample => LinkMsg::BrowseSample,
@@ -270,7 +274,7 @@ pub enum FrameEvent {
     /// plugin that said it may be resized (host link `Resizable`; spec: plugins/host-link.md).
     Resize(u32, u32),
     ResizeFinished(f32),
-    #[cfg(target_os="linux")] Undo(bool),
+    #[cfg(target_os="linux")] Undo(bool, bool),
 }
 
 /// A frame edge being dragged: which edges, the press (window coordinates, logical px) and the editor size then.
@@ -637,6 +641,7 @@ fn parts(st: &State) -> Vec<(Rect, Part)> {
             v.push((track_rect(dx), Part::Track));
         }
     }
+    if st.info.target == "ML Patch" {v.retain(|(_,part)|!matches!(part,Part::Menu|Part::Presets|Part::PresetPrev|Part::PresetNext));}
     v.push((Rect::new(0.0, 0.0, w, TITLE_H), Part::Caption));
     v
 }
@@ -768,7 +773,7 @@ fn paint(c: &mut Canvas, st: &State) {
 /// Title bar, left to right: menu arrow, gear (boxed while the strip is shown), channel name, "(mixer target)", the
 /// plugin's hint; right side: Presets box with previous / next arrows, minimize, close.
 fn title_bar(c: &mut Canvas, st: &State, w: f32) {
-    icon_at(c, crate::icons::Icon::ArrowRight, 14.4, 15.5, 15.4, c_arrow());
+    if st.info.target != "ML Patch" {icon_at(c, crate::icons::Icon::ArrowRight, 14.4, 15.5, 15.4, c_arrow());}
     let g = GEAR_RECT;
     let lemon = os_ui::kit::lemon::on(&os_theme::current());
     if st.strip && lemon {
@@ -842,10 +847,12 @@ fn title_bar(c: &mut Canvas, st: &State, w: f32) {
         c.text_center(Font::new(13), rect, palette.text, "Export MP4");
     }
     // Presets box: the loaded preset's name, or "Presets" (spec: plugins/presets.md).
+    if st.info.target != "ML Patch" {
     c.fill_rrect(p, if lemon { 6.0 } else { 3.0 }, c_presets());
     c.text_clip(f, p.x + 9.0, ty, p.w - 9.0 - 31.0, c_text(), st.preset.as_deref().unwrap_or("Presets"));
     icon_at(c, crate::icons::Icon::ArrowLeft, p.right() - 22.2, 15.5, 18.9, c_icon());
     icon_at(c, crate::icons::Icon::ArrowRight, p.right() - 7.8, 15.5, 18.9, c_icon());
+    }
     if st.show_detach {
         let palette = os_theme::current();
         let rect = detach_rect(st);
@@ -1682,6 +1689,15 @@ mod tests {
     }
 
     #[test]
+    fn ml_patch_child_frame_keeps_detach_and_pages_without_dead_preset_controls(){
+        let mut st=state(false,"ML Patch");st.show_detach=true;
+        let p=parts(&st);assert!(p.iter().any(|(_,p)|matches!(p,Part::Detach)));
+        assert!(p.iter().any(|(_,p)|matches!(p,Part::Gear)));
+        assert!(!p.iter().any(|(_,p)|matches!(p,Part::Presets|Part::PresetPrev|Part::PresetNext|Part::Menu)));
+        st.info.target="Master".into();assert!(parts(&st).iter().any(|(_,p)|matches!(p,Part::Presets)));
+    }
+
+    #[test]
     fn frame_geometry() {
         // spec: ui/plugin-window.md "Frame": 7 px around the editor, 27 px title bar, 46 px strip.
         let st = state(true, "Master");
@@ -2055,4 +2071,9 @@ mod tests {
         assert_eq!(notes, [(60, true), (60, false), (61, true), (61, false)]);
         assert_eq!(st.misc_ui.held, None);
     }
+}
+
+#[cfg(not(windows))]
+pub fn take_state_links() -> Vec<(isize, usize)> {
+    os_hostlink::take_host_state_messages().into_iter().map(|(area, _, token)| (area as isize, token as usize)).collect()
 }

@@ -50,6 +50,21 @@ lemon-reverb = { path = "../../plugins/lemon-reverb", features = ["linked"] }
 lemon-delay = { path = "../../plugins/lemon-delay", features = ["linked"] }
 lemon-soft-clipper = { path = "../../plugins/lemon-soft-clipper", features = ["linked"] }
 lemon-fast-distortion = { path = "../../plugins/lemon-fast-distortion", features = ["linked"] }
+ml-de-esser = { path = "../../plugins/ml-de-esser", features = ["linked"] }
+ml-meter = { path = "../../plugins/ml-meter", features = ["linked"] }
+ml-tuner = { path = "../../plugins/ml-tuner", features = ["linked"] }
+ml-frequency-shift = { path = "../../plugins/ml-frequency-shift", features = ["linked"] }
+ml-multiband-delay = { path = "../../plugins/ml-multiband-delay", features = ["linked"] }
+ml-time-shaper = { path = "../../plugins/ml-time-shaper", features = ["linked"] }
+ml-vocal-tune = { path = "../../plugins/ml-vocal-tune", features = ["linked"] }
+ml-amp = { path = "../../plugins/ml-amp", features = ["linked"] }
+ml-reference = { path = "../../plugins/ml-reference", features = ["linked"] }
+ml-split = { path = "../../plugins/ml-split", features = ["linked"] }
+ml-waveshaper = { path = "../../plugins/ml-waveshaper", features = ["linked"] }
+ml-convolver = { path = "../../plugins/ml-convolver", features = ["linked"] }
+ml-vocoder = { path = "../../plugins/ml-vocoder", features = ["linked"] }
+ml-pitch-shift = { path = "../../plugins/ml-pitch-shift", features = ["linked"] }
+ml-phase = { path = "../../plugins/ml-phase", features = ["linked"] }
 lemon-balance = { path = "../../plugins/lemon-balance", features = ["linked"] }
 lemon-stereo-enhancer = { path = "../../plugins/lemon-stereo-enhancer", features = ["linked"] }
 lemon-transient-processor = { path = "../../plugins/lemon-transient-processor", features = ["linked"] }
@@ -99,7 +114,7 @@ ebur128 = { version = "0.1.11", default-features = false }
 asio-sys = "0.4"
 # WASAPI exclusive and low-latency shared output (`device::wasapi`): the version cpal is built with.
 windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Media_Audio", "Win32_Media_KernelStreaming", "Win32_Media_Multimedia", "Win32_Devices_Properties", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_System_Threading", "Win32_System_Variant", "Win32_UI_Shell_PropertiesSystem", "Win32_UI_Shell_Common", "Win32_UI_WindowsAndMessaging"] }
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse", "Win32_System_LibraryLoader", "Win32_Storage_Xps", "Win32_System_Threading", "Win32_System_Memory", "Win32_System_ProcessStatus", "Win32_System_Diagnostics_ToolHelp", "Win32_System_DataExchange", "Win32_UI_Shell", "Win32_System_Com", "Win32_System_Diagnostics_Debug", "Win32_System_Console", "Win32_UI_HiDpi", "Win32_System_Registry", "Win32_System_SystemInformation", "Win32_UI_Controls", "Win32_System_JobObjects", "Win32_Security", "Win32_UI_Controls_Dialogs", "Win32_Storage_FileSystem"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse", "Win32_System_LibraryLoader", "Win32_Storage_Xps", "Win32_System_Threading", "Win32_System_Memory", "Win32_System_ProcessStatus", "Win32_System_Diagnostics_ToolHelp", "Win32_System_DataExchange", "Win32_UI_Shell", "Win32_System_Com", "Win32_System_Diagnostics_Debug", "Win32_System_Console", "Win32_UI_HiDpi", "Win32_System_Registry", "Win32_System_SystemInformation", "Win32_UI_Controls", "Win32_System_JobObjects", "Win32_Security", "Win32_UI_Controls_Dialogs", "Win32_Storage_FileSystem", "Win32_System_Ole"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 # Shared mode plays through the sound server (PulseAudio, or PipeWire's pipewire-pulse) as other programs do; the
@@ -108,6 +123,7 @@ cpal = { version = "0.18", features = ["pulseaudio", "jack"] }
 # The cards the sound server gave up on while Lemon Studio had them through ALSA (`device::sound_server`): the
 # protocol crate cpal's PulseAudio host is built on.
 pulseaudio = "0.3"
+url = "2"
 x11rb = { version = "0.13", features = ["randr", "resource_manager", "shape"] }
 # Real-time priority for the audio threads (`rt`): rtkit on the system bus, through the zbus the file dialogs
 # already bring.

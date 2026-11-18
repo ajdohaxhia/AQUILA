@@ -1,7 +1,42 @@
 {
   "title": "Change Log",
-  "intro": "The recorded history of the Michael Lane edition, from 28 October 2026. Related iterations are grouped into user-facing changes. Dates describe development; public build numbers identify published milestones. Original Lemon Studio development predates this edition.",
+  "intro": "The recorded history of the Michael Lane edition, from 28 October 2026. Related iterations are grouped into user-facing changes. Dates describe development; public build numbers identify published milestones. Upstream development predates this edition.",
   "sections": [
+    {
+      "date": "2026-11-17",
+      "title": "Selection, audio editing and plugin compatibility fixes \u00b7 public build 2026111703",
+      "changes": [
+        "Piano Roll and Playlist selection now support Ctrl+Shift click and drag to toggle selected notes or clips while preserving the rest of the selection.",
+        "Vocal Tuning and Audio Timing share Playlist scrolling, time zoom, middle-drag panning and Ctrl+right-drag region zoom. Inline selection and custom mouse controls work consistently.",
+        "Added Behringer HPM1000 to the Master headphone referencer with a bundled offline listening preset.",
+        "Improved Mac plugin editor sizing for Audio Units, Retina CLAP editors and joined stock editors, including Plasma.",
+        "Browser samples can be dragged into supported third-party plugin editors on Windows and Mac. Fixed FL native slicer runtime discovery and the MIDI key used to trigger imported slices."
+      ]
+    },
+    {
+      "date": "2026-11-17",
+      "title": "Stock effect folders, ML Mix Template and H200 monitoring \u00b7 public build 2026111702",
+      "changes": [
+        "The 15 new stock effects now appear in their factory categories. On upgrade, untouched stock links move out of Unsorted. Custom folders, renamed links and removed entries are preserved.",
+        "ML Mix Template is the new name of the factory starter in File > New, startup and the template picker. Existing factory selections switch over automatically, and edited templates keep their settings.",
+        "Added an offline ADAM Audio H200 headphone correction profile by oratory1990 via OPRA. Search H200 from the Master headphone icon. Correction affects monitoring only.",
+        "Updated the User Guide and cleaned up ML Studio branding across the app documents and packages. Installers use ML Mix Template and ML Studio Source filenames where included. Existing signed updaters remain compatible."
+      ]
+    },
+    {
+      "date": "2026-11-17",
+      "title": "ML Patch, new stock effects and workflow fixes \u00b7 public build 2026111701",
+      "changes": [
+        "ML Patch brings visual effect routing to one Mixer slot. Connect stock or installed effects in series or parallel, route sidechains, assign eight automatable controls, and save the whole patch as a preset. Parallel paths stay aligned when you bypass a node. This release supports stereo effects.",
+        "Added 15 more stock effects: ML Phase, De-Esser, Meter, Pitch Shift, Convolver, Vocoder, Reference, Split, Waveshaper, Tuner, Frequency Shift, Multiband Delay, Time Shaper, Amp and Vocal Tune. ML Amp loads your own NAM models and cabinet impulse responses. ML Vocal Tune uses the existing Mixer tuning engine.",
+        "Added REX loop import and colored slide-note editing and playback for supported instruments. Improved project recall for replaced instruments and queued sampler changes.",
+        "The Browser can dock on either side. Browser preview follows the Master level, and nested menus and folder navigation are easier to use.",
+        "You can delete every Mixer insert, undo the deletion, and add a fresh insert from a Master-only Mixer. Surviving routes and automation stay with their tracks.",
+        "Standard Undo and Redo now cover supported editor changes in ML Plasma, ML Wave and Citrus. Fixed Wave LFO shape recall and improved Plasma editor controls and responsiveness.",
+        "Fixed Playlist and Piano Roll editing issues involving loop boundaries, Alt resizing, zoom-to-fit, text and numeric entry, and random colors. Fixed live pitch after seeking or looping, Citrus effect state after tempo changes, and clicks passing through Tune Vocals.",
+        "Windows installer and updater now create or repair the registered installation shortcut. This full release also carries forward the recent Playlist hover fix and macOS AUv2 support."
+      ]
+    },
     {
       "date": "2026-11-16",
       "title": "Audio Unit plug-in support for macOS \u00b7 public build 2026111604",
@@ -754,7 +789,7 @@
       "date": "2026-10-28",
       "title": "Michael Lane edition begins",
       "changes": [
-        "Established this customized edition from the existing Lemon Studio project; the original project predates this changelog.",
+        "Established this customized edition from the upstream project; the original project predates this changelog.",
         "Added a native starter-template workflow, template names for new sessions and mixer-first startup; repaired Windows settings-folder handling and installed factory-template support.",
         "Simplified the toolbar and Playlist editing controls; moved the mixer plugin inspector to the left and improved plugin categories and scrolling.",
         "Added Samples and Favorites browsing with persistent favorites and sample preview/drag support.",

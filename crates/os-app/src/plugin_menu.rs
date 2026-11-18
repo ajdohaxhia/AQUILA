@@ -98,11 +98,6 @@ fn item(e: &Entry, target: Target, effect: bool) -> PItem {
     PItem::new(e.label.clone(), pick(target, effect, e.index))
 }
 
-/// A header with a run-time label.
-fn head(label: String) -> PItem {
-    PItem { head: true, ..PItem::new(label, Cmd::Nothing) }
-}
-
 #[derive(Default)]
 struct Folder { items: Vec<PItem>, children: BTreeMap<String, Folder> }
 impl Folder {
@@ -174,6 +169,65 @@ fn personal_groups(effect: bool) -> Option<BTreeMap<String, Vec<String>>> {
 #[derive(serde::Serialize, serde::Deserialize)]
 struct PluginLink { uid: String, name: String }
 
+const PREVIOUSLY_UNSORTED_STOCK: &[&str] = &[
+    "ML Phase", "ML De-Esser", "ML Meter", "ML Pitch Shift", "ML Convolver", "ML Vocoder",
+    "ML Reference", "ML Split", "ML Waveshaper", "ML Tuner", "ML Frequency Shift",
+    "ML Multiband Delay", "ML Time Shaper", "ML Vocal Tune", "ML Amp",
+];
+
+fn link_filename(entry: &Entry) -> String {
+    let label: String = entry.label.chars()
+        .map(|c| if c.is_control() || "<>:\"/\\|?*".contains(c) { '_' } else { c })
+        .take(90)
+        .collect();
+    let id = entry.uid.bytes().fold(14695981039346656037u64, |h, b| {
+        (h ^ u64::from(b)).wrapping_mul(1099511628211)
+    });
+    format!("{} - {id:016x}.plugin.json", label.trim_end_matches(['.', ' ']))
+}
+
+fn move_generated_stock_link(
+    root: &std::path::Path,
+    group: &str,
+    entry: &Entry,
+    folders: &BTreeMap<String, Vec<String>>,
+) -> std::io::Result<()> {
+    let identity = format!("@{}", entry.uid);
+    if folders.iter().any(|(folder, names)| {
+        folder != "Unsorted" && names.iter().any(|name| {
+            name == &identity || (!name.starts_with('@') && same_plugin_name(name, &entry.name))
+        })
+    }) {
+        return Ok(());
+    }
+    let filename = link_filename(entry);
+    let unsorted = root.join("Unsorted");
+    let source = unsorted.join(&filename);
+    let link = PluginLink { uid: entry.uid.clone(), name: entry.name.clone() };
+    let original = serde_json::to_vec_pretty(&link).map_err(std::io::Error::other)?;
+    if !std::fs::symlink_metadata(&source).is_ok_and(|m| m.is_file() && m.len() == original.len() as u64)
+        || !std::fs::read(&source).is_ok_and(|bytes| bytes == original)
+    {
+        return Ok(());
+    }
+    let root_path = root.canonicalize()?;
+    if unsorted.canonicalize()?.parent() != Some(root_path.as_path()) {
+        return Ok(());
+    }
+    let dest_dir = root.join(group);
+    std::fs::create_dir_all(&dest_dir)?;
+    if dest_dir.canonicalize()?.parent() != Some(root_path.as_path()) {
+        return Ok(());
+    }
+    let dest = dest_dir.join(filename);
+    // A hard link keeps the original intact until the new entry exists, and cannot overwrite one.
+    match std::fs::hard_link(&source, &dest) {
+        Ok(()) => std::fs::remove_file(source),
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
+        Err(e) => Err(e),
+    }
+}
+
 /// Only add new identities. Moving, copying or removing a link survives future scans.
 fn sync_folder(root: &std::path::Path, list: &[Entry], effect: bool) -> std::io::Result<()> {
     use std::collections::BTreeSet;
@@ -184,7 +238,8 @@ fn sync_folder(root: &std::path::Path, list: &[Entry], effect: bool) -> std::io:
         Err(e) if e.kind()==std::io::ErrorKind::NotFound => BTreeSet::new(),
         Err(e) => return Err(e),
     };
-    for names in folder_groups(root)?.values() {
+    let folders = folder_groups(root)?;
+    for names in folders.values() {
         for name in names {
             if let Some(uid)=name.strip_prefix('@') { known.insert(uid.to_owned()); }
             else { for entry in list.iter().filter(|e|same_plugin_name(name, &e.name)) {known.insert(entry.uid.clone());} }
@@ -193,13 +248,33 @@ fn sync_folder(root: &std::path::Path, list: &[Entry], effect: bool) -> std::io:
     let defaults: BTreeMap<String,Vec<String>> = serde_json::from_str(if effect {
         include_str!("../assets/native-effects-groups.json")
     } else {include_str!("../assets/native-generators-groups.json")}).unwrap_or_default();
+    let upgrade = root.join(".stock-effect-folders-v1");
+    let upgraded = if effect {
+        match std::fs::read_to_string(&upgrade) {
+            Ok(text) => text,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+            Err(e) => return Err(e),
+        }
+    } else {
+        String::new()
+    };
     for entry in list {
-        if known.contains(&entry.uid) {continue;}
         let group = defaults.iter().find(|(_,names)|names.iter().any(|name| same_plugin_name(name, &entry.name))).map(|(g,_)|g.as_str()).unwrap_or("Unsorted");
+        if effect && entry.builtin && PREVIOUSLY_UNSORTED_STOCK.contains(&entry.name.as_str())
+            && group != "Unsorted" && !upgraded.lines().any(|uid| uid == entry.uid)
+        {
+            if let Err(error) = move_generated_stock_link(root, group, entry, &folders) {
+                eprintln!("Could not move stock plugin folder entry for {}: {error}", entry.name);
+            } else {
+                // Remember this even when the user has already moved or removed the link.
+                use std::io::Write;
+                let mut file = std::fs::OpenOptions::new().create(true).append(true).open(&upgrade)?;
+                writeln!(file, "{}", entry.uid)?;
+            }
+        }
+        if known.contains(&entry.uid) {continue;}
         let dir=root.join(group); std::fs::create_dir_all(&dir)?;
-        let label: String=entry.label.chars().map(|c|if c.is_control()||"<>:\"/\\|?*".contains(c){'_'}else{c}).take(90).collect();
-        let id=entry.uid.bytes().fold(14695981039346656037u64,|h,b|(h^u64::from(b)).wrapping_mul(1099511628211));
-        let path=dir.join(format!("{} - {id:016x}.plugin.json",label.trim_end_matches(['.',' '])));
+        let path=dir.join(link_filename(entry));
         let link=PluginLink{uid:entry.uid.clone(),name:entry.name.clone()};
         let mut file=std::fs::OpenOptions::new().write(true).create_new(true).open(&path)?;
         std::io::Write::write_all(&mut file,&serde_json::to_vec_pretty(&link).map_err(std::io::Error::other)?)?;
@@ -208,7 +283,7 @@ fn sync_folder(root: &std::path::Path, list: &[Entry], effect: bool) -> std::io:
     std::fs::write(ledger,serde_json::to_vec_pretty(&known).map_err(std::io::Error::other)?)?;
     let readme=root.join("How to organize plugins.txt");
     if !readme.exists() {
-        std::fs::write(readme,"Create folders and move or copy the .plugin.json links into them. Reopen the plugin menu to see changes in Categories view. The files are references, not plugin binaries. Scan results add new plugins under Unsorted without moving your existing links. Unlisted installed plugins remain reachable under Other installed plugins. Keep the .known-plugins.json file so removed links are not recreated.\n")?;
+        std::fs::write(readme,"Create folders and move or copy the .plugin.json links into them. Reopen the plugin menu to see changes in Categories view. The files are references, not plugin binaries. New stock plugins start in their factory categories. Other new plugins without a category appear under Unsorted. Unlisted installed plugins remain reachable under Other installed plugins. Keep the .known-plugins.json file so removed links are not recreated.\n")?;
     }
     Ok(())
 }
@@ -259,9 +334,8 @@ fn folder_groups(root: &std::path::Path) -> std::io::Result<BTreeMap<String, Vec
     Ok(groups)
 }
 
-/// One section's entries (spec §2): favourites, a separator, then the rest by display mode. `nested`: the list is a
-/// submenu itself, so "By vendor" uses headers instead of submenus (popups open one submenu level).
-fn section(s: &State, effect: bool, target: Target, nested: bool) -> Vec<PItem> {
+/// One section's entries: favourites, then the selected grouping at every popup depth.
+fn section(s: &State, effect: bool, target: Target, _nested: bool) -> Vec<PItem> {
     let list = if effect { &s.plugdb.lists.fx } else { &s.plugdb.lists.gens };
     if list.is_empty() {
         return vec![PItem::new(if effect { "(no effect plugins found)" } else { "(no instruments found)" }, Cmd::Nothing).off()];
@@ -318,12 +392,7 @@ fn section(s: &State, effect: bool, target: Target, nested: bool) -> Vec<PItem> 
             }
             for (_, (vendor, es)) in by {
                 let items: Vec<PItem> = es.iter().map(|e| item(e, target, effect)).collect();
-                if nested {
-                    v.push(head(vendor));
-                    v.extend(items);
-                } else {
-                    v.push(PItem { children: items, ..PItem::new(vendor, Cmd::Nothing) });
-                }
+                v.push(PItem { children: items, ..PItem::new(vendor, Cmd::Nothing) });
             }
         }
     }
@@ -623,6 +692,55 @@ mod tests {
     }
 
     #[test]
+    fn factory_effect_folder_upgrade_preserves_user_choices() {
+        let root = std::env::temp_dir().join(format!("ml-factory-upgrade-{}", std::process::id()));
+        let unsorted = root.join("Unsorted");
+        let custom = root.join("My effects");
+        std::fs::create_dir_all(&unsorted).unwrap();
+        std::fs::create_dir_all(&custom).unwrap();
+        let mut app = App::new(None);
+        app.plugins = crate::plugins::Plugins::builtins();
+        app.plugins.effects.push(db::fake("Third party effect", os_host::Kind::Effect));
+        app.state.plugdb.rebuild(&app.plugins);
+        let list = &app.state.plugdb.lists.fx;
+        let stock = |name: &str| list.iter().find(|entry| entry.name == name).unwrap();
+        let phase = stock("ML Phase");
+        let amp = stock("ML Amp");
+        let meter = stock("ML Meter");
+        let removed = stock("ML Convolver");
+        let unknown = stock("Third party effect");
+        let create = |dir: &std::path::Path, entry: &Entry| {
+            let link = PluginLink { uid: entry.uid.clone(), name: entry.name.clone() };
+            let path = dir.join(link_filename(entry));
+            std::fs::write(&path, serde_json::to_vec_pretty(&link).unwrap()).unwrap();
+            path
+        };
+        let phase_old = create(&unsorted, phase);
+        let amp_custom = create(&custom, amp);
+        let meter_renamed = unsorted.join("My meter.plugin.json");
+        std::fs::rename(create(&unsorted, meter), &meter_renamed).unwrap();
+        let unknown_old = create(&unsorted, unknown);
+        std::fs::write(
+            root.join(".known-plugins.json"),
+            serde_json::to_vec(&[&removed.uid]).unwrap(),
+        ).unwrap();
+
+        sync_folder(&root, list, true).unwrap();
+        let phase_new = root.join("Stereo and Utility").join(link_filename(phase));
+        assert!(phase_new.is_file() && !phase_old.exists());
+        assert!(amp_custom.is_file() && meter_renamed.is_file() && unknown_old.is_file());
+        assert!(!root.join("Distortion").join(link_filename(amp)).exists());
+        assert!(!root.join("Metering and Reference").join(link_filename(meter)).exists());
+        assert!(!root.join("Reverb and Delay").join(link_filename(removed)).exists());
+
+        // A person who moves an effect after the migration keeps that placement.
+        std::fs::rename(&phase_new, &phase_old).unwrap();
+        sync_folder(&root, list, true).unwrap();
+        assert!(phase_old.is_file() && !phase_new.exists());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn editable_folders_survive_rescan_and_keep_plugin_identity() {
         let root=std::env::temp_dir().join(format!("lemon-editable-folders-{}",std::process::id()));
         let mut app=App::new(None);
@@ -770,5 +888,20 @@ mod tests {
             let index = app.plugins.effects.iter().position(|a| a.desc.name == name).unwrap();
             assert_eq!(entry.cmd, Cmd::Plugin(PlugCmd::Effect { index, slot: Some(4) }));
         }
+    }
+}
+
+#[cfg(test)]
+mod community_vendor_tests {
+    use super::*;
+    #[test]
+    fn community_replace_menu_keeps_vendor_subfolders() {
+        let mut app=App::new(None);
+        app.state.plugdb.prefs.menu_view=MenuView::Vendor;
+        app.state.plugdb.lists.gens=vec![Entry{index:3,name:"Test synth".into(),label:"Test synth".into(),uid:"test".into(),vendor:"Test vendor".into(),format:os_host::Format::Clap,category:"Synth",favorite:false,builtin:false}];
+        let items=section(&app.state,false,Target::Replace(1),true);
+        let vendor=items.iter().find(|x|x.label=="Test vendor").unwrap();
+        assert_eq!(vendor.children.len(),1);
+        assert_eq!(vendor.children[0].cmd,Cmd::Plugin(PlugCmd::Replace{index:3,row:1}));
     }
 }

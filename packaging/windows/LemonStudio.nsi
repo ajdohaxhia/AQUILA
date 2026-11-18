@@ -26,9 +26,11 @@ SetCompressor /SOLID lzma
 !ifdef TEST_INSTALL
 !define REGKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\LemonStudio-Package-Test"
 !define SHORTCUT "$INSTDIR\AQUILA.lnk"
+!define STARTMENU "$INSTDIR\Start Menu\AQUILA"
 !else
 !define REGKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\LemonStudio-MichaelLane"
 !define SHORTCUT "$DESKTOP\AQUILA.lnk"
+!define STARTMENU "$SMPROGRAMS\AQUILA"
 InstallDirRegKey HKCU "${REGKEY}" "InstallLocation"
 !endif
 Function .onInit
@@ -53,9 +55,16 @@ Section "AQUILA"
   File "${PAYLOAD}\LICENSE"
   File "${PAYLOAD}\THIRD-PARTY-NOTICES.txt"
   File "${PAYLOAD}\READ ME.txt"
-  File "${PAYLOAD}\Lemon Studio Source.zip"
+  File "${PAYLOAD}\ML Studio Source.zip"
   File "${PAYLOAD}\Lemon Starter.lmn"
   File "${PAYLOAD}\runtime\*.dll"
+  ReadRegStr $0 HKCU "${REGKEY}" "InstallLocation"
+  ${If} $0 == $INSTDIR
+    ; Retire the old copies shipped beside the executable in this installation.
+    Delete "$INSTDIR\Lemon Studio Source.zip"
+    Delete "$INSTDIR\Lemon Starter.lmn"
+  ${EndIf}
+!ifndef TEST_INSTALL
   WriteRegStr HKCU "Software\Classes\LemonStudio.LmnProject" "" "ML Studio project"
   WriteRegStr HKCU "Software\Classes\LemonStudio.LmnProject\DefaultIcon" "" '$\"$INSTDIR\lemonstudio.exe$\",0'
   WriteRegStr HKCU "Software\Classes\LemonStudio.LmnProject\shell\open\command" "" '$\"$INSTDIR\lemonstudio.exe$\" $\"%1$\"'
@@ -63,6 +72,7 @@ Section "AQUILA"
   ReadRegStr $0 HKCU "Software\Classes\.lmn" ""
   StrCmp $0 "" 0 +2
   WriteRegStr HKCU "Software\Classes\.lmn" "" "LemonStudio.LmnProject"
+!endif
   WriteUninstaller "$INSTDIR\Uninstall.exe"
 !ifndef TEST_INSTALL
   ; Retire the old shortcut name when upgrading the same installation.
@@ -74,8 +84,10 @@ Section "AQUILA"
   ${EndIf}
 !endif
   CreateShortcut "${SHORTCUT}" "$INSTDIR\lemonstudio.exe"
+  CreateDirectory "${STARTMENU}"
+  CreateShortcut "${STARTMENU}\AQUILA.lnk" "$INSTDIR\lemonstudio.exe"
   WriteRegStr HKCU "${REGKEY}" "DisplayName" "AQUILA"
-  WriteRegStr HKCU "${REGKEY}" "DisplayVersion" "2026.11.16.4"
+  WriteRegStr HKCU "${REGKEY}" "DisplayVersion" "2026.11.17.3"
   WriteRegStr HKCU "${REGKEY}" "Publisher" "AQUILA (based on Lemon Studio by its contributors)"
   WriteRegStr HKCU "${REGKEY}" "InstallLocation" "$INSTDIR"
   WriteRegStr HKCU "${REGKEY}" "UninstallString" '$\"$INSTDIR\Uninstall.exe$\"'
@@ -86,6 +98,7 @@ Section "AQUILA"
   nsExec::ExecToLog '"$INSTDIR\lemonstudio.exe" --cleanup-updates'
 SectionEnd
 Section "Uninstall"
+!ifndef TEST_INSTALL
   ReadRegStr $0 HKCU "Software\Classes\LemonStudio.LmnProject\shell\open\command" ""
   StrCmp $0 '$\"$INSTDIR\lemonstudio.exe$\" $\"%1$\"' 0 lmn_assoc_done
   DeleteRegKey HKCU "Software\Classes\LemonStudio.LmnProject"
@@ -94,12 +107,17 @@ Section "Uninstall"
   StrCmp $0 "LemonStudio.LmnProject" 0 lmn_assoc_done
   DeleteRegValue HKCU "Software\Classes\.lmn" ""
   lmn_assoc_done:
+!endif
   Delete "${SHORTCUT}"
+  Delete "${STARTMENU}\AQUILA.lnk"
+  RMDir "${STARTMENU}"
   Delete "$INSTDIR\lemonstudio.exe"
   Delete "$INSTDIR\LICENSE"
   Delete "$INSTDIR\THIRD-PARTY-NOTICES.txt"
   Delete "$INSTDIR\READ ME.txt"
   Delete "$INSTDIR\Lemon Studio Source.zip"
+  Delete "$INSTDIR\ML Studio Source.zip"
+  Delete "$INSTDIR\Lemon Starter.lmn"
   Delete "$INSTDIR\Lemon Starter.lmn"
   Delete "$INSTDIR\concrt140.dll"
   Delete "$INSTDIR\msvcp140.dll"

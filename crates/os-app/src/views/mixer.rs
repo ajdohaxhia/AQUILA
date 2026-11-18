@@ -898,7 +898,7 @@ fn strip_body(ui:&mut Ui,s:&State,n:u16,left:f32,bottom:f32,active:Option<KnobId
     let led_x=control_x+if full {23.*knob_scale}else{0.};
     let hit_radius=if full {8.5} else {7.};
     let led_y=ly.y(if full {PAN_Y}else{LED_Y});
-    ui.hit(Rect::new(led_x-hit_radius,led_y-hit_radius,2.*hit_radius,2.*hit_radius), Action::Mix(MHit::Led(n)), "Mute / solo");
+    ui.hit(Rect::new(led_x-hit_radius,led_y-hit_radius,2.*hit_radius,2.*hit_radius), Action::Mix(MHit::Led(n)), "Mute; right-click solo; Alt-click solo with inputs");
     if console {if full {console_skin::lamp(ui,led_x,led_y,enabled,Color::rgb(0xb7d98b),5.);} else {console_skin::lamp(ui,led_x,led_y,enabled,Color::rgb(0xb7d98b),4.);}}else{led(ui, control_x, ly.y(LED_Y), enabled);}
     let lock = if led_x + 23. <= left + width {
         Rect::new(led_x + 9., led_y - 7., 14., 14.)
@@ -2077,7 +2077,7 @@ fn knobs_switch(ui:&mut Ui,s:&State,n:u16,r:Rect){
 fn headphones_controls(ui:&mut Ui,s:&State,r:Rect,compact:bool){
  let on=s.headphones.on;
  let icon=Rect::new(r.x, r.y,if compact{19.}else{38.},if compact{24.}else{34.});
- let hint=if s.headphones.name.is_empty(){"Choose headphones — searchable AutoEq correction for monitoring only".into()}else{format!("{} | {} | Click to choose headphones. Monitoring only; never exported.",s.headphones.name,if on{"ON"}else{"OFF"})};
+ let hint=if s.headphones.name.is_empty(){"Choose headphones — searchable correction profiles for monitoring only".into()}else{format!("{} | {} | Click to choose headphones. Monitoring only; never exported.",s.headphones.name,if on{"ON"}else{"OFF"})};
  let hover=ui.hit(icon,Action::Mix(MHit::Headphones),hint);
     if !(mx::view(s)==mx::WIDE) {
  ui.c.fill_rrect(icon,4.,if hover{ui.t.button_hi}else{ui.t.s(0x263237)});

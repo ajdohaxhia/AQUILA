@@ -83,6 +83,8 @@ pub enum Cmd {
     BrowseSample = 15,
     /// Plugin -> host: sampler fit command (0 detect, 1 fit, 2 enter BPM, 3 reset, 100+n beats, 1000+n bars, 1000000+source milli-BPM).
     SampleFit = 16,
+    /// Plugin -> host: completed persistent-state edit; argument is a bounded outbox token.
+    StateEdit = 17,
 }
 
 impl Cmd {
@@ -104,6 +106,7 @@ impl Cmd {
             14 => Cmd::Notes,
             15 => Cmd::BrowseSample,
             16 => Cmd::SampleFit,
+            17 => Cmd::StateEdit,
             _ => return None,
         })
     }
@@ -474,6 +477,16 @@ mod local {
         QUEUE.lock().map(|mut q| std::mem::take(&mut *q)).unwrap_or_default()
     }
 
+    pub fn take_host_state_messages() -> Vec<(u64, Cmd, isize)> {
+        let mut out = Vec::new();
+        if let Ok(mut queue) = QUEUE.lock() {
+            queue.retain(|message| {
+                if message.1 == Cmd::StateEdit { out.push(*message); false } else { true }
+            });
+        }
+        out
+    }
+
     /// Host side: a connection to the editor of a Lemon plugin.
     pub struct Link {
         peer: Arc<Peer>,
@@ -543,7 +556,7 @@ mod local {
 }
 
 #[cfg(not(windows))]
-pub use local::{set_host_waker, take_host_messages, Link, Peer};
+pub use local::{set_host_waker, take_host_messages, take_host_state_messages, Link, Peer};
 
 #[cfg(test)]
 mod tests {
@@ -599,5 +612,33 @@ mod tests {
         assert_eq!(PageIcon::from_id(99), PageIcon::Plugin);
         assert_eq!(unpack_note(pack_note(67, 100, true)), (67, 100, true));
         assert_eq!(unpack_note(pack_note(0, 0, false)), (0, 0, false));
+    }
+}
+
+/// JSON object containing the previous values of changed NIH `fields` and `params`.
+/// Null removes a newly added key. Only completed editor transactions use this path;
+/// normal parameter gestures continue through the plugin API.
+static STATE_EDITS: std::sync::Mutex<Vec<(usize, String)>> = std::sync::Mutex::new(Vec::new());
+static STATE_TOKEN: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(1);
+pub const STATE_EDIT_BUDGET: usize = 128 * 1024 * 1024;
+pub fn post_state_edit(edit: String) -> Option<usize> {
+    let mut queue = STATE_EDITS.lock().ok()?;
+    if edit.len() > STATE_EDIT_BUDGET { return None; }
+    while queue.len() >= 128 || queue.iter().map(|(_, e)| e.len()).sum::<usize>() + edit.len() > STATE_EDIT_BUDGET {
+        queue.remove(0);
+    }
+    let token = STATE_TOKEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    queue.push((token, edit));
+    Some(token)
+}
+pub fn take_state_edit(token: usize) -> Option<String> {
+    let mut queue = STATE_EDITS.lock().ok()?;
+    let index = queue.iter().position(|(id, _)| *id == token)?;
+    Some(queue.remove(index).1)
+}
+#[cfg(windows)]
+pub fn send_state_edit(editor: isize, edit: String) {
+    if let Some(token) = post_state_edit(edit) {
+        if to_host(editor, Cmd::StateEdit, token as isize) != 1 { take_state_edit(token); }
     }
 }

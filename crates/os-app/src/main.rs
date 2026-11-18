@@ -23,6 +23,7 @@ mod collaboration;
 mod marker_profiles;
 mod instrument_stack;
 mod clip_effects;
+mod ml_patch;
 mod ara;
 mod ai_control;
 mod voice_assistant;
@@ -59,6 +60,8 @@ mod equiv;
 #[cfg(test)]
 mod open_bench;
 mod browser;
+#[cfg(any(windows, target_os = "macos"))]
+mod sample_drag;
 mod browser_files;
 mod browser_preview;
 mod plugin_downloads;
@@ -101,6 +104,7 @@ mod export_form;
 mod factory_folder;
 mod high_visibility;
 mod history;
+mod plugin_state_undo;
 mod hold;
 mod keep_on_disk;
 mod icons;
@@ -776,6 +780,8 @@ impl Shell {
     }
 
     fn step(&mut self, el: &ActiveEventLoop, held: bool) {
+        #[cfg(target_os = "macos")]
+        sample_drag::finish(&mut self.app);
         if self.app.state.native_view.is_none() {self.main_mouse=self.app.mouse;}
         self.detached.sync(&mut self.app,el,&mut self.tool_cursors);
         let current=screens(el);
@@ -792,10 +798,11 @@ impl Shell {
             let state = &self.app.state;
             let target = if !state.show_browser { None }
             else if state.native_detached.contains(&app::Win::Browser) {
-                self.detached.browser_window().map(|window| (window, 0.0, f64::from(window.inner_size().width)))
+                self.detached.browser_window().map(|window| (window, 0.0, 0.0, f64::from(window.inner_size().width)))
             } else if !state.browser_auto_hidden {
                 let k = ui_scale(main);
-                Some((main.as_ref(), f64::from(views::work_y(state))*k, f64::from(views::browser_w(state))*k))
+                let r = views::browser_content(state);
+                Some((main.as_ref(), f64::from(r.x)*k, f64::from(r.y)*k, f64::from(r.w)*k))
             } else { None };
             edited_sample::update_target(&self.app,target);
             edited_sample::finish(&mut self.app);
@@ -1103,6 +1110,16 @@ impl ApplicationHandler for Shell {
     }
 
     fn window_event(&mut self, el: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
+        #[cfg(any(windows, target_os = "macos"))]
+        if matches!(event, WindowEvent::CursorMoved { .. }) && self.app.dragging_browser_samples() {
+            let source = if self.app.state.native_input == Some(app::Win::Browser) {
+                self.detached.browser_window()
+            } else { self.window.as_deref() };
+            if source.is_some_and(|window| sample_drag::handoff(&mut self.app, window)) {
+                self.pending = true;
+                return;
+            }
+        }
         if matches!(event, WindowEvent::MouseInput { state: ElementState::Released, button: MouseButton::Left, .. })
             && self.app.state.native_input == Some(app::Win::Browser)
             && self.app.dragging_browser_samples()

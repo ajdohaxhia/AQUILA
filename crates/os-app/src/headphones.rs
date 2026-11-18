@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! AutoEq correction lives only at the physical output, never in Engine/export/project state.
+//! Headphone correction lives only at the physical output, never in Engine/export/project state.
 use crate::{
     app::App,
     dialog::{Body, Field},
@@ -14,9 +14,32 @@ use std::{io::Read, sync::mpsc, time::Duration};
 
 pub const CATALOG: &str = include_str!("../assets/headphones/catalog.tsv");
 const REV: &str = include_str!("../assets/headphones/REVISION");
+const H200_PATH: &str = "oratory1990/bundled-adam-h200";
+
+const HPM1000_PATH: &str = "SeokHwan-BAE1234/bundled-behringer-hpm1000";
+
+fn bundled_text(path: &str) -> Option<&'static str> {
+    match path {
+        H200_PATH => Some(include_str!("../assets/headphones/adam-audio-h200.txt")),
+        HPM1000_PATH => Some(include_str!("../assets/headphones/behringer-hpm1000.txt")),
+        _ => None,
+    }
+}
+
+pub fn is_bundled(path: &str) -> bool {
+    bundled_text(path).is_some()
+}
+
 pub fn catalog() -> &'static Vec<(&'static str, &'static str)> {
     static C: std::sync::OnceLock<Vec<(&str, &str)>> = std::sync::OnceLock::new();
-    C.get_or_init(|| CATALOG.lines().filter_map(|l| l.split_once('\t')).collect())
+    C.get_or_init(|| {
+        // Append bundled entries so the pinned AutoEq cache indices stay valid.
+        CATALOG
+            .lines()
+            .filter_map(|line| line.split_once('\t'))
+            .chain([("ADAM Audio H200", H200_PATH), ("Behringer HPM1000", HPM1000_PATH)])
+            .collect()
+    })
 }
 #[derive(Clone, Copy, Default, Debug)]
 pub struct Band {
@@ -220,6 +243,10 @@ pub fn select(app: &mut App, index: usize) {
 }
 fn load(index: usize) -> Result<String, String> {
     let (_, path) = catalog()[index];
+    if let Some(text) = bundled_text(path) {
+        parse(text)?;
+        return Ok(text.to_owned());
+    }
     let cache = os_paths::user_dir().map(|p| {
         p.join("Headphone profiles")
             .join(REV.trim())
@@ -499,7 +526,10 @@ mod tests {
     }
     #[test]
     fn headphone_profiles_audio_and_bypass() {
-        assert_eq!(catalog().len(), 6033);
+        assert_eq!(catalog().len(), CATALOG.lines().count() + 2);
+        let index = catalog().iter().position(|entry| entry.0 == "Behringer HPM1000").unwrap();
+        let hpm = parse(&load(index).unwrap()).unwrap();
+        assert_eq!((hpm.count, hpm.preamp), (11, -6.5));
         let p = parse(include_str!("../assets/headphones/test-hd650.txt")).unwrap();
         assert_eq!(p.count, 10);
         assert_eq!(p.preamp, -6.1);
@@ -630,6 +660,12 @@ mod tests {
             .results
             .iter()
             .any(|&i| catalog()[i].0 == "Sennheiser HD 650"));
+        search.search.set("adam h200");
+        search.filter();
+        assert_eq!(search.results.len(), 1);
+        let h200 = parse(&load(search.results[0]).unwrap()).unwrap();
+        assert_eq!(h200.count, 9);
+        assert_eq!(h200.preamp, -6.);
         search.search.set("not a real headphone zzzz");
         search.filter();
         assert!(search.results.is_empty());

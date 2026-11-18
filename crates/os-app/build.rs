@@ -167,6 +167,18 @@ fn main() {
     } else {
         std::fs::write(worker_out, []).unwrap();
     }
+    match std::env::var("CARGO_CFG_TARGET_OS").as_deref() {
+        Ok("windows") => {
+            println!("cargo:rerun-if-changed=src/sample_drag_windows.cpp");
+            cc::Build::new().cpp(true).file("src/sample_drag_windows.cpp").compile("sample_drag");
+            for lib in ["shell32", "ole32", "uuid"] { println!("cargo:rustc-link-lib={lib}"); }
+        }
+        Ok("macos") => {
+            println!("cargo:rerun-if-changed=src/sample_drag_macos.m");
+            cc::Build::new().flag("-fobjc-arc").file("src/sample_drag_macos.m").compile("sample_drag");
+        }
+        _ => {}
+    }
     factory_presets();
     updater();
     let version = version();

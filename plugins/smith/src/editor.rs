@@ -1281,7 +1281,7 @@ mod win32 {
                     1
                 }
                 Cmd::Changed | Cmd::Note | Cmd::Automate | Cmd::Audio | Cmd::Resizable | Cmd::SetSize | Cmd::Notes
-                | Cmd::BrowseSample | Cmd::SampleFit => 0,
+                | Cmd::BrowseSample | Cmd::SampleFit | Cmd::StateEdit => 0,
             }
         }
 

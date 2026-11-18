@@ -2077,7 +2077,7 @@ mod win32 {
                     }
                     1
                 }
-                Cmd::SampleFit | Cmd::BrowseSample | Cmd::Changed | Cmd::Note | Cmd::Automate | Cmd::Audio | Cmd::Resizable | Cmd::SetSize | Cmd::Notes => 0,
+                Cmd::StateEdit | Cmd::SampleFit | Cmd::BrowseSample | Cmd::Changed | Cmd::Note | Cmd::Automate | Cmd::Audio | Cmd::Resizable | Cmd::SetSize | Cmd::Notes => 0,
             }
         }
 
@@ -2444,7 +2444,7 @@ mod win32 {
             return None;
         }
         let mut file = vec![0u16; 1024];
-        let filter: Vec<u16> = if save { "WAV files\0*.wav\0\0" } else { "Audio files\0*.wav;*.flac;*.ogg;*.wv;*.aif;*.aiff;*.mp3;*.m4a\0All files\0*.*\0\0" }
+        let filter: Vec<u16> = if save { "WAV files\0*.wav\0\0" } else { "Audio files\0*.wav;*.flac;*.ogg;*.wv;*.aif;*.aiff;*.mp3;*.m4a;*.rx2;*.rex;*.rcy\0All files\0*.*\0\0" }
             .encode_utf16()
             .collect();
         let title = wide(if save { "Save sample as" } else { "Open sample" });
@@ -2925,7 +2925,7 @@ mod gui {
             if save {
                 d.set_title("Save sample as").add_filter("WAV files", &["wav"]).save_file()
             } else {
-                d.set_title("Open sample").add_filter("Audio files", &["wav", "flac", "ogg", "wv", "aif", "aiff", "mp3", "m4a"]).pick_file()
+                d.set_title("Open sample").add_filter("Audio files", &["wav", "flac", "ogg", "wv", "aif", "aiff", "mp3", "m4a", "rx2", "rex", "rcy"]).pick_file()
             }
         });
         path.flatten().map(|p| p.to_string_lossy().into_owned())

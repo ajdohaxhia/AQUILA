@@ -9,7 +9,7 @@ pub(crate) mod retention;
 
 pub(crate) const SETTINGS_VISIBILITY: &str = "visible_update-preferences";
 
-pub const VERSION: u64 = 2026111604;
+pub const VERSION: u64 = 2026111703;
 /// Where AQUILA's builds are published. AQUILA has no signed update feed of its own yet, so it never contacts
 /// ML Studio's update server: the Update button opens this page instead.
 pub const RELEASES: &str = "https://github.com/ajdohaxhia/AQUILA/releases";
@@ -25,9 +25,16 @@ const PRODUCT: &str = "aquila-mac-arm64";
 #[cfg(all(target_os="macos",not(target_arch="aarch64")))]
 const PRODUCT: &str = "aquila-mac-x86_64";
 const EXE: &str = if cfg!(windows) {"lemonstudio.exe"} else {"lemonstudio"};
+// Existing updaters require this exact signed payload name.
+const SOURCE_PAYLOAD: &str = "Lemon Studio Source.zip";
+const SOURCE_ARCHIVE: &str = "AQUILA Source.zip";
 const MAC_FILES: &[&str] = &["Contents/MacOS/lemonstudio","Contents/Info.plist","Contents/PkgInfo","Contents/Resources/Assets.car","Contents/Resources/lemonstudio.icns","Contents/_CodeSignature/CodeResources"];
 fn expected_files() -> Vec<&'static str> {
-    if cfg!(target_os="macos") {MAC_FILES.to_vec()} else {vec![EXE,"AQUILA Source.zip","THIRD-PARTY-NOTICES.txt","LICENSE"]}
+    if cfg!(target_os="macos") {MAC_FILES.to_vec()} else {vec![EXE,SOURCE_PAYLOAD,"THIRD-PARTY-NOTICES.txt","LICENSE"]}
+}
+
+fn installed_name(name: &str) -> &str {
+    if name == SOURCE_PAYLOAD { SOURCE_ARCHIVE } else { name }
 }
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
@@ -390,7 +397,7 @@ fn install_files(stage: &Path, target: &Path, manifest: &Manifest) -> Result<()>
     let root=fs::canonicalize(root)?;
     for file in &manifest.files {
         checked_file(&stage.join(&file.name),file)?;
-        let dest=root.join(&file.name);
+        let dest=root.join(installed_name(&file.name));
         if dest.exists() { let meta=fs::symlink_metadata(&dest)?;if !meta.is_file() || meta.file_type().is_symlink(){return Err("Unsafe installation destination".into())} }
     }
     let backup=root.join(format!(".update-backup-{}-{}",manifest.version,std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_nanos()));
@@ -401,7 +408,8 @@ fn install_files(stage: &Path, target: &Path, manifest: &Manifest) -> Result<()>
         // Executable last. If it is locked by another session, roll all preceding changes back.
         let mut files=manifest.files.clone(); files.sort_by_key(|f|f.name==EXE);
         for file in files {
-            let dest=root.join(&file.name); let old=backup.join(&file.name); let existed=dest.exists();
+            let name=installed_name(&file.name);
+            let dest=root.join(name); let old=backup.join(name); let existed=dest.exists();
             let temp=backup.join(format!("{}.new",file.name));
             fs::copy(stage.join(&file.name),&temp)?; checked_file(&temp,&file)?;
             #[cfg(unix)] {use std::os::unix::fs::PermissionsExt;fs::set_permissions(&temp,fs::Permissions::from_mode(if file.name==EXE {0o755}else{0o644}))?;}
@@ -517,6 +525,8 @@ pub fn helper(args: &[String]) -> i32 {
         parent_closed=true;
         install(&stage,&target,&manifest)?;
         installed=true;
+        #[cfg(windows)]
+        if let Err(error)=windows_launch::repair_start_menu(&target){eprintln!("Start menu shortcut: {error}");}
         let _=retention::run(&target,manifest.version,Some(&stage));
         let _=fs::write(stage.join("result.txt"),format!("Installed {}",manifest.label));
         report_result(&format!("AQUILA updated to {}.",manifest.label));
@@ -763,8 +773,8 @@ mod tests {
         let key=SigningKey::from_bytes(&[19;32]);
         let root=std::env::temp_dir().join(format!("lemon-update-test-{}",std::process::id()));
         let stage=root.join("stage");let app=root.join("app"); fs::create_dir_all(&stage).unwrap();fs::create_dir_all(&app).unwrap();
-        let files:Vec<_>=[EXE,"AQUILA Source.zip","THIRD-PARTY-NOTICES.txt","LICENSE"].iter().map(|n| {
-            fs::write(stage.join(n),b"new payload").unwrap();fs::write(app.join(n),b"old payload").unwrap();
+        let files:Vec<_>=expected_files().iter().map(|n| {
+            fs::write(stage.join(n),b"new payload").unwrap();fs::write(app.join(installed_name(n)),b"old payload").unwrap();
             File{name:n.to_string(),size:11,sha256:hex(&Sha256::digest(b"new payload"))}
         }).collect();
         let mut m=Manifest{product:PRODUCT.into(),version:VERSION+1,label:"Test".into(),notes:"".into(),files};
@@ -793,10 +803,12 @@ mod tests {
             let locked=fs::OpenOptions::new().read(true).share_mode(0).open(app.join(EXE)).unwrap();
             assert!(install(&stage,&app.join(EXE),&m).is_err());
             drop(locked);
-            for file in &m.files {assert_eq!(fs::read(app.join(&file.name)).unwrap(),b"old payload", "failed update must roll back every file");}
+            for file in &m.files {assert_eq!(fs::read(app.join(installed_name(&file.name))).unwrap(),b"old payload", "failed update must roll back every file");}
         }
         install(&stage,&app.join(EXE),&m).unwrap();
         assert_eq!(fs::read(app.join(EXE)).unwrap(),b"new payload");
+        assert_eq!(fs::read(app.join(SOURCE_ARCHIVE)).unwrap(),b"new payload");
+        assert!(!app.join(SOURCE_PAYLOAD).exists());
         assert!(fs::read_dir(&app).unwrap().filter_map(std::result::Result::ok).any(|e|e.file_name().to_string_lossy().starts_with(".update-backup-") && fs::read(e.path().join(EXE)).is_ok_and(|b|b==b"old payload")));
         assert_eq!(fs::read(app.join("song.flp")).unwrap(),b"keep my project");
         assert_eq!(fs::read(surge).unwrap(), b"existing instrument");

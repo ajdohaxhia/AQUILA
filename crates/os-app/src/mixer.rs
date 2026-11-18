@@ -468,13 +468,13 @@ impl Default for MixerUi {
     }
 }
 
-/// Highest insert a channel can target (at least 1).
+/// Highest visible insert a channel can target; zero means Master only.
 pub fn max_insert(p: &os_model::Project) -> u16 {
     max_insert_of(&p.mixer)
 }
 
 pub fn max_insert_of(mixer: &[MixerTrack]) -> u16 {
-    (mixer.len().saturating_sub(2) as u16).max(1)
+    mixer.len().saturating_sub(2) as u16
 }
 
 /// Inserts shown: stored tracks minus the master and the last (hidden) one (§1).
@@ -1073,6 +1073,10 @@ pub fn hit(app: &mut App, h: MHit) -> Option<String> {
     if h==MHit::AttachPlaylist {crate::attached_mixer::toggle(app);return None;}
     if let MHit::Lock(t) = h { return toggle_lock(app, t); }
     if locked_hit(&app.state, h) { return Some(LOCK_MESSAGE.into()); }
+    if let MHit::Led(n)=h && app.alt {
+        solo_with(&mut app.state,n,true);
+        return None;
+    }
     if h==MHit::MasterAssistant {crate::master_assistant::open(app,false);return None;}
     if h==MHit::MasterAssistantToggle {crate::master_assistant::open(app,true);return None;}
     if h==MHit::Headphones {crate::headphones::open(app);return None;}
@@ -1942,7 +1946,7 @@ fn select_linked(s: &mut State, n: u16, down: bool) -> Option<String> {
 }
 
 /// The inserts Trim unused tracks deletes (spec: ui/mixer-track-commands.md §4, §6): no channel uses them and (unless
-/// `non_empty`) they hold no effect; a track a kept track sends to stays, and so does one insert at least.
+/// `non_empty`) they hold no effect; a track a kept track sends to stays. Master is always kept.
 pub fn trim_list(s: &State, non_empty: bool) -> Vec<u16> {
     let n = inserts(s);
     let last_protected = (1..=n).rev().find(|&t| group_structure_locked(s, t)).unwrap_or(0);
@@ -1963,14 +1967,12 @@ pub fn trim_list(s: &State, non_empty: bool) -> Vec<u16> {
         }
         gone.retain(|t| !fed.contains(t));
     }
-    if gone.len() == usize::from(n) {
-        gone.remove(0);
-    }
     gone
 }
 
 /// Deletes the tracks in `gone`: the others close up in order, channels and sends follow them, the mixer gets
 /// shorter (spec: ui/mixer-track-commands.md §4).
+#[allow(dead_code)]
 fn remove_tracks(s: &mut State, gone: &[u16]) -> Option<String> {
     if gone.iter().any(|&t| protected_routes(s, t) || group_shift_locked(s, t)) { return Some(LOCK_MESSAGE.into()); }
     if gone.is_empty() {
@@ -2452,6 +2454,8 @@ pub(crate) fn delete_track(s: &mut State, n: u16) -> Option<String> {
     changed(s);
     Some(format!("Deleted {label}"))
 }
+// ML Studio's insert deletion, used by Trim; AQUILA keeps `delete_track` for Delete and the control API.
+include!("mixer_delete.rs");
 
 fn reset_blocked(s: &State, tracks: &[u16]) -> bool {
     locked(s, 0) || tracks.iter().any(|&t| protected_routes(s, t) || group_structure_locked(s, t))
@@ -2616,6 +2620,10 @@ fn track_items(s: &State, n: u16) -> Vec<PItem> {
         PItem::new(if targets(s,n).len()>1{"Solo selected tracks"}else{"Solo"},mx(MCmd::Solo(n))),
         PItem::new("Reset selected track(s) to default", mx(MCmd::Reset(n))),
         PItem::new("Reset selected track(s) routing", mx(MCmd::ResetRouting(n))),
+        {
+            let item=PItem::new("Delete selected insert(s)",mx(MCmd::Delete(n))).key("Delete");
+            if targets(s,n).iter().any(|&t|t>0 && t<=inserts(s)){item}else{item.off()}
+        },
         PItem::sep(),
         PItem::new("Alt solo selected track(s)", mx(MCmd::AltSolo(n))).key("Alt+S"),
         PItem::new("Unroute tracks routed to the selected track(s)", mx(MCmd::UnrouteTo(n))),
@@ -2986,6 +2994,8 @@ pub fn run(app: &mut App, c: MCmd) -> Option<String> {
         MCmd::ArmDisk(t)=>return app.arm_mixer_disk(t),
         _=>{}
     }
+    // AQUILA: Delete keeps its own track deletion (undo restores colours and icons; automation follows); Trim uses ML Studio's.
+    if let MCmd::Trim{non_empty}=c {return delete_inserts(app,trim_list(&app.state,non_empty));}
     if let MCmd::SlotScale(slot, pct) = c {
         let key = crate::plugins::fx_key(app.state.selected_mixer, slot);
         app.plugins.set_editor_scale(key, pct.map(|p| f32::from(p) / 100.0));
@@ -3336,10 +3346,7 @@ fn run_now(app: &mut App, c: MCmd) -> Option<String> {
             s.mixer.faders = FaderGroup::default();
             None
         }
-        MCmd::Trim { non_empty } => {
-            let gone = trim_list(s, non_empty);
-            remove_tracks(s, &gone)
-        }
+        MCmd::Trim { .. } => unreachable!(),
         MCmd::MoveLeft(n) => move_track(s, n, -1),
         MCmd::MoveRight(n) => move_track(s, n, 1),
         MCmd::Delete(n) => delete_track(s, n),
@@ -3956,6 +3963,7 @@ impl App {
         }
         #[cfg(plugin_windows)]
         {
+            if crate::ml_patch::open(self,key){return;}
             if self.open_generic_editor(key){return;}
             let info = fx_info(&self.state.project, &self.state.mixer, key);
             match info.map(|i| self.plugins.open_window(key, i)) {
@@ -4172,7 +4180,7 @@ mod tests {
             .find(|item| item.cmd == Cmd::Mixer(MCmd::CustomColor(3))).unwrap();
         crate::playlist::run(&mut a, color.cmd.clone());
         crate::patterns::hit(&mut a.state, crate::patterns::Hit::EditSwatch(0));
-        crate::patterns::key(&mut a.state, &Key::Character("#237BCD".into()), false);
+        a.state.pat_ui.name_box.as_mut().unwrap().custom.as_mut().unwrap().1=crate::theme_adjust::hsv(os_ui::Color::rgb(0x237BCD));
         crate::patterns::key(&mut a.state, &Key::Named(NamedKey::Enter), false);
         assert_eq!(track(&a.state, 3).unwrap().color, Some(Rgb::new(0x23, 0x7B, 0xCD)));
         assert_eq!(crate::history::undo(&mut a.state).as_deref(), Some("Mixer track color"));
@@ -4925,12 +4933,12 @@ mod tests {
         assert_eq!(track(&a.state, 5).unwrap().routes, vec![6], "its send follows 13 to 6");
         assert!(a.state.project.mixer.last().unwrap().routes.is_empty(), "the hidden last track stays");
         assert!(trim_list(&a.state, true).is_empty());
-        // Nothing uses any insert: one stays.
+        // Nothing uses any insert: all can be removed.
         for c in a.state.project.channels.iter_mut() {
             c.mixer_track = 0;
         }
         track_mut(&mut a.state, 5).unwrap().routes = vec![0];
-        assert_eq!(trim_list(&a.state, true), vec![2, 3, 4, 5, 6]);
+        assert_eq!(trim_list(&a.state, true), vec![1, 2, 3, 4, 5, 6]);
     }
 
     // spec: ui/mixer-track-commands.md §5
@@ -5027,6 +5035,16 @@ mod tests {
         assert_eq!(on(&a).len(), a.state.project.mixer.len());
         run(&mut a, MCmd::Solo(5));
         assert_eq!(on(&a), vec![0, 3, 5], "Solo keeps where 5 sends");
+    }
+
+    #[test]
+    fn community_alt_click_mixer_led_solos_bus_with_inputs() {
+        let mut a=app();track_mut(&mut a.state,5).unwrap().routes=vec![3];
+        a.alt=true;hit(&mut a,MHit::Led(3));
+        assert_eq!(a.state.project.mixer.iter().filter(|m|m.enabled).map(|m|m.index).collect::<Vec<_>>(),vec![0,3,5]);
+        hit(&mut a,MHit::Led(3));assert!(a.state.project.mixer.iter().all(|m|m.enabled));
+        a.alt=false;hit(&mut a,MHit::Led(3));assert!(!track(&a.state,3).unwrap().enabled);
+        assert!(track(&a.state,5).unwrap().enabled);
     }
 
     #[test]

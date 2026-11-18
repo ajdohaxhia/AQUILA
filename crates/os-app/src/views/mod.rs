@@ -182,6 +182,23 @@ pub fn browser_w(s: &State) -> f32 {
     s.browser_w.min(s.screen.0 / 2.0).max(BROWSER_W)
 }
 
+/// Shared dock geometry for painting, hit testing and native sample-drop targets.
+pub fn browser_right(s: &State) -> bool {
+    s.native_view != Some(Win::Browser) && browser::opt(s, browser::OPT_RIGHT)
+}
+
+pub fn browser_rect(s: &State) -> Rect {
+    let w = browser_w(s);
+    let y = work_y(s);
+    Rect::new(if browser_right(s) { s.screen.0 - w } else { 0. }, y, w, (s.screen.1 - y).max(0.))
+}
+
+pub fn browser_content(s: &State) -> Rect {
+    let r = browser_rect(s);
+    let split = if browser_right(s) { 8. } else { 0. };
+    Rect::new(r.x + split, r.y, (r.w - 8.).max(0.), r.h)
+}
+
 /// Paints the frame; returns the number of hits registered before the overlays (menus, popups, picker...), which cover
 /// docked plugin windows.
 pub fn paint(ui: &mut Ui, s: &State, f: &FrameInfo) -> usize {
@@ -193,9 +210,7 @@ pub fn paint(ui: &mut Ui, s: &State, f: &FrameInfo) -> usize {
     ui.c.set_cover(None);
 
     // Workspace (§9): the theme's picture or the watermark, then docked windows on top.
-    let left = if s.show_browser { browser_w(s) } else { 0.0 };
-    let top = work_y(s);
-    let work = Rect::new(left, top, w - left, h - top);
+    let work = s.work_rect();
     let docked = s.docked();
     // spec: ui/flstheme.md §3 (BackMode, BackPicFilename); no watermark over a picture (`wallpaper`).
     if docked.is_none() && !crate::wallpaper::paint(ui, work) && crate::workspace_visibility::shown("visible_watermark") {
@@ -212,7 +227,7 @@ pub fn paint(ui: &mut Ui, s: &State, f: &FrameInfo) -> usize {
     let docked_at = s.z.iter().rposition(|&w| s.is_max(w));
     // Each part is skipped by a repaint that misses it (`Ui::part`).
     if s.show_browser && (s.native_view == Some(Win::Browser) || (s.native_view.is_none() && !s.native_detached.contains(&Win::Browser))) {
-        let r = Rect::new(0.0, top, browser_w(s), h - top);
+        let r = browser_rect(s);
         ui.part(Seg::Browser, r, |ui| browser::paint(ui, s, r));
     }
     let _ = work;
@@ -225,14 +240,16 @@ pub fn paint(ui: &mut Ui, s: &State, f: &FrameInfo) -> usize {
         ui.win = Some(win);
         let r = s.win_rect(win);
         // A window paints inside its paint area (also what it marks as drawn, e.g. text's generous overhang).
-        let a = paint_area(s, win);
+        let a = paint_area(s, win).intersect(&work);
         ui.c.push_clip(a);
         // Transparent windows: one that isn't the active one shows what is behind it (spec: ui/animations.md §4.9). A
         // maximized one has nothing behind it to show.
         let inactive = i + 1 != s.z.len() && !s.is_max(win) && crate::prefs::index(&crate::prefs::TRANSPARENT_WINDOWS) == 1;
         let opacity = s.motion.borrow_mut().window_opacity(win, None, inactive, a);
         let behind = (opacity < 1.0 && ui.c.visible(a)).then(|| ui.c.begin_layer(a, false));
-        match win {
+        // Floating editors may extend beyond the workspace. Their paint and
+        // pointer regions must not cover the docked Browser on either side.
+        ui.clip_live_controls(a, |ui| match win {
             Win::Playlist => ui.part(Seg::Win(win), a, |ui| playlist::paint(ui, s, r, f)),
             Win::Mixer => ui.part(Seg::Win(win), a, |ui| {
                 // Timed while the cables swing: a mixer too slow to redraw them hangs them still. Not in tests: they
@@ -259,7 +276,7 @@ pub fn paint(ui: &mut Ui, s: &State, f: &FrameInfo) -> usize {
             Win::Container => ui.part(Seg::Win(win), a, |ui| container::paint(ui, s, f)),
             Win::PluginPalette => ui.part(Seg::Win(win), a, |ui| plugin_palette::paint(ui, s, f)),
             _ => {}
-        }
+        });
         if let Some(l) = behind {
             ui.c.end_layer(l, opacity);
         }

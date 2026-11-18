@@ -108,6 +108,7 @@ pub(super) enum Note {
     Choke(u8, Option<u32>),
     /// Tuning of the voices of a key, semitones from the key's own pitch.
     Tune(u8, f32),
+    Slide { key: u8, color: u8, tuning: f32, velocity: f32, pan: f32 },
 }
 
 /// Event velocities below zero: a note off, a choke (an audio clip's end), a slide note, a layer note's own cut.
@@ -151,11 +152,12 @@ pub(super) struct Event {
     pub colour: u8,
     /// An echo has its own envelope and never changes the dry note's cut group or glide.
     pub echo: bool,
+    pub slide_levels: Option<(f32, crate::NoteLevels)>,
 }
 
 impl Event {
     pub fn on(ch: usize, off: u32, key: u8, vel: f32) -> Event {
-        Event { ch, off, key, vel, start: 0.0, end: 0.0, fine: 0.0, long: true, glide: 0, levels: crate::NoteLevels::default(), cuts: None, layer: None, porta: false, voice: None, colour: 0, echo: false }
+        Event { ch, off, key, vel, start: 0.0, end: 0.0, fine: 0.0, long: true, glide: 0, levels: crate::NoteLevels::default(), cuts: None, layer: None, porta: false, voice: None, colour: 0, echo: false, slide_levels: None }
     }
     /// A layer note's own cut group (spec: audio/note-rules.md "Layer channels": it acts before the note is handed on).
     pub fn cut(ch: usize, off: u32, group: u32) -> Event {
@@ -217,6 +219,16 @@ struct Glide {
     at: u32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct LevelGlide {
+    key: u8,
+    color: u8,
+    now: [f32; 3], // pitch, velocity, pan
+    step: [f32; 3],
+    left: u32,
+    at: u32,
+}
+
 /// One channel's voices and note state.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(super) struct Voices {
@@ -230,6 +242,7 @@ pub(super) struct Voices {
     /// of its last glide (spec: audio/note-rules.md "State and timing").
     last: [Option<f32>; 16],
     glides: Vec<Glide>,
+    level_glides: Vec<LevelGlide>,
     /// Ticks done.
     tick: u64,
 }
@@ -237,7 +250,11 @@ pub(super) struct Voices {
 impl Voices {
     pub fn restart(&self) -> impl Iterator<Item = Note> + '_ {
         self.pool.iter().filter(|v| v.state == State::Held).flat_map(|v| {
-            [v.restart, Note::Tune(v.sent, self.tuning(v.sent))]
+            let color = match v.restart { Note::On { levels, .. } => levels.color, _ => 0 };
+            let expression = self.level_glides.iter().find(|g| g.key == v.sent && g.color == color).map_or(
+                Note::Tune(v.sent, self.tuning(v.sent)),
+                |g| Note::Slide { key:g.key, color:g.color, tuning:g.now[0], velocity:g.now[1], pan:g.now[2] });
+            [v.restart, expression]
         })
     }
     /// Instrument keys of the voices whose notes have not ended (they get a note off when the engine goes away).
@@ -362,6 +379,14 @@ pub(super) fn apply(events: &[Event], rules: &[Rules], voices: &mut [Voices], n:
             }
             g.at = 0;
         }
+        for g in &mut v.level_glides {
+            if g.left > 0 {
+                for i in 0..3 { g.now[i] += g.step[i]; }
+                g.left -= 1;
+                out.push((c, g.at, Note::Slide { key: g.key, color: g.color, tuning: g.now[0], velocity: g.now[1], pan: g.now[2] }));
+            }
+            g.at = 0;
+        }
         let mut i = 0;
         while i < v.pool.len() {
             v.pool[i].left -= f64::from(n);
@@ -373,6 +398,7 @@ pub(super) fn apply(events: &[Event], rules: &[Rules], voices: &mut [Voices], n:
         }
         let pool = &v.pool;
         v.glides.retain(|g| g.left > 0 || pool.iter().any(|p| p.sent == g.key));
+        v.level_glides.retain(|g| pool.iter().any(|p| p.sent == g.key && matches!(p.restart, Note::On { levels, .. } if levels.color == g.color)));
         v.tick += 1;
     }
     out.sort_by_key(|e| (e.0, e.1));
@@ -411,6 +437,28 @@ fn cut(group: u32, voices: &mut [Voices], rules: &[Rules], off: u32, out: &mut V
 /// here: instruments take the pitch only.) A layer's slide note moves only the voices its notes started; a slide note
 /// of the channel's own only the others (spec "Layer channels").
 fn slide(v: &mut Voices, r: &Rules, e: &Event) {
+    if let Some((velocity, levels)) = e.slide_levels {
+        let group = |p: &Voice| p.layer == e.layer && matches!(p.restart, Note::On { levels: own, .. } if own.color == levels.color);
+        let current = |key| v.level_glides.iter().find(|g| g.key == key && g.color == levels.color).map_or(v.tuning(key), |g| g.now[0]);
+        let top = v.pool.iter().filter(|p| group(p) && (p.state == State::Held || (r.one_shot && p.state == State::Released)))
+            .map(|p| f32::from(p.sent) + current(p.sent)).reduce(f32::max);
+        let Some(top) = top else { return };
+        let by = f32::from(e.key) - top;
+        v.last[usize::from(levels.color & 0x0F)] = Some(f32::from(e.key));
+        let mut voices: Vec<_> = v.pool.iter().filter(|p| group(p) && p.state != State::Closing).copied().collect();
+        voices.sort_by_key(|p| p.sent);
+        voices.dedup_by_key(|p| p.sent);
+        for p in voices {
+            let Note::On { vel, levels: own, .. } = p.restart else { continue };
+            let now = v.level_glides.iter().find(|g| g.key == p.sent && g.color == levels.color)
+                .map_or([v.tuning(p.sent), vel, own.pan], |g| g.now);
+            let target = [now[0] + by, velocity, levels.pan];
+            let step = std::array::from_fn(|i| (target[i] - now[i]) / (e.glide + 1) as f32);
+            v.level_glides.retain(|g| g.key != p.sent || g.color != levels.color);
+            v.level_glides.push(LevelGlide { key: p.sent, color: levels.color, now, step, left: e.glide + 1, at: e.off });
+        }
+        return;
+    }
     let mine = |p: &Voice| p.layer == e.layer && p.colour == e.colour;
     let held = |p: &Voice| mine(p) && (p.state == State::Held || (r.one_shot && p.state == State::Released));
     let mut top: Option<f32> = None;
@@ -573,6 +621,7 @@ fn note_start(v: &mut Voices, r: &Rules, e: &Event, out: &mut Vec<(usize, u32, N
     };
     // A retriggered key: its old tuning ends with it.
     v.glides.retain(|g| g.key != key);
+    v.level_glides.retain(|g| g.key != key || g.color != e.levels.color);
     let on = Note::On { key, vel: e.vel, start: e.start, end: e.end, fine: e.fine, levels: e.levels, voice: e.voice };
     out.push((e.ch, e.off, on));
     v.pool.push(Voice { restart: on, sent: key, born: v.tick, group, state: State::Held, left, layer: e.layer, voice: e.voice, colour: e.colour });
@@ -918,4 +967,21 @@ mod tests {
         let out = tick(&r, &mut v, &[coloured(62, 3)], 100);
         assert_eq!(out, vec![(0, 0, on(62)), (0, 0, Note::Tune(62, 2.0))]);
     }
+    #[test]
+    fn colored_slides_change_only_matching_voices_and_interpolate_levels() {
+        let r = [sampler()];
+        let mut v = vec![Voices::default()];
+        let levels = |color, pan| crate::NoteLevels { color, pan, ..Default::default() };
+        tick(&r, &mut v, &[Event { levels:levels(2, 0.), ..Event::on(0, 0, 60, 0.8) }, Event { levels:levels(3, 0.), ..Event::on(0, 0, 67, 0.8) }], 100);
+        let out = tick(&r, &mut v, &[Event { slide_levels:Some((0.4, levels(2, -1.))), ..Event::slide(0, 20, 72, 1) }], 100);
+        assert_eq!(out, vec![(0, 20, Note::Slide { key:60, color:2, tuning:6., velocity:0.6, pan:-0.5 })]);
+        let out = tick(&r, &mut v, &[], 100);
+        let [(0, 0, Note::Slide { key:60, color:2, tuning, velocity, pan })] = out.as_slice() else { panic!("{out:?}") };
+        assert!((*tuning-12.).abs()<1e-5 && (*velocity-0.4).abs()<1e-5 && *pan == -1.);
+        assert!(v[0].restart().any(|e| matches!(e, Note::Slide { key:60, color:2, tuning, velocity, pan } if (tuning-12.).abs()<1e-5 && (velocity-0.4).abs()<1e-5 && pan == -1.)));
+        let out = tick(&r, &mut v, &[Event { slide_levels:Some((0.8, levels(2, 0.))), ..Event::slide(0, 0, 60, 0) }], 100);
+        assert_eq!(out, vec![(0, 0, Note::Slide { key:60, color:2, tuning:0., velocity:0.8, pan:0. })]);
+        assert!(tick(&r, &mut v, &[Event { slide_levels:Some((0., levels(4, 0.))), ..Event::slide(0, 0, 72, 0) }], 100).is_empty());
+    }
+
 }

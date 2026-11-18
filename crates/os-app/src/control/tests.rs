@@ -493,7 +493,7 @@ fn the_mixer_s_edits_are_undoable() {
         a.state.mixer.sel.clear();
         run(a, MCmd::ResetRouting(3));
     });
-    ui_round_trip(&mut a, "Delete mixer track", |a| {
+    ui_round_trip(&mut a, "Delete Mixer inserts", |a| {
         run(a, MCmd::Trim { non_empty: false });
     });
     ui_round_trip(&mut a, crate::history::MIXER_TRACK_IO, |a| {

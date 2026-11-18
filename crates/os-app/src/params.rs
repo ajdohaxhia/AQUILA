@@ -456,6 +456,7 @@ impl App {
         let mut moved = None;
         let mut edited = Vec::new();
         let mut ara_changes=Vec::new();
+        let mut native_edits=Vec::new();
         let mut automate = Vec::new();
         let mut recorded = Vec::new();
         // Window gestures for ML Studio's smart automation recording: (key, index, event, value before, fresh, eligible).
@@ -546,6 +547,8 @@ impl App {
             }
             let sampler = key < crate::plugins::FX_KEY && p.desc().name == crate::plugins::LEMON_SAMPLER;
             if p.take_state_changed(){edited.push(key);if self.state.project.channels.get(key).is_some_and(crate::ara::is){ara_changes.push((key,p.save_state()));}}
+            let state_undo = p.state_undo_supported();
+            native_edits.extend(p.take_state_edits().into_iter().map(|edit| (key, edit)));
             let pending=ui.capture_pending.remove(&key);
             for e in events {
                 // Preserve gesture order even when Begin/Value/End arrive in one poll.
@@ -613,6 +616,8 @@ impl App {
             crate::control::param_edit(&mut self.state, owner, &changed, run);
         }
         for (key,index,before,v) in undo {crate::history::param(&mut self.state,key,index,before,v);}
+        for (key, edit) in native_edits { self.record_plugin_state_edit(key, &edit); }
+        self.pending_plugin_state_edits();
         for (key,blob) in ara_changes {crate::ara::edited(self,key,blob);}
         // A knob moved in a plugin's own window is the user's edit (`Plugins::mark_edited`).
         for key in edited {

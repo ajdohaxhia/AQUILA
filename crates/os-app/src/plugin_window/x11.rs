@@ -37,6 +37,8 @@ use x11rb::rust_connection::RustConnection;
 use x11rb::wrapper::ConnectionExt as _;
 
 use super::*;
+mod file_drop;
+pub(crate) use file_drop::begin as drop_browser_files;
 
 x11rb::atom_manager! {
     Atoms: AtomsCookie {
@@ -793,7 +795,7 @@ impl Frame {
         match e {
             Event::Expose(_) => self.dirty.set(true),
             Event::KeyPress(e) if e.event==self.win=>{
-                self.state.borrow_mut().events.push(FrameEvent::Undo(u16::from(e.state)&9!=0));os_clap::wake();
+                self.state.borrow_mut().events.push(FrameEvent::Undo(u16::from(e.state)&8!=0, u16::from(e.state)&1!=0));os_clap::wake();
             }
             // A click in the plugin's editor (the grab on the area; `pump` lets the editor have it).
             Event::ButtonPress(e) if e.event == self.area => self.clicked(),
@@ -1103,7 +1105,9 @@ fn window_of(e: &Event) -> Option<xproto::Window> {
 /// UI tick: handles the frames' window events (input, close, expose) and follows the active window.
 pub fn pump() {
     let Some(conn) = CONN.with(|c| c.borrow().clone()) else { return };
+    file_drop::tick(&conn.c, None);
     while let Ok(Some(e)) = conn.c.poll_for_event() {
+        file_drop::tick(&conn.c, Some(&e));
         if let Event::PropertyNotify(p) = &e {
             if p.window == conn.root && p.atom == conn.atoms._NET_ACTIVE_WINDOW {
                 let active = conn.c.get_property(false, conn.root, conn.atoms._NET_ACTIVE_WINDOW, AtomEnum::WINDOW, 0, 1);

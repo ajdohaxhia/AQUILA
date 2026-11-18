@@ -180,6 +180,9 @@ struct Held {
     id: u64,
     /// The host's tuning of the note in cents (portamento and slide notes: a note expression).
     tune: f32,
+    levels: Levels,
+    mods: [f32; 2],
+    gain: f32,
 }
 
 /// A note's pitch in cents from key 60: its key, the pitch bend and the host's tuning.
@@ -271,8 +274,9 @@ impl CitrusPlugin {
             for (note, on) in q.drain(..) {
                 if on {
                     let velocity = 100.0 / 128.0;
-                    let id = self.engine.note_on(NoteOn { levels: self.levels(note, velocity), velocity, release: 0.5 });
-                    self.held.push(Held { note, channel: PREVIEW, voice_id: None, id, tune: 0.0 });
+                    let levels = self.levels(note, velocity);
+                    let id = self.engine.note_on(NoteOn { levels, velocity, release: 0.5 });
+                    self.held.push(Held { note, channel: PREVIEW, voice_id: None, id, tune: 0.0, levels, mods: [0.; 2], gain: 1. });
                 } else if let Some(i) = self.held.iter().position(|h| h.note == note && h.channel == PREVIEW) {
                     let h = self.held.remove(i);
                     self.engine.note_off(h.id);
@@ -297,10 +301,45 @@ impl CitrusPlugin {
         Levels {
             vol: os_dsp::level::curve(v),
             pan: 0.0,
-            pitch: note_pitch(&Held { note, channel: 0, voice_id: None, id: 0, tune: 0.0 }, self.bend),
+            pitch: (f32::from(note) - 60.0) * 100.0 + self.bend,
             mod_x: self.params.mod_x.value(),
             mod_y: self.params.mod_y.value(),
         }
+    }
+
+    fn refresh_levels(&mut self) {
+        let base = [self.params.mod_x.value(), self.params.mod_y.value()];
+        for h in self.held.iter().chain(&self.ringing) {
+            let mut levels = h.levels;
+            levels.pitch = note_pitch(h, self.bend);
+            levels.vol *= h.gain;
+            levels.mod_x = (base[0] + h.mods[0]).clamp(-1., 1.);
+            levels.mod_y = (base[1] + h.mods[1]).clamp(-1., 1.);
+            self.engine.set_levels(h.id, levels);
+        }
+    }
+
+    fn note_expression(&mut self, event: NoteEvent<ChannelLevels>) -> bool {
+        match event {
+            NoteEvent::PolyModulation { voice_id, poly_modulation_id, normalized_offset, .. } if (1..=2).contains(&poly_modulation_id) => {
+                for h in self.held.iter_mut().chain(&mut self.ringing).filter(|h| h.voice_id == Some(voice_id)) {
+                    h.mods[(poly_modulation_id - 1) as usize] = normalized_offset.clamp(-1., 1.);
+                }
+            }
+            NoteEvent::PolyPan { voice_id, channel, note, pan, .. } => {
+                for h in self.held.iter_mut().chain(&mut self.ringing).filter(|h| voice_id.map_or(h.note == note && h.channel == channel, |id| h.voice_id == Some(id))) {
+                    h.levels.pan = pan.clamp(-1., 1.);
+                }
+            }
+            NoteEvent::PolyVolume { voice_id, channel, note, gain, .. } => {
+                for h in self.held.iter_mut().chain(&mut self.ringing).filter(|h| voice_id.map_or(h.note == note && h.channel == channel, |id| h.voice_id == Some(id))) {
+                    h.gain = gain.max(0.);
+                }
+            }
+            _ => return false,
+        }
+        self.refresh_levels();
+        true
     }
 }
 
@@ -356,6 +395,7 @@ impl Plugin for CitrusPlugin {
         }
         let mut at = 0;
         self.events.clear();
+        self.refresh_levels();
         while let Some(ev) = ctx.next_event() {
             self.events.push(ev);
         }
@@ -367,6 +407,7 @@ impl Plugin for CitrusPlugin {
                 self.engine.render(&mut left[0][at..t], &mut right[0][at..t]);
                 at = t;
             }
+            if self.note_expression(ev) { continue; }
             match ev {
                 NoteEvent::NoteOn { timing, note, velocity, voice_id, channel } => {
                     let mut levels = self.levels(note, velocity);
@@ -375,7 +416,7 @@ impl Plugin for CitrusPlugin {
                         (levels.mod_x, levels.mod_y) = (levels.mod_x + x, levels.mod_y + y);
                     }
                     let id = self.engine.note_on(NoteOn { levels, velocity, release: 0.5 });
-                    self.held.push(Held { note, channel, voice_id, id, tune: 0.0 });
+                    self.held.push(Held { note, channel, voice_id, id, tune: 0.0, levels, mods: [0.; 2], gain: 1. });
                 }
                 NoteEvent::NoteOff { note, voice_id, channel, velocity, .. } => {
                     let _ = velocity;
@@ -506,6 +547,29 @@ mod tests {
         assert_eq!(start_mods(&rest, 5, 7), [0.25, -0.5]);
         assert_eq!(start_mods(&rest, 5, 9), [0.0, 0.0]);
         assert_eq!(start_mods(&rest[4..], 5, 7), [0.0, 0.0], "a later one is a change, not the start");
+    }
+
+    #[test]
+    fn piano_roll_modulation_is_per_voice_and_survives_release() {
+        let mut plugin = CitrusPlugin::default();
+        plugin.engine.set_state(preset::default_patch());
+        for voice_id in [11, 12] {
+            let levels = plugin.levels(60, 0.8);
+            let id = plugin.engine.note_on(NoteOn { levels, velocity: 0.8, release: 0.5 });
+            plugin.held.push(Held { note: 60, channel: 0, voice_id: Some(voice_id), id, tune: 0., levels, mods: [0.; 2], gain: 1. });
+        }
+        assert!(plugin.note_expression(NoteEvent::PolyModulation { timing: 0, voice_id: 11, poly_modulation_id: 1, normalized_offset: -0.75 }));
+        assert_eq!(plugin.held[0].mods, [-0.75, 0.]);
+        assert_eq!(plugin.held[1].mods, [0.; 2]);
+        let h = plugin.held.remove(0);
+        plugin.engine.note_off(h.id);
+        plugin.ringing.push(h);
+        plugin.note_expression(NoteEvent::PolyModulation { timing: 0, voice_id: 11, poly_modulation_id: 2, normalized_offset: 0.5 });
+        assert_eq!(plugin.ringing[0].mods, [-0.75, 0.5]);
+        assert_eq!(plugin.held[0].mods, [0.; 2]);
+        plugin.note_expression(NoteEvent::PolyVolume { timing: 0, voice_id: Some(12), channel: 0, note: 60, gain: 0.25 });
+        assert_eq!(plugin.held[0].gain, 0.25);
+        assert_eq!(plugin.ringing[0].gain, 1.);
     }
 
     #[test]

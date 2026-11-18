@@ -175,9 +175,9 @@ mod tests {
     /// Every plugin built into Lemon Studio has its page in the wiki; any other name gets the overview.
     #[test]
     fn built_in_plugins_have_their_pages() {
-        // ML Studio's own plugins have no page in Lemon Studio's wiki.
+        // ML Studio's own plugins (all named "ML ...") have no page in Lemon Studio's wiki.
         const NO_PAGE: [&str; 5] = ["ML Wave", "ML Plasma", "ML Chop", "ML Tape", "ML Hall"];
-        for a in crate::plugins::builtin().iter().chain(&crate::plugins::builtin_effects()).filter(|a| !NO_PAGE.contains(&a.desc.name.as_str())) {
+        for a in crate::plugins::builtin().iter().chain(&crate::plugins::builtin_effects()).filter(|a| !NO_PAGE.contains(&a.desc.name.as_str()) && !a.desc.name.starts_with("ML ")) {
             assert_ne!(super::plugin_page(&a.desc.name), super::PLUGINS_URL, "{}", a.desc.name);
         }
         assert_eq!(super::plugin_page(crate::container::CONTAINER), "https://getlemonstudio.app/wiki/plugins/tools/lemon-container/");

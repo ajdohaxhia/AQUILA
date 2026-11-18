@@ -23,6 +23,7 @@ pub mod hall;
 pub mod balance;
 pub mod chorus;
 pub mod editor;
+pub mod state_undo;
 pub mod fast_distortion;
 pub mod filter;
 pub mod flanger;

@@ -704,6 +704,7 @@ pub enum EditTarget {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TextEdit {
+    pub editor: crate::dialog::Field,
     pub target: EditTarget,
     pub text: String,
     /// Where the box is drawn (screen).
@@ -4336,7 +4337,7 @@ pub enum PlDrag {
     SweepErase{x:f32,y:f32, recorded:bool},
     Mute { on: bool },
     Paint { template: Clip },
-    Marquee { x0: f32, y0: f32, base: Option<Vec<usize>> },
+    Marquee { x0: f32, y0: f32, base: Vec<usize>, keep_outside: bool },
     Slice { y0: f32 },
     /// Right button held on empty grid: a horizontal drag turns into a slice (§3).
     RightPending { x0: f32, y0: f32 },
@@ -4560,18 +4561,6 @@ fn edge(r: Rect, x: f32) -> i32 {
 /// Mouse press on the grid. `right` = the right button.
 pub fn press_grid(app: &mut App, grid: Rect, right: bool) {
     let (x, y) = app.mouse;
-    if !right && crate::playlist_tools::range_chord(app) {
-        let s = &mut app.state;
-        s.playlist.popup = None;
-        s.playlist.sel.clear();
-        s.playlist.selected_points = None;
-        s.playlist.last_clip = None;
-        app.drag = Some(Drag::Pl(PlDrag::Marquee {
-            x0: x, y0: y + s.playlist_scroll.1, base: None,
-        }));
-        app.damage_win(crate::app::Win::Playlist);
-        return;
-    }
     let placement_edge = if right { None } else { app.playlist_placement_edge(x) };
     let s = &mut app.state;
     s.playlist.popup = None;
@@ -4582,6 +4571,19 @@ pub fn press_grid(app: &mut App, grid: Rect, right: bool) {
     let tick = g.tick_at(x).max(0.0);
     let hit = clip_at(s, &g, x, y);
     let tool = s.playlist.tool;
+    if !right && (app.ctrl || (tool == PlTool::Select && app.shift)) {
+        let base = s.playlist.sel.clone();
+        let hits = hit.map_or_else(Vec::new, |i| with_groups(s, vec![i]));
+        s.playlist.sel = if !app.shift { hits.clone() } else {
+            crate::playlist_tools::selection_hits(&base, &hits,true)
+        };
+        s.playlist.selected_points = None;
+        s.playlist.last_clip = None;
+        app.drag = Some(Drag::Pl(PlDrag::Marquee { x0:x, y0:y+s.playlist_scroll.1, base, keep_outside: app.shift }));
+        app.invalidate();
+        return;
+    }
+
     if right && hit.is_none() && matches!(tool,PlTool::Draw|PlTool::Paint) {
         s.playlist.sel.clear();s.playlist.header_selection.clear();s.playlist.header_anchor=None;
         s.playlist.range=None;s.playlist.overlay=None;s.playlist.last_header=None;
@@ -4645,28 +4647,7 @@ pub fn press_grid(app: &mut App, grid: Rect, right: bool) {
         return;
     }
 
-    // Ctrl+drag selects in any tool; Ctrl+click toggles a clip (§3).
-    if app.ctrl && !right {
-        let base=s.playlist.sel.clone();
-        match hit {
-            Some(i) => {
-                app.drag=Some(Drag::Pl(PlDrag::Marquee{x0:x,y0:y+s.playlist_scroll.1,base:Some(base)}));
-                // A grouped clip toggles with its group.
-                let group = with_groups(s, vec![i]);
-                if s.playlist.sel.contains(&i) {
-                    s.playlist.sel.retain(|j| !group.contains(j));
-                } else {
-                    s.playlist.sel.extend(group.into_iter().filter(|j| !s.playlist.sel.contains(j)).collect::<Vec<_>>());
-                }
-            }
-            None => {
-                let base = s.playlist.sel.clone();
-                app.drag = Some(Drag::Pl(PlDrag::Marquee { x0: x, y0: y+s.playlist_scroll.1, base: Some(base) }));
-            }
-        }
-        app.invalidate();
-        return;
-    }
+
 
     // Performance mode: a click on a clip in the zone launches it, a right click stops its track (spec:
     // ui/performance-mode.md §3).
@@ -4745,7 +4726,7 @@ pub fn press_grid(app: &mut App, grid: Rect, right: bool) {
             let clip = clips(s)[i].clone();
             remember_audio_placement(s, &clip);
         }
-        app.drag = Some(Drag::Pl(PlDrag::Marquee { x0:x, y0:y+s.playlist_scroll.1, base:Some(Vec::new()) }));
+        app.drag = Some(Drag::Pl(PlDrag::Marquee { x0:x, y0:y+s.playlist_scroll.1, base:Vec::new(), keep_outside:false }));
         app.invalidate();
         return;
     }
@@ -4890,7 +4871,7 @@ pub fn press_grid(app: &mut App, grid: Rect, right: bool) {
         }
         PlTool::Select if hit.is_none() => {
             s.playlist.sel.clear();
-            app.drag = Some(Drag::Pl(PlDrag::Marquee { x0: x, y0: y+s.playlist_scroll.1, base: Some(Vec::new()) }));
+            app.drag = Some(Drag::Pl(PlDrag::Marquee { x0: x, y0: y+s.playlist_scroll.1, base: Vec::new(), keep_outside:false }));
         }
         PlTool::Draw | PlTool::Paint | PlTool::Select => match hit {
             // Right-Shift+drag on empty grid with Draw / Paint: a quick slice line, as the Slice tool (§3).
@@ -5278,18 +5259,14 @@ pub fn drag_move(app: &mut App, d: PlDrag, grid: Rect) {
                 }
             }
         }
-        PlDrag::Marquee { x0, y0, base } => {
+        PlDrag::Marquee { x0, y0, base, keep_outside } => {
             let y0 = y0 - s.playlist_scroll.1;
-            if base.is_some() && (x-x0).hypot(y-y0)<3.{return app.invalidate();}
+            if s.playlist.overlay.is_none() && (x-x0).hypot(y-y0)<3.{return app.invalidate();}
             let r = Rect::span(x0.min(x), x0.max(x)+1., y0.min(y), y0.max(y)+1.);
             s.playlist.overlay = Some(Overlay::Marquee(r));
-            let mut sel = base.unwrap_or_default();
-            for (i, c) in clips(s).iter().enumerate() {
-                if !sel.contains(&i) && g.clip_rect(c).intersect(&r).w > 0.0 && g.clip_rect(c).intersect(&r).h > 0.0 {
-                    sel.push(i);
-                }
-            }
-            s.playlist.sel = sel;
+            let hits = clips(s).iter().enumerate().filter_map(|(i,c)|
+                (!g.clip_rect(c).intersect(&r).is_empty()).then_some(i)).collect();
+            s.playlist.sel = crate::playlist_tools::selection_hits(&base, &with_groups(s,hits), keep_outside);
         }
         PlDrag::Slice { y0 } => {
             let t = snap_round(s, &g, g.tick_at(x), alt);
@@ -5574,7 +5551,12 @@ pub fn drag_end(app: &mut App, d: PlDrag, grid: Rect) {
                 }
             }
         }
-        PlDrag::ZoomBox { x0, y0 } => zoom_to(app, grid, x0, y0),
+        PlDrag::ZoomBox { x0, y0 } => {
+            if app.ctrl && (app.mouse.0-x0).hypot(app.mouse.1-y0)<4. {
+                let idx=(0..clips(&app.state).len()).collect::<Vec<_>>();
+                zoom_on(&mut app.state,(grid.w,grid.h),&idx);
+            } else { zoom_to(app,grid,x0,y0); }
+        },
         PlDrag::Playback => {
             crate::warp::cancel_play(app);
             app.transport.stop();
@@ -5751,6 +5733,16 @@ pub fn press_ruler(app: &mut App, grid: Rect, right: bool) {
     s.playlist.popup = None;
     let g = PGeom::new(s, grid);
     let t = snap_round(s, &g, g.tick_at(x), alt);
+    if let Some((start, end)) = s.playlist.range {
+        let left = (x - g.x64(f64::from(start)) as f32).abs();
+        let right_edge = (x - g.x64(f64::from(end)) as f32).abs();
+        if left.min(right_edge) <= 7.0 {
+            s.playlist.last_ruler = None;
+            app.drag = Some(Drag::Pl(PlDrag::TimeSel { t0: if left <= right_edge { end } else { start } }));
+            app.invalidate();
+            return;
+        }
+    }
     if right {
         s.playlist.range = None;
         s.playlist.last_ruler = None;
@@ -6012,7 +6004,8 @@ pub fn start_edit(s: &mut State, target: EditTarget, at: (f32, f32)) {
         EditTarget::TypeIn(t, norm) => crate::typein::text(s, t, norm),
     };
     let sel = matches!(target, EditTarget::VisualText(..) | EditTarget::VisualValue(..) | EditTarget::TimelineTempo(_) | EditTarget::TimelineTempoPosition(_) | EditTarget::TimelineChord(_) | EditTarget::TimelineVideoStart(_) | EditTarget::TimelineMarkerSeconds(_));
-    s.playlist.edit = Some(TextEdit { target, text, at, sel });
+    let mut editor=crate::dialog::Field::default(); editor.set(&text); if sel {editor.select_all();}
+    s.playlist.edit = Some(TextEdit { target, text, at, sel, editor });
 }
 
 /// Enter in the text box.
@@ -7580,22 +7573,12 @@ pub fn key(app: &mut App, key: &winit::keyboard::Key, ctrl: bool, alt: bool) -> 
         match key {
             Key::Named(NamedKey::Enter) => commit_edit(&mut app.state),
             Key::Named(NamedKey::Escape) => app.state.playlist.edit = None,
-            // A selected text goes as a whole (the value box, spec: ui/type-in-value.md §1, §8).
-            Key::Named(NamedKey::Backspace) => {
-                if std::mem::take(&mut e.sel) {
-                    e.text.clear();
-                } else {
-                    e.text.pop();
-                }
+            _ => {
+                if e.editor.text!=e.text {e.editor.set(&e.text);}
+                if e.sel && !e.editor.all {e.editor.select_all();}
+                e.editor.key_mod(key,ctrl,alt,shift);
+                e.text.clone_from(&e.editor.text);e.sel=e.editor.all;
             }
-            Key::Named(NamedKey::Space) | Key::Character(_) if !ctrl => {
-                if std::mem::take(&mut e.sel) {
-                    e.text.clear();
-                }
-                e.text.push_str(if let Key::Character(c) = key { c } else { " " });
-            }
-            Key::Character(c) if c.eq_ignore_ascii_case("a") && matches!(e.target, EditTarget::TypeIn(..)) => e.sel = !e.text.is_empty(),
-            _ => {}
         }
         app.invalidate();
         return true;
@@ -7639,7 +7622,7 @@ pub fn key(app: &mut App, key: &winit::keyboard::Key, ctrl: bool, alt: bool) -> 
         }
         // Tool letters; with Shift too, which the typing keyboard leaves alone (it takes the plain letters as notes).
         // Shift+T and Shift+Z were taken above (as in the piano roll, spec: ui/piano-keys.md §4 rule 16).
-        Key::Character(c) if !ctrl && !alt && (shift || !app.typing_on() || ["p","b","c","e","g"].iter().any(|k| c.eq_ignore_ascii_case(k))) && PlTool::from_letter(c).is_some() => {
+        Key::Character(c) if !ctrl && !alt && (shift || !app.typing_on()) && PlTool::from_letter(c).is_some() => {
             Cmd::Tool(PlTool::from_letter(c).expect("checked"))
         }
         Key::Named(NamedKey::Delete) if ctrl => Cmd::DeleteSpace,

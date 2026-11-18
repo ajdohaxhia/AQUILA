@@ -1,6 +1,6 @@
 [package]
 name = "os-clap"
-description = "Lemon Studio's CLAP plugin host"
+description = "ML Studio's CLAP plugin host"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -15,6 +15,9 @@ os-engine.workspace = true
 os-host.workspace = true
 os-hostlink.workspace = true
 
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "objc2-core-foundation", "NSView", "NSWindow"] }
 
 [dev-dependencies]
 os-model.workspace = true

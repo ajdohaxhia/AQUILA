@@ -86,7 +86,7 @@ def windows(config,out,log):
     installer=site/'downloads'/v/f'ML-Studio-Windows-Setup-{label}.exe';installer.parent.mkdir(parents=True)
     command(log,cfg['nsis'],f'/DPAYLOAD={payload}',f'/DOUTPUT={installer}',r.ROOT/'packaging/windows/LemonStudio.nsi',env=env)
     (site/'platforms').mkdir(exist_ok=True)
-    atomic_json(site/'platforms/windows.json',dict(version=r.version(),label='Windows',url=installer.relative_to(site).as_posix(),source=f'updates/{v}/Lemon Studio Source.zip',sha256=digest(installer)))
+    atomic_json(site/'platforms/windows.json',dict(version=r.version(),label='Windows',url=installer.relative_to(site).as_posix(),source=f'updates/{v}/ML Studio Source.zip',sha256=digest(installer)))
     return r.write_plan(site,out,'windows-linux')
 
 
@@ -113,7 +113,8 @@ def linux_package(config,binary,win_plan,out,log):
             info=t.gettarinfo(str(src),'ML Studio/'+name);info.mode=mode;info.uid=info.gid=0;info.uname=info.gname=''
             with src.open('rb') as f:t.addfile(info,f)
     (site/'platforms').mkdir()
-    atomic_json(site/'platforms/linux.json',dict(version=r.version(),label='Linux',url=archive.relative_to(site).as_posix(),source=f'updates/{v}/Lemon Studio Source.zip',sha256=digest(archive)))
+    # The combined Windows plan already provides the branded source download.
+    atomic_json(site/'platforms/linux.json',dict(version=r.version(),label='Linux',url=archive.relative_to(site).as_posix(),source=f'updates/{v}/ML Studio Source.zip',sha256=digest(archive)))
     command(log,r.sys.executable,r.ROOT/'packaging/prepare-unix-update.py','--platform','linux-x64','--site',site,'--app',binary,env=env)
     return r.write_plan(site,out,'windows-linux')
 

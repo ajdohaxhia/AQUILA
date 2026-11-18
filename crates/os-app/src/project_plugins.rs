@@ -990,7 +990,7 @@ mod tests {
     fn every_lemon_effect_is_built_in() {
         let fx = crate::plugins::builtin_effects();
         let names: Vec<&str> = fx.iter().map(|a| a.desc.name.as_str()).collect();
-        let want: Vec<&str> = crate::plugins::FILE_MAPPED.into_iter().chain(crate::plugins::LINKED_EFFECTS).collect();
+        let want: Vec<&str> = crate::plugins::FILE_MAPPED.into_iter().chain(crate::plugins::LINKED_EFFECTS).chain(std::iter::once(crate::ml_patch::core::NAME)).collect();
         assert_eq!(names, want);
         for a in &fx {
             assert!(is_builtin(&a.desc), "{}", a.desc.name);
