@@ -4067,7 +4067,7 @@ mod tests {
         let path = std::env::var_os("ML_TEST_DROP_VST3").unwrap();
         let lib = load_file(Path::new(&path), os_host::Format::Vst3).unwrap();
         let desc = lib.plugins().iter().find(|d| d.is_instrument()).unwrap().clone();
-        let info = ChannelInfo { name: desc.name.clone(), target: "Insert 1".into(), enabled: true, volume: 0.78, pan: 0.0, pitch_cents: 0, range: 2, track: 1, max_track: 125, sidechain: None, misc: None };
+        let info = ChannelInfo { name: desc.name.clone(), target: "Insert 1".into(), enabled: true, volume: 0.78, pan: 0.0, pitch_cents: 0, range: 2, track: 1, max_track: 125, sidechain: None, misc: None, icon: None };
         let mut pl = Plugins { available: vec![Available { lib, desc }], scale: 1.0, rate: 48000, ..Plugins::default() };
         pl.create(0, 0).unwrap();
         pl.open_window_with_visibility(0, info, false).unwrap();
