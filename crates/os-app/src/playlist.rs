@@ -258,6 +258,8 @@ pub enum Cmd {
     Harmony(crate::harmony::HCmd),
     TypingLayout(crate::typing_layout::Change),
     Nothing,
+    /// The tempo display menu's own part (spec: ui/tempo-menu.md).
+    Tempo(crate::tempo_menu::TCmd),
     /// A knob menu's Remote control part (spec: ui/remote-control.md §1).
     Remote(crate::remote::RCmd),
     /// Settings > MIDI ▸ External clock sync: the device chosen (`None` = Off).
@@ -830,11 +832,12 @@ pub struct PlaylistState {
     /// audio clip's channel's whole sample lasted when it started.
     pub stretch: bool,
     pub stretch_base: Vec<(u16, f64)>,
-    /// A resized clip's length, kept for its source: new clips of that source are placed / painted at this length
-    /// until a clip of natural length is clicked (OS, as FL does).
-    pub lock_len: Option<(ClipSource, u32)>,
-    /// A copy of the audio placement clicked in the grid, including its source window.
-    pub(crate) audio_template: Option<Clip>,
+    /// The clip brush (spec: ui/playlist.md §3, issue #381): the last clip clicked or resized. New clips of its source
+    /// are placed / painted as copies of it (length, window, fades, gain), not of its mute ([`place`]); picking its
+    /// source in the picker keeps only its length and window ([`pick_source`]).
+    pub brush: Option<Clip>,
+    /// The brush showed its whole source: new clips take the source's length as it is then (a pattern that grew).
+    pub brush_whole: bool,
     /// Track row pitch (vertical zoom: Alt+wheel; saved in the project's playlist view).
     pub row_h: f32,
     /// Last header click (track, time) for double-click rename.
@@ -997,8 +1000,8 @@ impl Default for PlaylistState {
             arr_anchor: (300.0, 90.0),
             stretch: false,
             stretch_base: Vec::new(),
-            lock_len: None,
-            audio_template: None,
+            brush: None,
+            brush_whole: false,
             row_h: ROW_H,
             last_header: None,
             last_clip: None,
@@ -2086,16 +2089,31 @@ pub fn place_picker_sources(s: &mut State, items: &[ClipSource], track: u16, tic
 }
 
 pub(crate) fn picker_source_len(s: &State, source: ClipSource) -> u32 {
-    s.playlist.lock_len.filter(|(item, _)| *item == source)
-        .map_or_else(|| source_len(s, source), |(_, length)| length)
+    s.playlist.brush.as_ref().filter(|c| c.source == source && !s.playlist.brush_whole)
+        .map_or_else(|| source_len(s, source), |c| c.length)
 }
 
 fn new_placement(s: &State, track: u16, tick: u32) -> Clip {
     let src = source_for(s, track);
-    let len = picker_source_len(s, src);
-    let audio = source_kind(s, src) == PickKind::Audio && matches!(src, ClipSource::Channel(_));
-    let mut c = Clip::new(tick, len, track, src);
-    if audio {
+    match s.playlist.brush.as_ref().filter(|b| b.source == src) {
+        Some(brush) => Clip { length: picker_source_len(s, src), muted: false, ..copy_placement(brush, track, tick) },
+        None => Clip { position: tick, track, ..fresh_clip(s, src, source_len(s, src)) },
+    }
+}
+
+/// Clip `c` becomes the brush (§3).
+pub fn set_brush(s: &mut State, c: Clip) {
+    s.playlist.brush_whole = c.window.is_none() && c.length == source_len(s, c.source);
+    s.playlist.brush = Some(c);
+}
+
+/// Byte-19 bit FL sets on a clip selected when it saved (spec: flp/events/playlist.md).
+const CLIP_SELECTED: u8 = 0x80;
+
+/// A new clip of `src`, `len` ticks long, with FL's defaults: from the start of its source, gain 1.0 for audio.
+fn fresh_clip(s: &State, src: ClipSource, len: u32) -> Clip {
+    let mut c = Clip::new(0, len, 0, src);
+    if source_kind(s, src) == PickKind::Audio && matches!(src, ClipSource::Channel(_)) {
         // FL writes gain 1.0 into a new audio clip (spec: flp/events/playlist.md, byte 52).
         c.set_gain(1.0);
     }
@@ -2122,20 +2140,26 @@ fn copy_placement(template: &Clip, track: u16, tick: u32) -> Clip {
     let mut clip = template.clone();
     clip.track = track;
     clip.position = tick;
+    clip.id = os_model::Id::NONE;
     clip.set_id(0);
     clip.set_group(0);
+    clip.raw[19] &= !CLIP_SELECTED;
     clip
 }
 
-fn remember_audio_placement(s: &mut State, clip: &Clip) -> bool {
-    if audio_clip_row(s, clip).is_none() {
-        return false;
+/// A source picked in the picker becomes the current one. The brush keeps only its length and window when it is of
+/// that source (no fades, no gain), and goes when it is of another (FL, measured for issue #381; spec:
+/// ui/playlist.md §3).
+pub fn pick_source(s: &mut State, src: ClipSource) {
+    s.playlist.source = Some(src);
+    if let ClipSource::Pattern(n) = src {
+        s.pattern = n;
     }
-    s.playlist.source = Some(clip.source);
-    s.playlist.picker = PickKind::Audio;
-    s.playlist.lock_len = None;
-    s.playlist.audio_template = Some(clip.clone());
-    true
+    s.playlist.brush = match s.playlist.brush.as_ref() {
+        Some(b) if b.source == src => Some(Clip { window: b.window, ..fresh_clip(s, src, b.length) }),
+        _ => None,
+    };
+    s.playlist.brush_whole &= s.playlist.brush.is_some();
 }
 
 /// Delete clips by index (selection indices are remapped). They ripple away (spec: ui/animations.md §4.10).
@@ -4287,7 +4311,7 @@ pub fn marker_menu(s: &State, i: usize, tick: u32, x: f32, y: f32) -> Popup {
     Popup { x, y, items, sub: None, scroll: [0; 2], cascade: Vec::new() }
 }
 
-/// The short right-click menu of the toolbar's and the mixer's knobs, faders and the tempo: "Reset" for a knob or fader,
+/// The short right-click menu of the toolbar's and the mixer's knobs and faders: "Reset" for a knob or fader,
 /// "Create automation clip" (§8) and the initial value's items (`crate::init::items`) when the control can be automated,
 /// "Enter value..." when it takes one (spec: ui/type-in-value.md §8).
 pub fn knob_menu(s: &State, auto: Option<(u32, String, f64)>, typein: Option<crate::typein::Target>, x: f32, y: f32) -> Popup {
@@ -4724,7 +4748,12 @@ pub fn press_grid(app: &mut App, grid: Rect, right: bool) {
         s.playlist.sel = hit.map_or_else(Vec::new, |i| with_groups(s, vec![i]));
         if let Some(i) = hit {
             let clip = clips(s)[i].clone();
-            remember_audio_placement(s, &clip);
+            s.playlist.source = Some(clip.source);
+            s.playlist.picker = source_kind(s, clip.source);
+            if let ClipSource::Pattern(n) = clip.source {
+                s.pattern = n;
+            }
+            set_brush(s, clip);
         }
         app.drag = Some(Drag::Pl(PlDrag::Marquee { x0:x, y0:y+s.playlist_scroll.1, base:Vec::new(), keep_outside:false }));
         app.invalidate();
@@ -4889,10 +4918,7 @@ pub fn press_grid(app: &mut App, grid: Rect, right: bool) {
                 snapshot_placement(s, "Arranger fill paint clip", [source(s)]);
                 s.playlist.sel.clear();
                 let start = snap_place(s, &g, tick, alt);
-                let clip = s.playlist.audio_template.as_ref()
-                    .filter(|clip| clip.source == source(s))
-                    .map_or_else(|| new_placement(s, track, start), |clip| copy_placement(clip, track, start));
-                let i = push_placement(s, clip);
+                let i = place_clip(s, track, start);
                 s.playlist.placement_edge = s.playlist.placement_edge.or(placement_edge);
                 let c = clips(s)[i].clone();
                 if tool == PlTool::Paint {
@@ -4924,11 +4950,7 @@ pub fn press_grid(app: &mut App, grid: Rect, right: bool) {
                     s.pattern = n;
                 }
                 s.playlist.picker = source_kind(s, c.source);
-                // Audio placements carry their source window as well as their timeline length.
-                if !remember_audio_placement(s, &c) {
-                    s.playlist.audio_template = None;
-                    s.playlist.lock_len = (c.length != source_len(s, c.source)).then_some((c.source, c.length));
-                }
+                set_brush(s, c.clone());
                 if !was_selected {
                     s.playlist.sel = if tool == PlTool::Select || grouped { group.clone() } else { Vec::new() };
                 }
@@ -5486,13 +5508,11 @@ pub fn drag_end(app: &mut App, d: PlDrag, grid: Rect) {
             s.playlist.automation_views.retain(|_, active| *active != ch);
         }
     }
-    // A resized clip's new length is used for the next clips of its source.
+    // A resized clip becomes the brush for the next clip of that source.
     if let PlDrag::ResizeL { orig, .. } | PlDrag::ResizeR { orig, .. } = &d
-        && let Some(c) = orig.first().and_then(|&(i, _)| clips(s).get(i)).cloned()
+        && let Some(c) = orig.first().and_then(|(i, _)| clips(s).get(*i)).cloned()
     {
-        if !remember_audio_placement(s, &c) {
-            s.playlist.lock_len = Some((c.source, c.length));
-        }
+        set_brush(s, c);
     }
     if let PlDrag::ResizeL { orig, .. } | PlDrag::ResizeR { orig, .. } = &d {
         let grown: Vec<_> = orig.iter().filter_map(|(i, old)|
@@ -6161,6 +6181,7 @@ pub fn run(app: &mut App, cmd: Cmd) -> Option<String> {
         Cmd::Plugin(c) => return crate::plugin_menu::run(app, c),
         Cmd::Project(c) => return crate::project_picker::run(app, c),
         Cmd::Rack(c) => return crate::rack::run(app, c),
+        Cmd::Tempo(c) => return crate::tempo_menu::run(app, c),
         Cmd::Mixer(c) => return crate::mixer::run(app, c),
         Cmd::TrackMode(t, crate::track_links::Mode::NewInstrument(i)) => return crate::track_links::new_instrument(app, t, i),
         Cmd::SlotWin(t, c) => {
@@ -6554,17 +6575,14 @@ pub fn run(app: &mut App, cmd: Cmd) -> Option<String> {
         Cmd::TogglePicker => {s.playlist.picker_visible=!s.playlist.picker_visible;crate::settings_file::set_flag("playlist_picker",s.playlist.picker_visible);None}
         Cmd::ChooseSource(src) => {
             crate::rack::focus_source(s,src);
-            s.playlist.source = Some(src);
+            pick_source(s, src);
             s.playlist.picker = source_kind(s, src);
-            s.playlist.lock_len = None;
-            s.playlist.audio_template = None;
-            if let ClipSource::Pattern(n) = src { s.pattern = n; }
             crate::playlist_tools::select(s, PlTool::Paint);
             None
         }
         #[cfg(plugin_windows)]
         Cmd::SamplerTrack(_) => None,
-        Cmd::HeaderDrop(_) | Cmd::InputBinding(_) | Cmd::MenuLayout(_) | Cmd::MainMenu(..) | Cmd::PopupBack(_) | Cmd::TypingLayout(_) | Cmd::Harmony(_) | Cmd::Nothing | Cmd::Pick(..) | Cmd::Browser(_) | Cmd::Plugin(_) | Cmd::Project(_) | Cmd::Rack(_) | Cmd::Mixer(_) | Cmd::Param(_) | Cmd::Preset(_) | Cmd::Misc(..) | Cmd::PluginMenu(..) | Cmd::PluginDetach(..) | Cmd::WaveSize(..) | Cmd::Piano(_) | Cmd::Audio(_) | Cmd::Cpu(_) | Cmd::MetronomeSound(_) | Cmd::MetronomeVolume(_) | Cmd::Record(_) | Cmd::RecPrecountBars(_) | Cmd::OneClick(..) | Cmd::OneClickEditor | Cmd::Rec(_) | Cmd::ContinuousScrolling | Cmd::Pattern(_) | Cmd::ClockMode(_) | Cmd::ClockBeat(_) | Cmd::Toolbar(_) | Cmd::ToolbarPreset(_) | Cmd::WorkspaceLayout(_) | Cmd::ToolbarSave | Cmd::ToolbarDelete | Cmd::TimeSig(..) | Cmd::AddSignature | Cmd::MarkerSigAt(_) | Cmd::MarkerEveryMenu | Cmd::Bar(..) | Cmd::PanningLaw(_) | Cmd::TimeMode(_) | Cmd::Timebase(_) => None,
+        Cmd::HeaderDrop(_) | Cmd::InputBinding(_) | Cmd::MenuLayout(_) | Cmd::MainMenu(..) | Cmd::PopupBack(_) | Cmd::TypingLayout(_) | Cmd::Harmony(_) | Cmd::Nothing | Cmd::Pick(..) | Cmd::Browser(_) | Cmd::Plugin(_) | Cmd::Project(_) | Cmd::Rack(_) | Cmd::Tempo(_) | Cmd::Mixer(_) | Cmd::Param(_) | Cmd::Preset(_) | Cmd::Misc(..) | Cmd::PluginMenu(..) | Cmd::PluginDetach(..) | Cmd::WaveSize(..) | Cmd::Piano(_) | Cmd::Audio(_) | Cmd::Cpu(_) | Cmd::MetronomeSound(_) | Cmd::MetronomeVolume(_) | Cmd::Record(_) | Cmd::RecPrecountBars(_) | Cmd::OneClick(..) | Cmd::OneClickEditor | Cmd::Rec(_) | Cmd::ContinuousScrolling | Cmd::Pattern(_) | Cmd::ClockMode(_) | Cmd::ClockBeat(_) | Cmd::Toolbar(_) | Cmd::ToolbarPreset(_) | Cmd::WorkspaceLayout(_) | Cmd::ToolbarSave | Cmd::ToolbarDelete | Cmd::TimeSig(..) | Cmd::AddSignature | Cmd::MarkerSigAt(_) | Cmd::MarkerEveryMenu | Cmd::Bar(..) | Cmd::PanningLaw(_) | Cmd::TimeMode(_) | Cmd::Timebase(_) => None,
         Cmd::NotYet(name) => Some(format!("{name}: not available yet")),
         Cmd::Tool(t) => {
             crate::playlist_tools::select(s, t);
@@ -7674,19 +7692,16 @@ pub fn key(app: &mut App, key: &winit::keyboard::Key, ctrl: bool, alt: bool) -> 
 }
 
 /// The timebase changed from `from` to `to` ticks per quarter (`Project::set_ppq` rescaled the project): the song
-/// position, time selection, clipboard, locked clip length and undo steps follow, so nothing of the old timebase comes
+/// position, time selection, clipboard, clip brush and undo steps follow, so nothing of the old timebase comes
 /// back (automation data stays, as in the project).
 pub fn rescale(s: &mut State, from: u16, to: u16) {
-    use os_model::{rescale_length, rescale_tick};
+    use os_model::rescale_tick;
     let pl = &mut s.playlist;
     pl.pos = rescale_tick(pl.pos, from, to);
     pl.range = pl.range.map(|(a, b)| (rescale_tick(a, from, to), rescale_tick(b, from, to)));
     pl.clipboard.iter_mut().for_each(|c| c.rescale(from, to));
-    if let Some(clip) = &mut pl.audio_template {
-        clip.rescale(from, to);
-    }
-    if let Some((_, len)) = &mut pl.lock_len {
-        *len = rescale_length(*len, from, to);
+    if let Some(c) = &mut pl.brush {
+        c.rescale(from, to);
     }
 }
 
@@ -8143,6 +8158,97 @@ mod tests {
         assert!(arr_mut(s).tracks.iter().enumerate().all(|(k, t)| t.enabled == (k == 5)), "a fresh solo of track 5");
         toggle_solo(s, 5);
         assert!(arr_mut(s).tracks.iter().all(|t| t.enabled), "this arrangement's own states come back, track 3 on");
+    }
+
+    /// The clip brush (issue #381, as FL draws): a clicked clip is the template of the next clips of its source, its
+    /// window, fades and gain too, not its mute, group or selection; a resized clip, as it ends up, is one too. Picking
+    /// its source in the picker keeps only its length and window, and another source's clip is drawn fresh.
+    #[test]
+    fn drawn_clips_copy_the_last_clicked_clip() {
+        let mut app = app();
+        let grid = Rect::new(0.0, 0.0, 1000.0, 500.0);
+        let s = &mut app.state;
+        let ch = s.project.channels[1].index;
+        let audio = ClipSource::Channel(ch);
+        let mut t = Clip { window: Some((200.0, 1584.0)), muted: true, ..Clip::new(0, 288, 0, audio) };
+        t.set_fade_in(Some((300.0, -4.8)));
+        t.set_fade_out(Some((250.0, 0.0)));
+        t.set_gain(1.3);
+        t.set_group(2);
+        t.raw[19] |= CLIP_SELECTED;
+        let p = Clip { window: Some((96.0, 288.0)), ..Clip::new(0, 192, 2, ClipSource::Pattern(1)) };
+        arr_mut(s).clips = vec![t.clone(), p.clone()];
+        s.playlist.tool = PlTool::Draw;
+        let g = PGeom::new(s, grid);
+        let bar = g.bar_w;
+        let press = |app: &mut App, x: f32, y: f32| {
+            app.mouse = (x, y);
+            press_grid(app, grid, false);
+            if let Some(Drag::Pl(d)) = app.drag.take() {
+                drag_end(app, d, grid);
+            }
+            clips(&app.state).len() - 1
+        };
+        let on = |r: Rect| (r.x + r.w / 2.0, r.y + r.h / 2.0);
+        let empty = |track: u16| (bar * 4.0 + 2.0, g.y_of(track) + 4.0);
+
+        let (x, y) = on(g.clip_rect(&t));
+        press(&mut app, x, y);
+        assert_eq!(app.state.playlist.source, Some(audio), "the clicked clip's source is current");
+        let (x, y) = empty(1);
+        let n = press(&mut app, x, y);
+        let c = &clips(&app.state)[n];
+        assert_eq!((c.source, c.track, c.length, c.window), (audio, 1, 288, Some((200.0, 1584.0))), "its length and window");
+        assert_eq!((c.fade_in(), c.fade_out(), c.gain()), (t.fade_in(), t.fade_out(), 1.3), "its fades and gain");
+        assert!(!c.muted && c.group() == 0 && c.raw[19] & CLIP_SELECTED == 0, "not its mute, group or selection");
+        assert_eq!(c.position, 4 * ref_bar(&app.state));
+
+        // A clip showing its whole pattern: the clips drawn after the pattern grew show all of it as well.
+        let whole = Clip::new(0, source_len(&app.state, ClipSource::Pattern(1)), 7, ClipSource::Pattern(1));
+        arr_mut(&mut app.state).clips.push(whole.clone());
+        let (x, y) = on(g.clip_rect(&whole));
+        press(&mut app, x, y);
+        let two = 2 * ref_bar(&app.state).max(whole.length);
+        let pat = app.state.project.patterns.iter_mut().find(|p| p.number == 1).expect("pattern 1");
+        pat.length = Some(two);
+        let (x, y) = empty(8);
+        let n = press(&mut app, x, y);
+        assert_eq!(clips(&app.state)[n].length, two, "the pattern's new length");
+        arr_mut(&mut app.state).clips.truncate(3);
+
+        let (x, y) = on(g.clip_rect(&p));
+        press(&mut app, x, y);
+        let (x, y) = empty(3);
+        let n = press(&mut app, x, y);
+        let c = &clips(&app.state)[n];
+        assert_eq!((c.source, c.length, c.window), (ClipSource::Pattern(1), 192, Some((96.0, 288.0))), "a pattern clip's window");
+
+        // The picker: the brush's source keeps its length and window; another source is drawn whole.
+        pick_source(&mut app.state, audio);
+        assert_eq!(app.state.playlist.brush, None, "another source's pick drops the brush");
+        let (x, y) = empty(4);
+        let n = press(&mut app, x, y);
+        let c = &clips(&app.state)[n];
+        assert_eq!((c.length, c.window), (source_len(&app.state, audio), None), "a fresh clip");
+        let (x, y) = on(g.clip_rect(&clips(&app.state)[2]));
+        press(&mut app, x, y);
+        pick_source(&mut app.state, audio);
+        let (x, y) = empty(5);
+        let n = press(&mut app, x, y);
+        let c = &clips(&app.state)[n];
+        assert_eq!((c.length, c.window), (288, Some((200.0, 1584.0))), "the same source's pick keeps the length and window");
+        assert_eq!((c.fade_in(), c.fade_out()), (None, None), "but not the fades");
+
+        // A resize (its press made the clip's source current): the clip as it ends up.
+        let i = 3;
+        let r = clips(&app.state)[i].clone();
+        app.state.playlist.source = Some(r.source);
+        arr_mut(&mut app.state).clips[i].length = 96;
+        drag_end(&mut app, PlDrag::ResizeR { x0: 0.0, orig: vec![(i, r)], scroll_x: 0.0 }, grid);
+        let (x, y) = empty(6);
+        let n = press(&mut app, x, y);
+        let c = &clips(&app.state)[n];
+        assert_eq!((c.source, c.length), (ClipSource::Pattern(1), 96), "the resized clip's length");
     }
 
     /// Audio clips have independent Playlist names; renaming one preserves the shared rack channel.

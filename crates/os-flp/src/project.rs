@@ -1540,9 +1540,13 @@ fn decode_clip(r: &[u8]) -> Clip {
     let f32_at = |o: usize| f32::from_le_bytes(r[o..o + 4].try_into().unwrap());
     let item = u16_at(6);
     let source = if item >= 0x5000 { ClipSource::Pattern(item - 0x5000) } else { ClipSource::Channel(item) };
-    // Pattern clips: u32 ticks, `ffffffff` = none; others: f32, -1 = none (spec: "Clip offsets").
+    // Pattern clips: u32 ticks, `ffffffff` = none; others: f32, -1 = none (spec: "Clip offsets"). FL 12 also writes
+    // the float -1 (`bf800000`) into pattern clips it never trimmed: none as well.
     let window = match source {
-        ClipSource::Pattern(_) => (u32_at(24) != u32::MAX).then(|| (f64::from(u32_at(24)), f64::from(u32_at(28)))),
+        ClipSource::Pattern(_) => {
+            let none = |v: u32| v == u32::MAX || v == (-1.0f32).to_bits();
+            (!none(u32_at(24)) && !none(u32_at(28))).then(|| (f64::from(u32_at(24)), f64::from(u32_at(28))))
+        }
         ClipSource::Channel(_) => {
             let (a, b) = (f32_at(24), f32_at(28));
             (a != -1.0 && a.is_finite() && b.is_finite()).then(|| (f64::from(a), f64::from(b)))
@@ -6548,6 +6552,19 @@ mod tests {
         assert_eq!(list_clip_len(&encode_clips(&back, CLIP_LEN)), Some(CLIP_LEN));
     }
 
+    /// FL 12 marks some untrimmed pattern clips with the float -1 (`bf800000`), as other clips are marked: the clip
+    /// plays the pattern from its start, and the bytes are written back as read (spec: flp/events/playlist.md "Clip
+    /// offsets").
+    #[test]
+    fn a_pattern_clip_marked_untrimmed_with_float_minus_one_plays_from_the_start() {
+        let mut r = encode_clip(&Clip::new(0, 39168, 0, ClipSource::Pattern(1)));
+        r[24..28].copy_from_slice(&(-1.0f32).to_le_bytes());
+        r[28..32].copy_from_slice(&(-1.0f32).to_le_bytes());
+        let c = decode_clip(&r);
+        assert_eq!((c.source, c.length, c.window), (ClipSource::Pattern(1), 39168, None));
+        assert_eq!(encode_clip(&c)[24..32], r[24..32]);
+    }
+
     /// Lists of older files, 60-byte (FL 21 to 24.1) and 32-byte (up to FL 20) records, are told apart and written
     /// back at their length; 32-byte records have no id (spec: flp/layouts.md, "How to tell the generation").
     #[test]
@@ -7241,6 +7258,35 @@ mod tests {
         let again = load(&FlpFile::parse(&file.to_bytes().unwrap()).unwrap()).unwrap();
         let read: Vec<Option<Target>> = again.automations.iter().map(|a| a.target().map(decode)).collect();
         assert_eq!(read, [Some(Target::MainSwing), Some(Target::ChannelMixerTrack(1)), Some(Target::ChannelOn(0))]);
+    }
+
+    /// Clips on an effect slot's mix level, a track's stereo separation, a send level and the main pitch (spec:
+    /// flp/events/automation.md "Targets"; the original's Create automation clip on Insert 17's controls wrote targets
+    /// 0x7440_1F01, 0x7440_1FC2, 0x7440_2000 and 0x4000_0002, measured 2026-11-21) are written as those links and read
+    /// back as they were.
+    #[test]
+    fn mixer_knob_automation_round_trips() {
+        use os_model::target::{self, decode, Target};
+        let mut p = new_project();
+        let names = ["Fruity delay bank (Delay) - Mix level", "Delay - Stereo separation", "Delay - To Master", "Master pitch"];
+        for (i, name) in (2u16..).zip(names) {
+            p.channels.push(Channel { kind: ChannelKind::Automation, ..sampler(i, name, 0) });
+        }
+        let tgts = [target::slot(17, 0, target::SLOT_MIX), target::mixer(17, target::MIXER_SEPARATION), target::send(17, 0), target::MAIN_PITCH];
+        assert_eq!(tgts, [0x7440_1F01, 0x7440_1FC2, 0x7440_2000, 0x4000_0002]);
+        for ((i, t), v) in (2u16..).zip(tgts).zip([1.0, 0.5, 0.8, 0.5]) {
+            p.automations.push(new_automation(i, t, v, 4.0));
+        }
+        let mut arr = default_arrangement();
+        arr.clips = (0..4).map(|k| Clip::new(0, 384, k, ClipSource::Channel(2 + k))).collect();
+        p.arrangements = vec![arr];
+        let file = FlpFile::parse(&create(&p).unwrap().to_bytes().unwrap()).unwrap();
+        let back = load(&file).unwrap();
+        assert_eq!(back.automations, p.automations);
+        let links = events_of(&file).unwrap().iter().filter(|e| e.id == id::AUTO_LINK).filter_map(|e| e.data()).map(|d| d[8..12].to_vec()).collect::<Vec<_>>();
+        assert_eq!(links, tgts.map(|t| t.to_le_bytes().to_vec()));
+        let read: Vec<Option<Target>> = back.automations.iter().map(|a| a.target().map(decode)).collect();
+        assert_eq!(read, [Some(Target::SlotMix(17, 0)), Some(Target::MixerSeparation(17)), Some(Target::MixerSend(17, 0)), Some(Target::MainPitch)]);
     }
 
     /// A clip on an effect inside a container (Lemon Studio's member targets: the container slot's parameter packing

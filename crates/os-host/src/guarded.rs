@@ -36,13 +36,15 @@ pub struct Guarded<P: Plugin> {
     sleep_attention: u64,
     levels: Option<ChannelLevels>,
     voicing: Option<ChannelVoicing>,
+    /// A third-party plugin (`Plugin::use_wrapper_levels`).
+    wrapped: bool,
 }
 
 /// Shares `plugin`, code of `module`, as a guarded instance (format crates' `Library::create`).
 pub fn share<P: Plugin + 'static>(plugin: P, module: Arc<Module>) -> SharedPlugin {
     let attention = plugin.attention();
     let sleep_attention = attention.as_ref().map_or(0, |a| a.count());
-    Arc::new(Mutex::new(Guarded { inner: ManuallyDrop::new(plugin), module, state: RefCell::new(None), meter: Arc::default(), attention, sleep_attention, sleep: Default::default(), offline: false, levels: None, voicing: None }))
+    Arc::new(Mutex::new(Guarded { inner: ManuallyDrop::new(plugin), module, state: RefCell::new(None), meter: Arc::default(), attention, sleep_attention, sleep: Default::default(), offline: false, levels: None, voicing: None, wrapped: false }))
 }
 
 impl<P: Plugin> Guarded<P> {
@@ -149,6 +151,9 @@ impl<P: Plugin> Instrument for Guarded<P> {
         self.sleep.wake();
         self.run((), |p| p.slide(offset, key, color, semitones, velocity, pan));
     }
+    fn tunes_by_bend(&self) -> bool {
+        self.look(false, |p| p.tunes_by_bend())
+    }
     fn set_bend_range(&mut self, semitones: u32) {
         self.sleep.wake();
         self.run((), |p| p.set_bend_range(semitones))
@@ -212,6 +217,9 @@ impl<P: Plugin> Instrument for Guarded<P> {
     fn channel_levels(&mut self, levels: ChannelLevels) -> bool {
         if self.levels != Some(levels) { self.sleep.wake(); self.levels = Some(levels); }
         self.run(false, |p| p.channel_levels(levels))
+    }
+    fn wrapper_levels(&self) -> bool {
+        self.wrapped
     }
     fn channel_voicing(&mut self, voicing: &ChannelVoicing) {
         if self.voicing.as_ref() != Some(voicing) { self.sleep.wake(); self.voicing = Some(*voicing); }
@@ -399,6 +407,10 @@ impl<P: Plugin> Plugin for Guarded<P> {
     }
     fn use_channel_levels(&mut self) -> bool {
         self.run(false, |p| p.use_channel_levels())
+    }
+    fn use_wrapper_levels(&mut self) -> bool {
+        self.wrapped = true;
+        true
     }
     fn use_param_aliases(&mut self, aliases: &'static [(u32, u32)]) {
         self.run((), |p| p.use_param_aliases(aliases))

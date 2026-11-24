@@ -544,7 +544,7 @@ pub fn paint(ui: &mut Ui, s: &State, r: Rect, f: &FrameInfo) {
     });
     ui.c.push_clip(heads);
     for &row in &visible {
-        header(ui, s, f, &g, row, head_x, head_w);
+        header(ui, s, f, &g, row, heads);
     }
     if crate::workspace_visibility::shown("visible_playlist-track-destination") {
         if let Some(Overlay::TrackInsertion(y)) = s.playlist.overlay {
@@ -1631,7 +1631,8 @@ fn mute_led(ui: &mut Ui, led: Rect, on: bool, hovered: bool, vintage: bool) {
 }
 
 /// Track face, grouped corners and direct instrument/recording controls.
-fn header(ui: &mut Ui, s: &State, f: &FrameInfo, g: &PGeom, row: u16, x: f32, w: f32) {
+fn header(ui: &mut Ui, s: &State, f: &FrameInfo, g: &PGeom, row: u16, heads: Rect) {
+    let (x, w) = (heads.x, heads.w);
     const INDENT: f32 = 6.0;
     const RADIUS: f32 = 4.0;
     let t = ui.t;
@@ -1686,7 +1687,7 @@ fn header(ui: &mut Ui, s: &State, f: &FrameInfo, g: &PGeom, row: u16, x: f32, w:
     } else {
         "Drag to move a track; Shift-drag selects a range, Ctrl/Cmd toggles a track; right-click to create a folder"
     };
-    ui.hit(hr, Action::PlHeader(row), hint);
+    ui.hit_in(heads, hr, Action::PlHeader(row), hint);
     if s.playlist.header_selection.contains(&row) || (s.playlist.drop_folder==Some(row) && crate::workspace_visibility::shown("visible_playlist-track-destination")) || crate::attached_mixer::owner(s,row)==Some(s.selected_mixer){
         ui.c.fill_rrect(Rect::new(hr.x+1.,hr.y+3.,3.,(hr.h-6.).max(1.)),1.5,t.accent);
     }
@@ -1702,7 +1703,7 @@ fn header(ui: &mut Ui, s: &State, f: &FrameInfo, g: &PGeom, row: u16, x: f32, w:
         let width=(height*0.18).clamp(8.,22.);
         let multiple=crate::playlist_tracks::instruments(s,row).len()>1;
         let badge=Rect::new(hr.x+6.,hr.y+4.,width,(height-if multiple{10.}else{0.}).max(3.));
-        ui.hit(badge.outset(2.),Action::Mix(crate::mixer::MHit::PlaylistInstrument(row)),"Open track instrument; right-click to choose an instrument");
+        ui.hit_in(heads, badge.outset(2.),Action::Mix(crate::mixer::MHit::PlaylistInstrument(row)),"Open track instrument; right-click to choose an instrument");
         // Audio activity (including effect tails) lights the channel, not a note.
         // Damage the entire header so both the halo and keys clear together.
         ui.live(crate::app::Live::Sounding,hr);
@@ -1724,7 +1725,7 @@ fn header(ui: &mut Ui, s: &State, f: &FrameInfo, g: &PGeom, row: u16, x: f32, w:
         }
         if multiple{
             let choose=Rect::new(badge.x-2.,badge.bottom()+1.,badge.w+4.,10.);
-            ui.hit(choose,Action::Mix(crate::mixer::MHit::PlaylistInstruments(row)),"Choose track instrument");
+            ui.hit_in(heads, choose,Action::Mix(crate::mixer::MHit::PlaylistInstruments(row)),"Choose track instrument");
             icons::draw(ui.c,Icon::ArrowDown,choose,t.text);
         }
         Rect::new(hr.x+width+8.,hr.y,(hr.w-width-8.).max(1.),hr.h)
@@ -1736,7 +1737,7 @@ fn header(ui: &mut Ui, s: &State, f: &FrameInfo, g: &PGeom, row: u16, x: f32, w:
     if base_height < 36.0 {
         let face = Rect::new(hr.x, hr.y, hr.w, base_height - gap);
         let led = Rect::new(face.right() - 17.0, face.y, 16.0, face.h);
-        let hovered = ui.hit(led, Action::PlLed(row), "Mute track (right-click / Ctrl+click: solo)");
+        let hovered = ui.hit_in(heads, led, Action::PlLed(row), "Mute track (right-click / Ctrl+click: solo)");
         mute_led(ui, led, on, hovered, s.vintage_2005);
         let expanded = crate::vocal::expanded(s, row);
         let record = crate::attached_mixer::record_button_visible(s,row);
@@ -1753,7 +1754,7 @@ fn header(ui: &mut Ui, s: &State, f: &FrameInfo, g: &PGeom, row: u16, x: f32, w:
         }
         crate::vocal::head(ui, s, row, Rect::new(tuning_x, led.cy() - 7.0, 17.0, 14.0));
         crate::attached_mixer::record_button(ui,s,row,record_rect);
-        if crate::playlist_tracks::buttons(s,row){let b=Rect::new(face.x+2.,led.cy()-7.,14.,14.);ui.hit(b,Action::Mix(crate::mixer::MHit::AttachedPiano(row)),"Piano Roll; right-click to insert an instrument");icons::draw(ui.c,Icon::PianoRoll,b,text);}
+        if crate::playlist_tracks::buttons(s,row){let b=Rect::new(face.x+2.,led.cy()-7.,14.,14.);ui.hit_in(heads, b,Action::Mix(crate::mixer::MHit::AttachedPiano(row)),"Piano Roll; right-click to insert an instrument");icons::draw(ui.c,Icon::PianoRoll,b,text);}
         if expanded {
             crate::vocal::keys(ui, s, g, row, hr);
         }
@@ -1767,12 +1768,12 @@ fn header(ui: &mut Ui, s: &State, f: &FrameInfo, g: &PGeom, row: u16, x: f32, w:
     let active = s.playlist.automation_views.get(&row);
     let hint = active.map(|ch| format!("Automation: {} (click to select another)", pl::source_name(s, ClipSource::Channel(*ch)))).unwrap_or_else(|| "Track automation: choose a parameter".into());
     let toggle=Rect::new(auto.x-21.0,auto.y+2.0,18.0,10.0);
-    ui.hit(toggle.outset(2.0),Action::PlAutomationToggle(row),"Show / hide automation overlay");
+    ui.hit_in(heads, toggle.outset(2.0),Action::PlAutomationToggle(row),"Show / hide automation overlay");
     ui.c.fill_rect(toggle,if active.is_some(){t.glyph}else{t.text_faint.shade(-0.5)});
     ui.c.fill_rect(Rect::new(toggle.x+if active.is_some(){10.0}else{2.0},toggle.y+2.0,6.0,6.0),if active.is_some(){ui.t.tx(0x253039)}else{t.text});
-    let hot = ui.hit(auto, Action::PlAutomation(row), hint);
+    let hot = ui.hit_in(heads, auto, Action::PlAutomation(row), hint);
     clip_kind_icon(ui, PickKind::Automation, auto.inset(1.0), crate::attached_mixer::lane_icon(s,row,hot).unwrap_or(if active.is_some() || hot { t.glyph } else { t.text_faint }));
-    let hovered = ui.hit(led, Action::PlLed(row), "Mute track (right-click / Ctrl+click: solo; with Alt: the whole group)");
+    let hovered = ui.hit_in(heads, led, Action::PlLed(row), "Mute track (right-click / Ctrl+click: solo; with Alt: the whole group)");
     crate::vocal::head(ui,s,row,Rect::new(hr.x+27.,led.y,17.,14.));
     crate::warp::head(ui,s,row,Rect::new(hr.x+47.,led.y,14.,14.));
     let record_right = led.x - if lead { 23. } else { 5. };
@@ -1789,9 +1790,9 @@ fn header(ui: &mut Ui, s: &State, f: &FrameInfo, g: &PGeom, row: u16, x: f32, w:
     {
         let grip=if short{Rect::new(hr.x+1.,hr.y+1.,14.,13.)}else{Rect::new(hr.x+5.,led.y,18.,13.)};
         if crate::playlist_tracks::buttons(s,row) {
-            ui.hit(grip,Action::Mix(crate::mixer::MHit::AttachedPiano(row)),"Piano Roll; right-click to insert an instrument on this channel");icons::draw(ui.c,Icon::PianoRoll,grip,text);
+            ui.hit_in(heads, grip,Action::Mix(crate::mixer::MHit::AttachedPiano(row)),"Piano Roll; right-click to insert an instrument on this channel");icons::draw(ui.c,Icon::PianoRoll,grip,text);
         }else if !crate::attached_mixer::active(s){
-            ui.hit(grip,Action::PlTrackGrip(row),"Drag tracks onto a folder to add them, or onto another track to reorder");
+            ui.hit_in(heads, grip,Action::PlTrackGrip(row),"Drag tracks onto a folder to add them, or onto another track to reorder");
             for line in 0..3 {ui.c.fill_rect(Rect::new(grip.x+3.,grip.y+2.+line as f32*3.,10.,1.),text);}
         }
 
@@ -1800,7 +1801,7 @@ fn header(ui: &mut Ui, s: &State, f: &FrameInfo, g: &PGeom, row: u16, x: f32, w:
     if lead {
         // Collapse arrow left of the LED: up while open, down while collapsed.
         let a = Rect::new(led.x - 18.0, led.y, 14.0, 14.0);
-        let hov = ui.hit(a, Action::PlGroupArrow(row), "Collapse / expand the group");
+        let hov = ui.hit_in(heads, a, Action::PlGroupArrow(row), "Collapse / expand the group");
         let col = if hov { ui.t.tx(0xffffff) } else { text };
         let (cx, cy) = (a.cx(), a.cy());
         if info.is_some_and(|i| i.collapsed) {
@@ -1816,7 +1817,7 @@ fn header(ui: &mut Ui, s: &State, f: &FrameInfo, g: &PGeom, row: u16, x: f32, w:
         mute_led(ui, led, on, hovered, s.vintage_2005);
     }
     crate::vocal::keys(ui,s,g,row,hr);
-    ui.hit(Rect::new(hr.x,hr.bottom()-3.,hr.w,4.),Action::PlRowResize(row),"Drag to resize this Playlist track");
+    ui.hit_in(heads, Rect::new(hr.x,hr.bottom()-3.,hr.w,4.),Action::PlRowResize(row),"Drag to resize this Playlist track");
 }
 
 /// The face behind a title-bar tool icon; returns the icon colour. Lemon: the active tool is a lit rounded square.

@@ -738,3 +738,21 @@ List them with `git diff --name-only --diff-filter=U` and `grep -c '^<<<<<<< '`.
 ### Rules (unchanged)
 - No contact with michaellanemusic.de; keep all credits, licenses and the donate.rs PayPal link; no signing keys.
 - Commit, push and release only after the user confirms.
+
+
+## 21. Lemon synchronization and supplied ML sources (2026-11-24, in progress)
+
+- Owner authorized conflict resolution, commit and push to AQUILA.
+- Working merge targets Lemon `ce48717e` first (62 reachable commits after the previously merged `6dfa0b3e`). The later control-plane/session split through `349c6ba8` still needs integration. Do not report full Lemon parity until that is complete.
+- Preserved AQUILA's ML engine/multi-output design, index solo, UI, extension and update-server guards. New SoundFont player, Windows 32-bit VST2 bridge, plugin edit notifications, import/audio fixes, tempo menu, browser waveform metadata and clip brush are being integrated. Host-link `Edited` is 18, keeping BrowseSample/SampleFit/StateEdit at 15/16/17.
+- Sources supplied by owner remain in Downloads. `ML Studio Source.zip` and `ML Studio Source (1).zip` have identical content. Both Mac archives also have identical content. Ignoring CRLF, only five paths differ between groups. Generic archives have maintenance build 2026112002, Mac archives 2026112402. The Mac source changes include plugin input-queue priority and its regression test, plugin window checks, update version, and omission of the visualizer worker source ZIP.
+- Mac source extracted separately into `/Users/ade/aqbuild/ml-source-2026112402` for comparison. These new ML sources have not been merged into AQUILA yet.
+- Current verification copy is `/Users/ade/aqbuild/lemon-sync`. Native Plasma cache is `/Users/ade/aqbuild/lemon-plasma-native`. Logs are `lemon-check.log`, `lemon-core.log`, `lemon-half.log` in /Users/ade/aqbuild. Plugin checks in `plugin-sync.h7oU9K/tests.log` passed 118 tests (one ignored).
+
+
+### Verified pre-control-plane integration
+
+- `cargo check --locked -p os-app --tests` passed on Apple silicon with native ML Plasma built from source.
+- Engine tests passed 464, failed 0, ignored 11. Host-link tests passed 4. SoundFont/Sampler/Press tests passed 118, failed 0, ignored 1. Notices tests rerun after completing missing dependency licences.
+- Upstream device playback test requires explicit `OS_SIM_DEVICE=256@48000` and is ignored in the normal parallel suite. Windows i686 bridge test is wired into CI. Windows/Linux runtime verification is pending.
+- Supplied newer ML sources change at least 303 paths already tracked in the last merged ML 17.3 base. They need a separate merge after the Lemon architecture work.

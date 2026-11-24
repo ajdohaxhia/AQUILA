@@ -127,11 +127,11 @@ ML Studio is a fork of Lemon Studio that went its own way. AQUILA starts from ML
 - **Multi-core mixing**: mixer tracks and instruments render on several cores, sample-for-sample the same as on one.
 - **Plugin delay compensation**, plugin sandboxing (a crashing plugin is stopped, not the studio), and per-plugin CPU monitoring.
 - **Master Assistant** for guided mastering on the master track.
-- **Third-party plugins**: VST3, VST2 and CLAP instruments and effects, scanned into a searchable plugin picker with previews, favourites and effect chains.
+- **Third-party plugins**: VST3, VST2 and CLAP instruments and effects, including 32-bit VST2 on Windows via a separate helper, scanned into a searchable plugin picker with previews, favourites and effect chains.
 
 ### Work your way
 
-- **Browser** with sample folders, tags, favourites, live sample preview and a free Starter Pack download.
+- **Browser** with sample folders, tags, favourites, waveform inspection, live sample preview and a free Starter Pack download.
 - **Themes and looks**: several designs, an advanced theme editor, custom mixer skins, a classic 2005-style workspace, and adjustable toolbars and menus.
 - **Customizable controls**: rebind mouse and keyboard actions and reorganize menus.
 - **Live collaboration**: one person hosts from their running AQUILA and others join over the network to edit the same project together. No account or server is needed.
@@ -162,6 +162,7 @@ Every AQUILA install includes these, with no extra downloads.
 | ML Wave | Sample-based synth |
 | Lemon Slicer | Beat slicer that writes its slices into a pattern |
 | Lemon Drum Sampler | Multi-pad drum sampler |
+| Lemon SoundFont Player | SoundFont 2 instrument with Classic and Modern playback |
 
 **Effects**
 

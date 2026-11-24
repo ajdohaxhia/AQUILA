@@ -100,6 +100,12 @@ jobs:
         with:
           key: aquila-release-${{ matrix.platform }}
 
+      - name: Build the 32-bit VST 2 bridge
+        if: runner.os == 'Windows'
+        run: |
+          rustup target add i686-pc-windows-msvc
+          cargo build --release --locked -p os-vst2-bridge --bin lemonstudio-bridge32 --target i686-pc-windows-msvc
+
       - name: Build AQUILA
         run: |
           set -euo pipefail
@@ -120,6 +126,7 @@ jobs:
           case "$RUNNER_OS" in
             Windows)
               cp target/release/lemonstudio.exe "stage/$name/AQUILA.exe"
+              cp target/i686-pc-windows-msvc/release/lemonstudio-bridge32.exe "stage/$name/"
               (cd stage && 7z a -tzip -r "../dist/$name.zip" "$name" >/dev/null)
               ;;
             Linux)

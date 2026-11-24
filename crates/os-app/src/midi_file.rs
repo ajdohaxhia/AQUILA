@@ -736,7 +736,7 @@ impl App {
             crate::control::edit(s, IMPORT_STEP, crate::control::command::Region::Project, |s| place(s, imp, o, &name, n));
             if let Some((track,tick))=placement {
                 crate::patterns::select(s,n);
-                s.playlist.lock_len=None;
+                s.playlist.brush = None;
                 let clip=crate::playlist::place(s,track,tick);
                 s.playlist.sel=vec![clip];
             }

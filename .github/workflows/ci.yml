@@ -53,6 +53,19 @@ jobs:
       - name: Build
         run: cargo build --workspace --lib --bins --tests --locked
 
+      # Build the same 32-bit helper as releases, then exercise it from the 64-bit host.
+      - name: Build the 32-bit bridge
+        if: runner.os == 'Windows'
+        run: |
+          rustup target add i686-pc-windows-msvc
+          cargo build --locked -p os-vst2-bridge --bin lemonstudio-bridge32 --target i686-pc-windows-msvc
+
+      - name: Test the 32-bit bridge
+        if: runner.os == 'Windows'
+        env:
+          OS_VST2_TEST_HELPER: ${{ github.workspace }}/target/i686-pc-windows-msvc/debug/lemonstudio-bridge32.exe
+        run: cargo test --locked -p os-vst2-bridge --test bridge
+
       # The plugin bundles (VST3 + CLAP): the hosting tests load them, and skip without them.
       - name: Bundle plugins
         run: cargo run -p bundle-plugins --locked

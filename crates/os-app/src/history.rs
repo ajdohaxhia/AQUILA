@@ -914,6 +914,8 @@ pub struct History {
     sequence: bool,
     /// The knob or fader the newest step's mouse-wheel turns go to (one step for a run of notches).
     wheel: Option<crate::knobs::Control>,
+    /// Counts steps recorded, joined, undone and redone (`changes`).
+    changes: u64,
 }
 
 /// A run of changes that make one step (`History::run`).
@@ -932,6 +934,8 @@ pub enum Run {
     Channel(usize, ChannelControl),
     /// A controller moving the wet (`.3`) or dry level of member `.2` of the container in slot `.1` of track `.0`.
     Member(u16, u8, u32, bool),
+    /// A controller moving the tempo.
+    Tempo,
 }
 
 /// A channel control a run of changes goes to (`Run::Channel`).
@@ -986,6 +990,12 @@ impl History {
         self.steps.push(Step{name:"Insert instrument track".into(),snap:Snap::AttachedInstrument{generator:Box::new(Snap::Several(snaps)),playlist:Box::new(playlist),mixer:None,n,selected},expected:None});self.done=1;
     }
 
+    /// Moves on with every step recorded, joined, undone or redone: what a plugin window last knew of its instance's
+    /// state is read again then (`Plugins::refresh_known`).
+    pub fn changes(&self) -> u64 {
+        self.changes
+    }
+
     /// How many steps there are ("Last reset" not counted).
     #[cfg(test)]
     pub fn len(&self) -> usize {
@@ -1004,7 +1014,7 @@ impl History {
 
     /// Forgets every step: the project was opened or made ("Last reset").
     pub fn reset(&mut self) {
-        *self = History::default();
+        *self = History { changes: self.changes.wrapping_add(1), ..History::default() };
     }
 
     /// Whether entry `p` of the list (0 = "Last reset", `k` = step `k`) is undone: drawn grey.
@@ -1073,6 +1083,7 @@ pub fn record_named(s: &mut State, name: Cow<'static, str>, snap: Snap) {
     h.undid = false;
     h.run = None;
     h.fresh = true;
+    h.changes += 1;
     h.trim();
 }
 
@@ -1080,6 +1091,7 @@ pub fn record_named(s: &mut State, name: Cow<'static, str>, snap: Snap) {
 /// and holds commands.
 pub fn extend_newest(s: &mut State, f: impl FnOnce(&mut Vec<crate::control::Command>)) {
     let h = &mut s.history;
+    h.changes += 1;
     if h.done > 0 && h.done == h.steps.len() {
         if let Snap::Commands(c) = &mut h.steps[h.done - 1].snap {
             f(c);
@@ -1304,6 +1316,7 @@ pub fn undo(s: &mut State) -> Option<String> {
     }
     h.done -= 1;
     (h.undid, h.run, h.fresh) = (true, None, false);
+    h.changes += 1;
     let i = h.done;
     swap(s, i);
     let name = s.history.steps[i].name.to_string();
@@ -1324,6 +1337,7 @@ pub fn redo(s: &mut State) -> Option<String> {
     let h = &mut s.history;
     h.done += 1;
     (h.undid, h.run, h.fresh) = (false, None, false);
+    h.changes += 1;
     let name = h.steps[i].name.to_string();
     h.trim();
     Some(name)

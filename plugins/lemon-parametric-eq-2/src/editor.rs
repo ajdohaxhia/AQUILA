@@ -295,14 +295,33 @@ pub struct Logic {
     copied: Option<f32>,
     pub hosted: bool,
     undo:Vec<Snapshot>,redo:Vec<Snapshot>,pending:Option<Snapshot>,
+    /// Writes to the state from the editor, and how many of them the host was told of (`take_edit`).
+    made: std::cell::Cell<u64>,
+    told: u64,
     /// Wheel notches not yet a whole step on a type tab or order mark (fine wheels and trackpads send fractions).
     notch: Option<(Target, f32)>,
 }
 
 impl Logic {
+    /// The parameters, for a write to the state from the editor: counted for the host (`take_edit`).
+    fn raw(&self) -> &Arc<EqParams> {
+        self.made.set(self.made.get() + 1);
+        &self.params
+    }
+
+    /// Whether the host is to be told of edits made since the last call (host link `Edited`): once a drag is let go,
+    /// so a drag is one edit.
+    pub fn take_edit(&mut self) -> bool {
+        if self.made.get() == self.told || self.drag.is_some() {
+            return false;
+        }
+        self.told = self.made.get();
+        true
+    }
+
     pub fn new(params: Arc<EqParams>, shared: Arc<Shared>, ctx: Option<Arc<dyn GuiContext>>) -> Self {
         let vals = Vals::new(&*params, params.live.clone(), ctx);
-        Logic { vals, params, shared, view: ViewState::default(), hits: Vec::new(), drag: None, hint: String::new(), pointer_drag:None, previous_range:[0.;7], copied: None, hosted: false,undo:vec![],redo:vec![],pending:None, notch: None }
+        Logic { vals, params, shared, view: ViewState::default(), hits: Vec::new(), drag: None, hint: String::new(), pointer_drag:None, previous_range:[0.;7], copied: None, hosted: false,undo:vec![],redo:vec![],pending:None, made: std::cell::Cell::new(0), told: 0, notch: None }
     }
 
     fn audition(&mut self, band: Option<usize>) {
@@ -324,7 +343,7 @@ impl Logic {
     fn dynamic_meter(&mut self){for (v,m) in self.view.reduction.iter_mut().zip(&self.shared.dynamics){*v=f32::from_bits(m.load(Ordering::Relaxed));}self.view.spectral.resize(256,0.);for(v,m)in self.view.spectral.iter_mut().zip(&self.shared.spectral){*v=f32::from_bits(m.load(Ordering::Relaxed));}for i in 0..7{self.view.trigger[i]=f32::from_bits(self.shared.trigger[i].load(Ordering::Relaxed));self.view.threshold[i]=f32::from_bits(self.shared.threshold[i].load(Ordering::Relaxed));}}
     fn snapshot(&self)->Snapshot{Snapshot{settings:self.shown(),config:self.dynamic_values(),extra:self.params.extra_copy(),created:self.view.created,selection:self.view.selection,selected:self.view.selected}}
     fn remember(&mut self,before:Snapshot){let after=self.snapshot();if before.settings!=after.settings||before.config!=after.config||before.extra!=after.extra||before.created!=after.created{self.undo.push(before);if self.undo.len()>100{self.undo.remove(0);}self.redo.clear();}}
-    fn undo_redo(&mut self,redo:bool){self.audition(None);let state=if redo{self.redo.pop()}else{self.undo.pop()};if let Some(state)=state{let current=self.snapshot();for k in 0..7{self.set_band(k,state.settings.bands[k]);}self.vals.edit_plain(MAIN_ID,state.settings.main_db as f32);for i in 0..47{self.vals.edit_plain(&params::dynamic_id(i),state.config.value(i));}self.params.set_extra(state.extra);self.view.created=state.created;self.view.selection=state.selection;self.view.selected=state.selected;self.view.show_dynamics=state.selection!=0;self.view.harsh_open=false;if redo{self.undo.push(current);}else{self.redo.push(current);}}}
+    fn undo_redo(&mut self,redo:bool){self.audition(None);let state=if redo{self.redo.pop()}else{self.undo.pop()};if let Some(state)=state{let current=self.snapshot();for k in 0..7{self.set_band(k,state.settings.bands[k]);}self.vals.edit_plain(MAIN_ID,state.settings.main_db as f32);for i in 0..47{self.vals.edit_plain(&params::dynamic_id(i),state.config.value(i));}self.raw().set_extra(state.extra);self.view.created=state.created;self.view.selection=state.selection;self.view.selected=state.selected;self.view.show_dynamics=state.selection!=0;self.view.harsh_open=false;if redo{self.undo.push(current);}else{self.redo.push(current);}}}
     fn linked_ids(&self,id:&str)->Vec<String>{
         for k in 0..7 {
             let field=if id==freq_id(k){Some(0)}else if id==level_id(k){Some(1)}else if id==width_id(k){Some(2)}else{None};
@@ -339,7 +358,7 @@ impl Logic {
     pub fn layout(&self)->view::Layout{view::Layout::of(&self.view)}
     fn visible(&self,k:usize)->bool{let c=self.dynamic_values();view::modern_visible(&self.shown(),&self.view,k)||(self.shown().bands[k].kind!=0&&(c.bands[k][0]!=0.||c.spectral&(1<<k)!=0))}
     fn select(&mut self,k:usize){if self.view.audition.is_some_and(|old|old!=k){self.audition(None);}self.view.selected=k;self.view.selection=1<<k;self.view.show_dynamics=true;self.view.harsh_open=false;}
-    fn create_band(&mut self,x:f32,y:f32)->Option<usize>{let s=self.shown();let c=self.dynamic_values();let k=(0..BANDS).find(|&k|s.bands[k].kind==0||(view::modern_available(&s,k)&&self.view.created&(1<<k)==0&&c.bands[k][0]==0.&&c.spectral&(1<<k)==0))?;for i in k*4..k*4+4{self.reset_param(&params::dynamic_id(i));}self.reset_param(&params::dynamic_id(30+k));self.reset_param(&params::dynamic_id(40+k));self.params.edit_extra(|b|{let mut routes=eq::routed::routes(b,false);routes[k]=0;eq::routed::save_routes(b,routes,false);});let l=self.layout();let n=l.n(x);let db=l.db(y).clamp(-18.,18.);let kind=if n<0.04{eq::HIGH_PASS}else if n>0.96{eq::LOW_PASS}else{eq::PEAKING};self.vals.edit_plain(&type_id(k),kind as f32);self.vals.edit_plain(&freq_id(k),n as f32);self.vals.edit_plain(&level_id(k),if has_level(kind){db as f32}else{0.});self.vals.edit_plain(&width_id(k),0.7);self.vals.edit_plain(&order_id(k),0.);self.params.edit_extra(|b|{let mask=params::mask(b)|(1<<k);set_byte(b,MASK_BYTE,mask);});self.view.created|=1<<k;self.select(k);Some(k)}
+    fn create_band(&mut self,x:f32,y:f32)->Option<usize>{let s=self.shown();let c=self.dynamic_values();let k=(0..BANDS).find(|&k|s.bands[k].kind==0||(view::modern_available(&s,k)&&self.view.created&(1<<k)==0&&c.bands[k][0]==0.&&c.spectral&(1<<k)==0))?;for i in k*4..k*4+4{self.reset_param(&params::dynamic_id(i));}self.reset_param(&params::dynamic_id(30+k));self.reset_param(&params::dynamic_id(40+k));self.raw().edit_extra(|b|{let mut routes=eq::routed::routes(b,false);routes[k]=0;eq::routed::save_routes(b,routes,false);});let l=self.layout();let n=l.n(x);let db=l.db(y).clamp(-18.,18.);let kind=if n<0.04{eq::HIGH_PASS}else if n>0.96{eq::LOW_PASS}else{eq::PEAKING};self.vals.edit_plain(&type_id(k),kind as f32);self.vals.edit_plain(&freq_id(k),n as f32);self.vals.edit_plain(&level_id(k),if has_level(kind){db as f32}else{0.});self.vals.edit_plain(&width_id(k),0.7);self.vals.edit_plain(&order_id(k),0.);self.raw().edit_extra(|b|{let mask=params::mask(b)|(1<<k);set_byte(b,MASK_BYTE,mask);});self.view.created|=1<<k;self.select(k);Some(k)}
     fn begin_group(&mut self,width:bool){let shown=self.shown();let selected=if self.view.selection==0{1<<self.view.selected}else{self.view.selection};let orig:Vec<_>=(0..BANDS).filter(|k|selected&(1<<k)!=0).map(|k|(k,shown.bands[k])).collect();for(k,_)in &orig{if width{self.vals.begin(&width_id(*k));}else{self.vals.begin(&freq_id(*k));self.vals.begin(&level_id(*k));}}self.drag=Some(Drag::Group{orig,dx:0.,dy:0.,axis:0,width});}
 
 
@@ -463,7 +482,7 @@ impl Logic {
     }
 
     fn set_mask(&mut self, m: u8) {
-        self.params.edit_extra(|b| set_byte(b, MASK_BYTE, m & 0x7f));
+        self.raw().edit_extra(|b| set_byte(b, MASK_BYTE, m & 0x7f));
     }
 
     fn mask(&self) -> u8 {
@@ -477,19 +496,19 @@ impl Logic {
         let fields = params::fields_of(&cur);
         let image=self.params.extra_copy();let current_routes=eq::routed::routes(&image,false);let spare_routes=eq::routed::routes(&image,true);
         let current_dynamic=self.dynamic_values();let spare_dynamic=eq::dynamic::Config::load(&self.params.extra_copy(),true);
-        if flip || !LOCK_SPARE.load(Ordering::Relaxed){self.params.edit_extra(|b|current_dynamic.save(b,true));}
+        if flip || !LOCK_SPARE.load(Ordering::Relaxed){self.raw().edit_extra(|b|current_dynamic.save(b,true));}
         if flip {for i in 0..47{self.vals.edit_plain(&params::dynamic_id(i),spare_dynamic.value(i));}}
         if !flip {
             if self.shared.lock_spare.load(Ordering::Relaxed) {
                 return;
             }
             self.view.compare_b=false;
-            self.params.edit_extra(|b| {fields.iter().enumerate().for_each(|(i, &v)| params::set_field(b, 37 + i, v));eq::routed::save_routes(b,current_routes,true);if flip{eq::routed::save_routes(b,spare_routes,false);}});
+            self.raw().edit_extra(|b| {fields.iter().enumerate().for_each(|(i, &v)| params::set_field(b, 37 + i, v));eq::routed::save_routes(b,current_routes,true);if flip{eq::routed::save_routes(b,spare_routes,false);}});
             return;
         }
         self.view.compare_b=!self.view.compare_b;
         let spare = params::settings_at(&self.params.extra_copy(), 37);
-        self.params.edit_extra(|b| {fields.iter().enumerate().for_each(|(i, &v)| params::set_field(b, 37 + i, v));eq::routed::save_routes(b,current_routes,true);if flip{eq::routed::save_routes(b,spare_routes,false);}});
+        self.raw().edit_extra(|b| {fields.iter().enumerate().for_each(|(i, &v)| params::set_field(b, 37 + i, v));eq::routed::save_routes(b,current_routes,true);if flip{eq::routed::save_routes(b,spare_routes,false);}});
         for k in 0..BANDS {
             self.set_band(k, spare.bands[k]);
         }
@@ -643,21 +662,21 @@ impl Logic {
                 self.set_mask(m);
             }
             (Target::Options, Btn::Left) => acts.push(Act::Menu(MenuReq::Options, x, y)),
-            (Target::Lin, Btn::Left) => self.params.edit_extra(|b| toggle(b, params::F_LIN)),
+            (Target::Lin, Btn::Left) => self.raw().edit_extra(|b| toggle(b, params::F_LIN)),
             (Target::Lin, Btn::Right) => acts.push(Act::Menu(MenuReq::Lin, x, y)),
             // HQ on / off: bit 0; the mode in the other bits stays for the next time it is switched on.
-            (Target::Hq, Btn::Left) => self.params.edit_extra(|b| {
+            (Target::Hq, Btn::Left) => self.raw().edit_extra(|b| {
                 let cur = byte(b, params::HQ_BYTE);
                 set_byte(b, params::HQ_BYTE, cur ^ 1);
             }),
             (Target::Hq, Btn::Right) => acts.push(Act::Menu(MenuReq::Hq, x, y)),
-            (Target::Tokens, Btn::Left) => self.params.edit_extra(|b| {
+            (Target::Tokens, Btn::Left) => self.raw().edit_extra(|b| {
                 let v = byte(b, params::TOKENS_BYTE);
                 set_byte(b, params::TOKENS_BYTE, u8::from(v == 0));
             }),
-            (Target::Phones, Btn::Left) => self.params.edit_extra(|b| toggle(b, params::F_SOLO_SHIFT)),
+            (Target::Phones, Btn::Left) => self.raw().edit_extra(|b| toggle(b, params::F_SOLO_SHIFT)),
             (Target::Phones, Btn::Right) => acts.push(Act::Menu(MenuReq::Phones, x, y)),
-            (Target::Monitor(i), Btn::Left) => self.params.edit_extra(|b| set_byte(b, params::MONITOR_BYTE, i)),
+            (Target::Monitor(i), Btn::Left) => self.raw().edit_extra(|b| set_byte(b, params::MONITOR_BYTE, i)),
             (Target::Analyzer,Btn::Left|Btn::Right)=>acts.push(Act::Menu(MenuReq::Analyzer,x,y)),
             (Target::GainMatch,Btn::Left)=>{self.view.gain_match=!self.view.gain_match;self.shared.gain_match.store(self.view.gain_match,Ordering::Relaxed);},
             (Target::Store, Btn::Left) => self.compare(false),
@@ -927,7 +946,7 @@ impl Logic {
             Cmd::Dynamic(k)=>{self.select(k);self.toggle_dynamics(k);},
             Cmd::Spectral(k)=>{self.select(k);self.toggle_spectral(k);},
             Cmd::AddBand(mode)=>{if let Some(k)=self.create_band(x,y){if mode==1{self.toggle_dynamics(k);}else if mode==2{self.toggle_spectral(k);}}},
-            Cmd::Route(k,v)=>self.params.edit_extra(|b|{let mut r=eq::routed::routes(b,false);r[k]=v.min(4);eq::routed::save_routes(b,r,false);}),
+            Cmd::Route(k,v)=>self.raw().edit_extra(|b|{let mut r=eq::routed::routes(b,false);r[k]=v.min(4);eq::routed::save_routes(b,r,false);}),
             Cmd::SetType(k,t)=>{let mask=if self.view.selection&(1<<k)!=0{self.view.selection}else{1<<k};for j in 0..7{if mask&(1<<j)!=0{self.vals.edit_plain(&type_id(j),t as f32);}}},
             Cmd::SetOrder(k,o)=>{let mask=if self.view.selection&(1<<k)!=0{self.view.selection}else{1<<k};for j in 0..7{if mask&(1<<j)!=0{self.vals.edit_plain(&order_id(j),o as f32);}}},
             Cmd::SetHz(k, hz) => self.vals.edit_plain(&freq_id(k), eq::freq_pos(hz) as f32),
@@ -940,14 +959,14 @@ impl Logic {
             }
             Cmd::TypeIn(id) => return vec![Act::TypeIn(id, x, y)],
             Cmd::Automate(id) => return self.param_index(&id).map(Act::Automate).into_iter().collect(),
-            Cmd::Flag(f) => self.params.edit_extra(|b| toggle(b, f)),
-            Cmd::Opt(o, v) => self.params.edit_extra(|b| params::set_opt(b, o, v)),
-            Cmd::Byte(i, v) => self.params.edit_extra(|b| set_byte(b, i, v)),
-            Cmd::Hq(mode) => self.params.edit_extra(|b| {
+            Cmd::Flag(f) => self.raw().edit_extra(|b| toggle(b, f)),
+            Cmd::Opt(o, v) => self.raw().edit_extra(|b| params::set_opt(b, o, v)),
+            Cmd::Byte(i, v) => self.raw().edit_extra(|b| set_byte(b, i, v)),
+            Cmd::Hq(mode) => self.raw().edit_extra(|b| {
                 set_byte(b, params::HQ_BYTE, if mode == 3 { 3 } else { 1 });
                 set_flag(b, params::F_HQ_ENHANCED, mode == 2);
             }),
-            Cmd::Enhanced => self.params.edit_extra(|b| {
+            Cmd::Enhanced => self.raw().edit_extra(|b| {
                 let off = byte(b, params::ENHANCED_OFF_BYTE);
                 set_byte(b, params::ENHANCED_OFF_BYTE, u8::from(off == 0));
             }),
@@ -1306,6 +1325,9 @@ mod win32 {
                     os_hostlink::to_host(self.hwnd as isize, os_hostlink::Cmd::Changed, 0);
                 }
             }
+            if self.logic.take_edit() && self.logic.hosted {
+                os_hostlink::to_host(self.hwnd as isize, os_hostlink::Cmd::Edited, 0);
+            }
         }
 
         fn run(&mut self, acts: Vec<Act>) {
@@ -1363,7 +1385,7 @@ mod win32 {
                     }
                     1
                 }
-                Cmd::StateEdit | Cmd::SampleFit | Cmd::BrowseSample | Cmd::Changed | Cmd::Note | Cmd::Automate | Cmd::Audio | Cmd::Notes => 0,
+                Cmd::Edited | Cmd::StateEdit | Cmd::SampleFit | Cmd::BrowseSample | Cmd::Changed | Cmd::Note | Cmd::Automate | Cmd::Audio | Cmd::Notes => 0,
             }
         }
 
@@ -1584,6 +1606,9 @@ mod gui {
                 self.link.to_host(Cmd::Changed, 0);
             }
             // Joined the strip: "Create automation clip" works.
+            if self.logic.take_edit() {
+                self.link.to_host(Cmd::Edited, 0);
+            }
             self.logic.hosted = self.link.hosted();
         }
 
@@ -1759,7 +1784,9 @@ mod tests {
         }
         // LIN on and off.
         let (x, y) = centre(&l, Target::Lin);
+        let _ = l.take_edit();
         l.down(x, y, Btn::Left, Mods::default(), false);
+        assert!(l.take_edit(), "the host hears of it");
         assert_eq!(opts(&l).mode(), eq::Mode::Lin);
         assert_eq!(opts(&l).latency(44100.0), 1536);
         l.pick(&MenuReq::Lin, Cmd::Byte(params::LIN_PRECISION_BYTE, 4), 0.0, 0.0);

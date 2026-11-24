@@ -166,6 +166,7 @@ fn target_text(t: Target) -> String {
         Target::Member(m, k, id, wet) => format!("{}:{m}:{k}:{id}", if wet { "memberwet" } else { "memberdry" }),
         Target::MemberParam(m, k, id, i) => format!("memberparam:{m}:{k}:{id}:{i}"),
         Target::Latency(..) => "none".into(),
+        Target::Tempo => "tempo".into(),
     }
 }
 
@@ -179,6 +180,7 @@ fn parse_target(s: &str) -> Option<Target> {
         "varispeed" => Target::Knob(KnobId::Varispeed),
         "chanpitch" => Target::Knob(KnobId::ChanPitch(n()?)),
         "swing" => Target::Knob(KnobId::Swing),
+        "tempo" => Target::Tempo,
         "mixpan" => Target::Knob(KnobId::MixPan(n()? as u16)),
         "mixsep" => Target::Knob(KnobId::MixSep(n()? as u16)),
         "slotmix" => Target::Knob(KnobId::SlotMix(n()? as u16, n()? as u8)),
@@ -713,6 +715,14 @@ impl App {
             Target::RackTrack(_) | Target::RackLed(_) => {
                 let to = crate::typein::at_position(&self.state, t, f64::from(v));
                 crate::typein::set_value(&mut self.state, t, to);
+            }
+            // The tempo over its range (10-522 BPM): one undo step while the controller keeps moving it; recorded as the
+            // tempo display's changes.
+            Target::Tempo => {
+                let bpm = crate::typein::at_position(&self.state, t, f64::from(v));
+                let (name, region) = (crate::control::command::TEMPO, crate::control::command::Region::Settings);
+                crate::control::run_edit(&mut self.state, name, region, crate::history::Run::Tempo, false, |s| crate::typein::set_tempo_now(s, bpm));
+                self.record_control(&crate::app::Action::Tempo);
             }
             // Never linked (no remote control).
             Target::Latency(..) => {}

@@ -730,6 +730,7 @@ unsafe extern "system" fn area_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM
                 Some(os_hostlink::Cmd::BrowseSample) if lp==1 => LinkMsg::LocateSample,
                 Some(os_hostlink::Cmd::BrowseSample) => LinkMsg::BrowseSample,
                 Some(os_hostlink::Cmd::Notes) => LinkMsg::Notes(lp),
+                Some(os_hostlink::Cmd::Edited) => LinkMsg::Edited,
                 _ => return 0,
             };
             if let Ok(mut q) = LINK.lock() {

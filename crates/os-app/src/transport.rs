@@ -36,7 +36,7 @@
 //! channels play as timed live notes.
 
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicU8, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU32, AtomicU64, AtomicU8, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex, Weak};
 use std::time::{Duration, Instant};
@@ -95,6 +95,8 @@ pub struct Shared {
     generation: AtomicU64,
     /// The running playback is the playlist (else one pattern).
     song: AtomicBool,
+    /// The pattern the running pattern playback plays (`switch_pattern` changes it); meaningful while not `song`.
+    pattern: AtomicU16,
     /// The song's loop points, start << 32 | end in ticks (0 = the whole song): the playlist's time selection.
     loop_range: AtomicU64,
     /// Paused by a Marker pause: its tick + 1 (0 = not); after Resume, the same for the app to take as the playback's
@@ -777,10 +779,17 @@ impl Transport {
         let generation = self.shared.generation.fetch_add(1, Ordering::AcqRel) + 1;
         self.shared.marker_hold.store(0, Ordering::Relaxed);
         self.shared.song.store(matches!(mode, PlayMode::Song), Ordering::Relaxed);
+        self.shared.pattern.store(if let PlayMode::Pattern(n) = mode { n } else { 0 }, Ordering::Relaxed);
         self.shared.rewind(start_tick);
         self.shared.state.store(PLAYING, Ordering::Release);
         let starts = Starts { count_in: bars, ..Starts::from_prefs() };
         let _ = self.tx.send(Cmd::Play(Box::new(project.clone()), mode, start_tick, generation, starts, warp));
+    }
+
+    /// The pattern a pattern playback plays, while it plays or is paused (`None`: stopped, or the song plays).
+    pub fn pattern(&self) -> Option<u16> {
+        let n = self.shared.pattern.load(Ordering::Relaxed);
+        (self.playing() && !self.song() && n > 0).then_some(n)
     }
 
     /// The song's loop points (the playlist's time selection; `None` = the whole song). Song playback follows them
@@ -1613,6 +1622,14 @@ fn engine(project: &Project, library: &mut SampleLibrary, rate: u32, mode: PlayM
     e
 }
 
+/// Where the bar holding `tick` starts on pattern `number`'s own grid (its time signatures, `Project::pattern_bars`).
+fn bar_start(project: &Project, number: u16, tick: u64) -> u64 {
+    let regions = project.pattern_bars(number);
+    let i = regions.iter().rposition(|r| u64::from(r.0) <= tick).unwrap_or(0);
+    let (start, bar) = (u64::from(regions[i].0), u64::from(regions[i].1.max(1)));
+    start + tick.saturating_sub(start) / bar * bar
+}
+
 /// Renders a whole song (or one pass of a pattern, or a span of either) with the hosted plugins and writes the files of
 /// `job`; returns the written length in seconds and the files. Runs on the audio thread with no stream open.
 // spec: audio/export.md
@@ -1798,7 +1815,7 @@ fn audio_thread(rx: Receiver<Cmd>, shared: Arc<Shared>, latest: Arc<Mutex<Option
     // OS_DEBUG: how far playback renders ahead of the device, every 2 s.
     let debug = std::env::var_os("OS_DEBUG").is_some();
     let mut logged = Instant::now();
-    let swap = |s: &mut Session, library: &mut SampleLibrary, switched:bool| {
+    let swap = |s: &mut Session, library: &mut SampleLibrary, from: Option<u16>| {
         // Build outside the lock, then swap at the playing position.
         let mut e = engine(&s.project, library, s.rate, s.mode, &inst, true);
         e.set_hardware_device(s.hardware_device.clone(), s.extra_channels / 2, &s.project);
@@ -1807,7 +1824,10 @@ fn audio_thread(rx: Receiver<Cmd>, shared: Arc<Shared>, latest: Arc<Mutex<Option
             e.clear_schedule();
         }
         let old = s.engine.lock().map(|mut slot| {
-            if switched {e.continue_pattern_from(&mut slot);}else{e.continue_from(&mut slot);}
+            e.continue_from(&mut slot);
+            if let Some(from) = from {
+                e.pattern_switched(|tick| bar_start(&s.project, from, tick));
+            }
             std::mem::replace(&mut *slot, e)
         });
         drop(old); // freed after the audio callback has the new engine
@@ -1872,9 +1892,13 @@ fn audio_thread(rx: Receiver<Cmd>, shared: Arc<Shared>, latest: Arc<Mutex<Option
                 if let Some((mut project, warp)) = latest.lock().ok().and_then(|mut l| l.take()) {
                     let warp_changed = library.replace_buffer(crate::warp::PREVIEW_PATH, warp);
                     for s in [session.as_mut(), live.as_mut()].into_iter().flatten() {
-                        let next=if s.kind==Kind::Song{follow_pattern(s.mode,&project)}else{s.mode};
-                        let switched=next!=s.mode;s.mode=next;
-                        if !switched && !warp_changed
+                        let next = if s.kind == Kind::Song { follow_pattern(s.mode, &project) } else { s.mode };
+                        let from = match (s.mode, next) {
+                            (PlayMode::Pattern(old), PlayMode::Pattern(new)) if new != old => Some(old),
+                            _ => None,
+                        };
+                        s.mode = next;
+                        if from.is_none() && !warp_changed
                             && let Some(changed) = mixer_live_edits(&mut s.project, &mut project)
                             && let Ok(mut engine) = s.engine.lock()
                         {
@@ -1888,10 +1912,16 @@ fn audio_thread(rx: Receiver<Cmd>, shared: Arc<Shared>, latest: Arc<Mutex<Option
                             continue;
                         }
                         s.project = project.clone();
-                        swap(s, &mut library,switched);
+                        swap(s, &mut library, from);
+                        if s.kind == Kind::Song && let PlayMode::Pattern(n) = s.mode {
+                            shared.pattern.store(n, Ordering::Relaxed);
+                        }
                     }
                     if let Some(h) = held.as_mut() {
-                        h.1=follow_pattern(h.1,&project);
+                        h.1 = follow_pattern(h.1, &project);
+                        if let PlayMode::Pattern(n) = h.1 {
+                            shared.pattern.store(n, Ordering::Relaxed);
+                        }
                         h.0 = project.clone();
                     }
                     live_project = Some(project);
@@ -1899,7 +1929,7 @@ fn audio_thread(rx: Receiver<Cmd>, shared: Arc<Shared>, latest: Arc<Mutex<Option
             }
             Ok(Cmd::Instruments) => {
                 for s in [session.as_mut(), live.as_mut()].into_iter().flatten() {
-                    swap(s, &mut library,false);
+                    swap(s, &mut library, None);
                 }
             }
             Ok(Cmd::Preset(key, plugin)) => {
@@ -2181,7 +2211,7 @@ fn audio_thread(rx: Receiver<Cmd>, shared: Arc<Shared>, latest: Arc<Mutex<Option
             Ok(Cmd::Factory(dir)) => {
                 library.set_factory_dir(dir);
                 for s in [session.as_mut(), live.as_mut()].into_iter().flatten() {
-                    swap(s, &mut library,false);
+                    swap(s, &mut library, None);
                 }
             }
             Ok(Cmd::AsioPanel) if closed => report(&shared, "the output is let go of (Auto close)".into()),
@@ -2630,6 +2660,7 @@ impl Session {
         if song {
             e.set_run_on(crate::record::run_on_flag());
             e.set_nudge(crate::tapper::nudge_flag());
+            e.set_half_speed(crate::tempo_menu::half_flag());
         }
         let done = Arc::new(AtomicBool::new(false));
         let ctl = Arc::new(Ctl { consumed: AtomicU64::new(0), paused: AtomicBool::new(at.paused), held: AtomicBool::new(false), report: AtomicBool::new(song) });
@@ -3380,6 +3411,100 @@ mod tests {
             println!("PLUGIN size={size} peak={peak} processing_ms={} worst_us={} worst_block={worst_block} blocks_over_budget={late}",total.as_millis(),worst.as_micros());
             assert!(peak > 0.00001, "plugin did not produce audio; check license/preset");
         }
+    }
+
+    /// Patterns 2 (3 bars) and 4 (5 bars) of the test project, a note on each beat; a bar is 384 ticks.
+    fn switch_project() -> Project {
+        let mut project = crate::app::test_project();
+        let ch = project.channels[0].index;
+        let pattern = |number, bars: u32| os_model::Pattern {
+            number,
+            length: Some(bars * 384),
+            notes: (0..bars * 4).map(|i| os_model::Note { length: 24, key: 60, ..os_model::Note::step(ch, i * 96) }).collect(),
+            ..Default::default()
+        };
+        project.patterns = vec![pattern(2, 3), pattern(4, 5)];
+        project.tempo = Some(130.0);
+        project
+    }
+
+    /// Pattern `from`'s engine played from `at` for a few ticks, then pattern `to`'s taking over as a switch does:
+    /// the tick the new one plays next.
+    fn switched_tick(project: &Project, from: u16, to: u16, at: u64) -> f64 {
+        let mut library = SampleLibrary::default();
+        let mut old = Engine::new(project, &mut library, 48000, PlayMode::Pattern(from));
+        old.set_looping(true);
+        old.seek_tick(at);
+        for _ in 0..4 {
+            old.next_tick();
+        }
+        let played = old.tick_position();
+        let mut e = Engine::new(project, &mut library, 48000, PlayMode::Pattern(to));
+        e.set_looping(true);
+        e.continue_from(&mut old);
+        e.pattern_switched(|tick| bar_start(project, from, tick));
+        let (_, tick, ..) = e.next_tick().unwrap();
+        assert!(tick >= 0.0 && played >= at as f64, "{played}");
+        tick
+    }
+
+    /// Switching patterns while playing (spec: audio/transport.md "Switching patterns while playing"): within the new
+    /// pattern's length playback goes on where it was; past it, at the same place in the bar, in the first bar.
+    #[test]
+    fn a_pattern_switch_keeps_the_place_in_the_bar() {
+        let project = switch_project();
+        // Bar 2 beat 2 of pattern 4 (5 bars) into pattern 2 (3 bars): goes on in bar 2.
+        let t = switched_tick(&project, 4, 2, 384 + 96);
+        assert!((384.0 + 96.0..384.0 + 96.0 + 8.0).contains(&t), "within the length: {t}");
+        // Bar 5 beat 3 of pattern 4 into pattern 2: bar 1 beat 3 (not 5 bars modulo 3 = bar 2).
+        let t = switched_tick(&project, 4, 2, 4 * 384 + 192);
+        assert!((192.0..192.0 + 8.0).contains(&t), "past the end: {t}");
+        // Bar 3 of pattern 2 into pattern 4: still bar 3.
+        let t = switched_tick(&project, 2, 4, 2 * 384 + 300);
+        assert!((2.0 * 384.0 + 300.0..2.0 * 384.0 + 308.0).contains(&t), "longer pattern: {t}");
+    }
+
+    /// The bar a tick is in follows the playing pattern's own time signatures.
+    #[test]
+    fn a_pattern_switch_counts_bars_on_the_old_patterns_grid() {
+        let mut project = switch_project();
+        // Pattern 4 in 3/4 from its start: bars of 288 ticks.
+        let marker = os_model::TimeMarker { position: 0, kind: os_model::TimeMarker::SIGNATURE, name: String::new(), numerator: 3, denominator: 4, scale: 0, root: 0, flag: 0, scale_index: -1, color: None, linear_us: None };
+        project.patterns[1].markers.push(marker);
+        assert_eq!(bar_start(&project, 4, 4 * 288 + 50), 4 * 288);
+        assert_eq!(bar_start(&project, 2, 4 * 288 + 50), 3 * 384);
+        let t = switched_tick(&project, 4, 2, 5 * 288 + 100);
+        assert!((100.0..108.0).contains(&t), "{t}");
+    }
+
+    /// `switch_pattern` while a pattern plays: playback goes on (no restart) with the new pattern.
+    #[test]
+    #[ignore = "requires OS_SIM_DEVICE=256@48000 for device playback"]
+    fn the_transport_switches_patterns_while_playing() {
+        let project = switch_project();
+        let t = Transport::new(None);
+        t.update(&project);
+        assert_eq!(t.pattern(), None, "stopped");
+        t.play(&project, PlayMode::Pattern(4), 0.0);
+        wait_for(|| t.tick() > 400.0);
+        assert_eq!(t.pattern(), Some(4));
+        let before = t.tick();
+        let mut project = project;
+        project.current_pattern = Some(2);
+        t.update(&project);
+        wait_for(|| t.pattern() == Some(2));
+        std::thread::sleep(Duration::from_millis(100));
+        let after = t.tick();
+        assert!(t.playing(), "goes on");
+        // Pattern 2 is 3 bars (1152 ticks): within them playback goes on where it was, past them at the same place in
+        // the first bar. What played since the switch is then a short way on from there (a slow machine may lag, or
+        // catch up in a burst), where a restart would be a whole loop less the place it left.
+        let kept = if before < 1152.0 { before } else { before % 384.0 };
+        let since = (after - kept).rem_euclid(1152.0);
+        assert!(since < 400.0 || !(100.0..=752.0).contains(&kept), "goes on from {kept} (was {before}), now {after}");
+        t.stop();
+        std::thread::sleep(Duration::from_millis(50));
+        assert_eq!(t.pattern(), None);
     }
 
     /// Explicit offline reproduction aid: two hosted samplers, with/without an installed VST3.

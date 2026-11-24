@@ -179,11 +179,7 @@ pub fn press(app: &mut App, source: ClipSource) {
         s.playlist.picker_ui.selected = vec![source];
         s.playlist.picker_ui.anchor = Some(source);
     }
-    s.playlist.source = Some(source);
-    s.playlist.audio_template = None;
-    if let ClipSource::Pattern(number) = source {
-        s.pattern = number;
-    }
+    crate::playlist::pick_source(s, source);
     app.invalidate();
 }
 

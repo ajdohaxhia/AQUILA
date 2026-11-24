@@ -215,17 +215,36 @@ pub struct Logic {
     pub hint: String,
     copied: Option<f32>,
     pub hosted: bool,
+    /// Writes to the state from the editor, and how many of them the host was told of (`take_edit`).
+    made: std::cell::Cell<u64>,
+    told: u64,
 }
 
 impl Drop for Logic {
     fn drop(&mut self) {if let Some(extension)=&self.shared.extension {extension.editor_closed();}}
 }
 impl Logic {
+    /// The parameters, for a write to the state from the editor: counted for the host (`take_edit`).
+    pub fn raw(&self) -> &Arc<FxParams> {
+        self.made.set(self.made.get() + 1);
+        &self.params
+    }
+
+    /// Whether the host is to be told of edits made since the last call (host link `Edited`): once a drag is let go,
+    /// so a drag is one edit.
+    pub fn take_edit(&mut self) -> bool {
+        if self.made.get() == self.told || self.drag.is_some() {
+            return false;
+        }
+        self.told = self.made.get();
+        true
+    }
+
     pub fn new(spec: &'static Spec, params: Arc<FxParams>, shared: Arc<Shared>, ctx: Option<Arc<dyn GuiContext>>) -> Self {
         let state_edits = Arc::new(crate::state_undo::Edits::default());
         let ctx = ctx.map(|context| crate::state_undo::wrap(context, state_edits.clone()));
         let vals = Vals::new(&*params, params.live.clone(), ctx.clone());
-        Logic { state_edits, context: ctx, spec, vals, params, shared, view: ViewState::default(), hits: Vec::new(), drag: None, hint: String::new(), copied: None, hosted: false }
+        Logic { state_edits, context: ctx, spec, vals, params, shared, view: ViewState::default(), hits: Vec::new(), drag: None, hint: String::new(), copied: None, hosted: false, made: std::cell::Cell::new(0), told: 0 }
     }
 
     fn take_state_edits(&self) -> Vec<String> {
@@ -456,7 +475,7 @@ impl Logic {
     pub fn typed(&mut self, id: &str, text: &str) {
         if let Some((_, edit)) = self.text_control(id) {
             let raw = edit(&self.params.raw_copy(), text);
-            self.params.set_raw(raw);
+            self.raw().set_raw(raw);
             let t = Target::Text(id.into());
             self.hint = self.hint_for(Some(&t));
             return;
@@ -780,6 +799,9 @@ mod win32 {
                     os_hostlink::to_host(self.hwnd as isize, os_hostlink::Cmd::Changed, 0);
                 }
             }
+            if self.logic.take_edit() && self.logic.hosted {
+                os_hostlink::to_host(self.hwnd as isize, os_hostlink::Cmd::Edited, 0);
+            }
         }
 
         fn send_edits(&mut self) {
@@ -842,7 +864,7 @@ mod win32 {
                     }
                     1
                 }
-                Cmd::StateEdit | Cmd::SampleFit | Cmd::BrowseSample | Cmd::Changed | Cmd::Note | Cmd::Automate | Cmd::Audio | Cmd::Resizable | Cmd::SetSize | Cmd::Notes => 0,
+                Cmd::Edited | Cmd::StateEdit | Cmd::SampleFit | Cmd::BrowseSample | Cmd::Changed | Cmd::Note | Cmd::Automate | Cmd::Audio | Cmd::Resizable | Cmd::SetSize | Cmd::Notes => 0,
             }
         }
 
@@ -1007,6 +1029,9 @@ mod gui {
                 // The host shows the hint in its title bar (hosted mode).
                 self.link.set_hint(&self.logic.hint);
                 self.link.to_host(Cmd::Changed, 0);
+            }
+            if self.logic.take_edit() {
+                self.link.to_host(Cmd::Edited, 0);
             }
             // Joined the strip: "Create automation clip" works and the host shows the hint.
             self.logic.hosted = self.link.hosted();

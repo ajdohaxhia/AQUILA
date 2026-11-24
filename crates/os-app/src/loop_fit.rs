@@ -334,7 +334,7 @@ fn fit_selected_bars(app: &mut App, indices: &[usize]) -> Result<String, String>
         app.plugins.set_sampler_stretch(row, sound);
         pl::arr_mut(s).clips[index].length = length;
     }
-    s.playlist.audio_template = None;
+    s.playlist.brush = None;
     s.piano.dirty = true;
     app.invalidate();
     Ok(format!("Fitted {} clips to one bar each.", fits.len()))

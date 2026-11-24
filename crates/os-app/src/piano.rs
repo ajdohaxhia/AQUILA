@@ -426,22 +426,24 @@ pub fn song_tick_of(s: &State, t: u32, near: u32) -> Option<u32> {
         .map(place)
 }
 
-/// What the Playback tool's line sounds on channel `ch` moving from tick `from` to `to` (the same tick for a press): the
-/// notes it is on now and those whose start it just passed, as (key, velocity), a key once at its loudest note's velocity.
-pub fn scrub_keys(s: &State, ch: u16, from: f32, to: f32) -> Vec<(u16, u8)> {
+/// What the Playback tool's line sounds moving from tick `from` to `to` (the same tick for a press): the notes it is on
+/// now and those whose start it just passed, as (channel, key, velocity), a key once per channel at its loudest note's
+/// velocity. Channel `ch`'s notes, and with the ghost notes shown the other channels' notes of the pattern too (spec:
+/// ui/piano-roll.md §9).
+pub fn scrub_keys(s: &State, ch: u16, from: f32, to: f32) -> Vec<(u16, u16, u8)> {
     let (a, b) = (from.min(to), from.max(to));
-    let mut keys: Vec<(u16, u8)> = notes(s)
+    let mut keys: Vec<(u16, u16, u8)> = notes(s)
         .iter()
-        .filter(|n| n.channel == ch && !n.muted())
+        .filter(|n| (n.channel == ch || s.piano.ghosts) && !n.muted())
         .filter(|n| {
             let p = n.position as f32;
             let on = p <= to && to < p + shown_len(s, n) as f32;
             on || (p > a && p <= b)
         })
-        .map(|n| (n.key, n.velocity))
+        .map(|n| (n.channel, n.key, n.velocity))
         .collect();
-    keys.sort_unstable_by_key(|&(k, v)| (k, std::cmp::Reverse(v)));
-    keys.dedup_by_key(|n| n.0);
+    keys.sort_unstable_by_key(|&(c, k, v)| (c, k, std::cmp::Reverse(v)));
+    keys.dedup_by_key(|n| (n.0, n.1));
     keys
 }
 
@@ -793,7 +795,8 @@ pub fn paint_mono(s: &mut State, i: usize) -> usize {
     i - gone.iter().filter(|&&j| j < i).count()
 }
 
-/// The controls a new note takes from the last one touched; never its place, length, key or mute.
+/// The controls a new note takes from the last one touched, its slide and portamento switches too (FL, measured for
+/// issue #381); never its place, length, key or mute.
 pub fn copy_controls(from: &Note, to: &mut Note) {
     to.velocity = from.velocity;
     to.pan = from.pan;
@@ -803,6 +806,7 @@ pub fn copy_controls(from: &Note, to: &mut Note) {
     to.fine_pitch = from.fine_pitch;
     to.repeat = from.repeat;
     to.group = (to.group & Note::MUTED) | (from.group & !Note::MUTED);
+    to.flags = (to.flags & !Note::SLIDE) | (from.flags & Note::SLIDE);
 }
 
 /// Delete notes by index.
@@ -1129,11 +1133,15 @@ mod tests {
     fn new_notes_copy_controls_not_place_or_mute() {
         use super::*;
         let mut from = Note { velocity: 33, pan: 10, release: 90, mod_x: 200, mod_y: 7, fine_pitch: 130, repeat: 3, group: 0x05, ..Note::step(0, 480) };
-        from.group |= Note::MUTED;
+        from.group |= Note::MUTED | Note::PORTA;
+        from.flags |= Note::SLIDE;
         let mut to = Note { length: 48, key: 72, ..Note::step(1, 96) };
         copy_controls(&from, &mut to);
         assert_eq!((to.velocity, to.pan, to.release, to.mod_x, to.mod_y, to.fine_pitch, to.repeat), (33, 10, 90, 200, 7, 130, 3));
-        assert_eq!(to.group, 0x05, "the colour comes along, the mute does not");
+        assert_eq!(to.group, 0x05 | Note::PORTA, "the colour and the portamento switch come along, the mute does not");
+        assert!(to.slide(), "a slide note's template makes slide notes");
+        copy_controls(&Note::step(0, 0), &mut to);
+        assert!(!to.slide() && !to.porta(), "a plain note's template makes plain notes");
         assert_eq!((to.position, to.length, to.key, to.channel), (96, 48, 72, 1));
     }
 

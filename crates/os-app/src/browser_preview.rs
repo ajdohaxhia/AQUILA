@@ -6,13 +6,50 @@ use std::time::{Duration,Instant};
 use os_ui::{Rect,Font};
 use crate::app::{App,State,Ui,Action};
 use crate::views::browser as view;
+use crate::wav_facts::{WavFacts, rate_text};
 pub const HEIGHT:f32=130.;
-type Loaded=Result<(Arc<os_engine::sample::Sample>,Vec<(f32,f32)>),String>;
+type Loaded=Result<(Arc<os_engine::sample::Sample>,Vec<(f32,f32)>,WaveFacts),String>;
+
+#[derive(Default)]
+struct WaveFacts {
+    format: String,
+    loop_range: Option<(f32, f32)>,
+    cues: Vec<f32>,
+}
+
+impl WaveFacts {
+    fn new(facts: WavFacts, sample: &os_engine::sample::Sample, bounds: (usize, usize), reversed: bool) -> Self {
+        let mut format = rate_text(sample.rate);
+        if let Some(bits) = facts.pcm_bits {
+            format.push_str(&format!(" · {bits}-bit"));
+        }
+        if let Some(beats) = facts.beats.filter(|_| sample.frames() > 0) {
+            let bpm = f64::from(beats) * 60. * f64::from(sample.rate) / sample.frames() as f64;
+            format.push_str(&format!(" · {bpm:.0} BPM"));
+        }
+        let (a, b) = bounds;
+        let fraction = |frame: usize| {
+            let offset = if reversed { b - frame } else { frame - a };
+            offset as f32 / (b - a).max(1) as f32
+        };
+        let loop_range = facts.sample_loop.and_then(|(start, end)| {
+            let start = (start as usize).max(a);
+            let end = (end as usize).saturating_add(1).min(b);
+            (start < end).then(|| (fraction(start), fraction(end)))
+        });
+        let cues = facts.cues.into_iter().map(|frame| frame as usize)
+            .filter(|frame| (a..b).contains(frame))
+            .map(fraction).collect();
+        Self { format, loop_range, cues }
+    }
+}
+
 #[derive(Default)]
 pub struct Preview {
     pub path:Option<String>,
     sample:Option<Arc<os_engine::sample::Sample>>,
     peaks:Vec<(f32,f32)>,
+    facts: WaveFacts,
     pending:Option<Arc<Mutex<Option<Loaded>>>>,
     pub duration:f64,
     pub position:f64,
@@ -45,8 +82,22 @@ pub fn select(app:&mut App,path:&str) {
     let (normal,reversed,trim)=(normalize(),reverse(),auto_trim());
     let boost=boost_db();let clip=clip_on();
     std::thread::spawn(move||{
-        let loaded=os_engine::sample::load_shared(std::path::Path::new(&path)).map(|s|{let mut s=processed(s,normal,reversed,trim);
-            if boost>0 || clip {let gain=10f32.powf(f32::from(boost)/20.);let audio=Arc::make_mut(&mut s);for v in audio.left.iter_mut().chain(&mut audio.right){*v*=gain;if clip{*v=v.clamp(-1.,1.);}}}let peaks=overview(&s);(s,peaks)}).map_err(|e|format!("Cannot preview: {e}"));
+        let path = std::path::Path::new(&path);
+        let loaded = os_engine::sample::load_shared(path).map(|sample| {
+            let bounds = if trim { trim_bounds(&sample) } else { (0, sample.frames()) };
+            let facts = WaveFacts::new(crate::wav_facts::read(path), &sample, bounds, reversed);
+            let mut sample = processed(sample, normal, reversed, trim);
+            if boost > 0 || clip {
+                let gain = 10f32.powf(f32::from(boost) / 20.);
+                let audio = Arc::make_mut(&mut sample);
+                for v in audio.left.iter_mut().chain(&mut audio.right) {
+                    *v *= gain;
+                    if clip { *v = v.clamp(-1., 1.); }
+                }
+            }
+            let peaks = overview(&sample);
+            (sample, peaks, facts)
+        }).map_err(|e| format!("Cannot preview: {e}"));
         if let Ok(mut out)=result.lock(){*out=Some(loaded);}
     });
     app.invalidate();
@@ -107,7 +158,7 @@ pub fn tick(app:&mut App) {
         let preview=&mut app.state.browser_preview;
         preview.pending=None;
         match result {
-            Ok((sample,peaks))=>{preview.duration=sample.frames() as f64/f64::from(sample.rate.max(1));preview.sample=Some(sample);preview.peaks=peaks;if preview.resume{play(app);}}
+            Ok((sample,peaks,facts))=>{preview.duration=sample.frames() as f64/f64::from(sample.rate.max(1));preview.sample=Some(sample);preview.peaks=peaks;preview.facts=facts;if preview.resume{play(app);}}
             Err(e)=>{preview.error=Some(e);preview.playing=false;}
         }
         app.invalidate();
@@ -186,14 +237,16 @@ fn dock_browser_preview_seek_matches_waveform_on_both_sides() {
         assert!((app.state.browser_preview.position-1.).abs()<0.01,"seeking must match the painted waveform on either side");
     }
 }
-fn wave_rect(r:Rect)->Rect {Rect::new(r.x+8.,r.y+25.,r.w-16.,48.)}
+fn wave_rect(r:Rect)->Rect {Rect::new(r.x+8.,r.y+25.,r.w-16.,42.)}
 fn time(seconds:f64)->String {let n=seconds.max(0.) as u64;format!("{}:{:02}",n/60,n%60)}
 pub fn paint(ui:&mut Ui,s:&State,r:Rect) {
     let p=&s.browser_preview;let t=ui.t;
     ui.c.fill_rect(r,t.browser_tabs);ui.hit(r,Action::Swallow,"");
     let title=p.path.as_ref().and_then(|p|std::path::Path::new(p).file_name()).map(|n|n.to_string_lossy().into_owned()).unwrap_or_else(||"Select audio to preview".into());
     ui.c.text_clip(Font::new(12),r.x+8.,r.y+4.,r.w-16.,t.text,&title);
-    let wave=wave_rect(r);ui.c.fill_rrect(wave,3.,t.sunken);
+    let wave=wave_rect(r);
+    let background = if p.facts.loop_range.is_some() { t.sunken.mix(t.s(0x261c21), 0.6) } else { t.sunken };
+    ui.c.fill_rrect(wave, 3., background);
     if !p.peaks.is_empty() {
         for x in 0..wave.w.floor() as usize {
             let a=x*p.peaks.len()/wave.w as usize;
@@ -201,10 +254,23 @@ pub fn paint(ui:&mut Ui,s:&State,r:Rect) {
             let (lo,hi)=p.peaks[a..b].iter().fold((0f32,0f32),|(lo,hi),&(a,b)|(lo.min(a),hi.max(b)));
             ui.c.line(wave.x+x as f32,wave.cy()-hi*wave.h*0.45,wave.x+x as f32,wave.cy()-lo*wave.h*0.45,1.,t.accent);
         }
+        ui.c.push_clip(wave);
+        let marker_x = |fraction: f32| wave.x + fraction * (wave.w - 1.).max(0.);
+        if let Some((start, end)) = p.facts.loop_range {
+            for x in [marker_x(start), marker_x(end)] {
+                ui.c.line(x, wave.y, x, wave.bottom(), 1., t.s(0xed1313));
+            }
+        }
+        for &cue in &p.facts.cues {
+            let x = marker_x(cue);
+            ui.c.fill_polygon(&[(x - 3., wave.y), (x + 3., wave.y), (x, wave.y + 4.)], t.h(0xea9049));
+        }
         let x=wave.x+(p.position/p.duration.max(0.001)) as f32*wave.w;
         ui.c.line(x,wave.y,x,wave.bottom(),1.,t.text);
+        ui.c.pop_clip();
         ui.hit(wave,Action::BrowserPreview(2),"Click waveform to preview from here");
     } else {ui.c.text_center(Font::new(11),wave,t.text_dim,if p.pending.is_some(){"Loading audio..."}else{p.error.as_deref().unwrap_or("Audio preview")});}
+    ui.c.text_clip(Font::new(10), r.x + 8., r.y + 67., (r.w - 16.).max(0.), t.text_dim, &p.facts.format);
     for (i,label) in [(0,if p.playing {"Pause"}else{"Play"}),(1,"Stop")] {
         let b=Rect::new(r.x+8.+i as f32*36.,r.y+80.,32.,23.);
         let hover=ui.hit(b,Action::BrowserPreview(i),label);
@@ -227,6 +293,20 @@ pub fn paint(ui:&mut Ui,s:&State,r:Rect) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn waveform_markers_follow_trim_and_reverse() {
+        let sample = os_engine::Sample { rate: 100, left: vec![0.; 200], right: vec![0.; 200] };
+        let facts = WavFacts {
+            pcm_bits: Some(16),
+            sample_loop: Some((10, 99)),
+            cues: vec![25, 80, 160],
+            beats: Some(4),
+        };
+        let view = WaveFacts::new(facts, &sample, (40, 140), true);
+        assert_eq!(view.format, "0.1 kHz · 16-bit · 120 BPM");
+        assert_eq!(view.loop_range, Some((1., 0.4)));
+        assert_eq!(view.cues, vec![0.6]);
+    }
     #[test] fn auto_trim_preview_and_new_imports_preserve_originals(){
         crate::prefs::set_text("browser_auto_trim","0");assert!(!auto_trim());
         let path=std::env::temp_dir().join(format!("lemon-auto-trim-{}.wav",std::process::id()));
