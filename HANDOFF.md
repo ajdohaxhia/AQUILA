@@ -710,3 +710,31 @@ List them with `git diff --name-only --diff-filter=U` and `grep -c '^<<<<<<< '`.
 - Not taken: Lemon's solo-by-track-id (88c73d7d); AQUILA's solo logic (locked tracks, `audible`) stays index-based.
 - The split workflow no longer remaps inactive arrangements by hand, since `renumber` now covers every arrangement.
 - Tests: no new failures compared with section 18 (`added_mixer_tracks_save_and_reopen` fixed).
+
+## 20. State at handoff (2026-11-24)
+
+### Where things are
+- Repo: this folder (SSD), branch `michael-lane`, clean. HEAD 2372e959, pushed to `ade` (github.com/ajdohaxhia/AQUILA) as both `michael-lane` and `main`.
+- Commits since the 16.4 work: cf183e30 (merge ML 17.3), de84212e (merge Lemon), 7013321a (README + release script), 28e66d82 (Windows ChannelInfo `icon` fix), c08ee485 / 2372e959 (script robustness, Linux release on Ubuntu 24.04).
+- CI 44257327611 on 28e66d82: green on Windows, Linux and macOS. 2372e959 changed only workflow/README/script.
+
+### Release aquila-v2026.11.17.3 — INCOMPLETE
+- Published with Windows zip, Linux tar.gz and SHA256SUMS. **macOS Apple silicon and Intel are missing**: in both release runs (44355216614, 44367306285) the macOS jobs were cancelled while waiting for a GitHub runner (no logs, capacity problem, not code).
+- To finish: re-run only the failed jobs, which also re-runs Publish (it uploads with `--clobber` and rewrites the notes):
+  `gh run rerun 44367306285 --failed -R ajdohaxhia/AQUILA`
+  or a fresh `gh workflow run aquila-release.yml -R ajdohaxhia/AQUILA --ref michael-lane`. Check afterwards that the release lists 4 files plus SHA256SUMS.
+- The Linux build now needs glibc 2.39 (Ubuntu 24.04+), because GCC 11 on 22.04 rejects ML's NAM engine C++. README says so.
+
+### Parents
+- **ML Studio: `origin` (github.com/Dorfhaus/ML-Studio) returns "Repository not found"** as of 2026-11-24 (deleted, renamed or made private). Last merged: 1e1823b5 = ML 2026.11.17.3. Find out where ML moved before the next sync; the full history up to 17.3 is already in this repo.
+- **Lemon Studio: `upstream/main` has 94 new commits** not merged yet. Merge as in section 19; Lemon's multi-output and solo-by-id remain incompatible with AQUILA's ML-based design and are left out (revert those parts, keep the rest).
+
+### Tools
+- `packaging/release-when-green.sh [commit] [version]`: waits for that commit's CI run, starts aquila-release.yml only if green. Keeps the Mac awake (`caffeinate`) and survives network errors. Log it with `nohup ... > /Users/ade/aqbuild/release-when-green.log 2>&1 &`.
+- Local build/tests: copy to `/Users/ade/aqbuild/tree` (section 18 command). `/Users/ade/aqbuild/mlfails.txt` = failures on clean ML 17.3; `fails3.txt` = AQUILA's after the Lemon merge (56, none caused by merges). `/Users/ade/aqbuild/ml173` and `pre` are scratch trees and can be deleted.
+- Windows-only code can't be compiled on the Mac: after a merge, grep struct literals (`ChannelInfo {`, `NoteLevels {`, `SlotPlugin {`, `Spec {`) and every plugin `match cmd` for new fields/variants before pushing.
+- The ML-inherited workflow `release.yml` ("Release", scheduled) always shows "skipped" in AQUILA; it is harmless and can be disabled.
+
+### Rules (unchanged)
+- No contact with michaellanemusic.de; keep all credits, licenses and the donate.rs PayPal link; no signing keys.
+- Commit, push and release only after the user confirms.
