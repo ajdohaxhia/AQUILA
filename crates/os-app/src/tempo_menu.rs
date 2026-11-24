@@ -38,7 +38,7 @@ pub fn menu(s: &State, auto: Option<(u32, String, f64)>, x: f32, y: f32) -> Popu
     ]);
     items.extend(PRESETS.map(|b| PItem::new(format!("{b} BPM"), Cmd::Tempo(TCmd::Preset(b)))));
     items.extend([PItem::sep(), PItem::new("Half speed", Cmd::Tempo(TCmd::HalfSpeed)).mark(Mark::Check(half_speed()))]);
-    Popup { x, y, items, sub: None, scroll: [0; 2] }
+    Popup { x, y, items, sub: None, scroll: [0; 2], cascade: Vec::new() }
 }
 
 /// Runs a command of the menu.
