@@ -1179,7 +1179,7 @@ mod tests {
     #[test]
     fn scoring_workflow_preserves_picture_and_linear_cue_on_warp_and_reload() {
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         app.state.tempo = 120.0;
         app.state.project.tempo = Some(120.0);
         let s = &mut app.state;
@@ -1239,7 +1239,7 @@ mod tests {
     #[test]
     fn video_edits_round_trip_with_source_offsets_and_undo() {
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         let s = &mut app.state;
         let legacy: Timeline = serde_json::from_str(
             r#"{"video":{"path":"E:/film.mp4","start":3.0,"duration":10.0,"fps":24.0}}"#,
@@ -1294,7 +1294,7 @@ mod tests {
     #[test]
     fn scoring_lane_clicks_and_extraction_use_playlist_actions() {
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         app.state.z = vec![Win::Playlist];
         app.state.playlist_bar_w = 192.0;
         let s = &mut app.state;

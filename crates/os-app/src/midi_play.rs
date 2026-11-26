@@ -1021,7 +1021,7 @@ mod tests {
 
     #[test]
     fn harmony_midi_snaps_heard_and_recorded_notes_and_releases_original_keys() {
-        let mut app=App::new(None);app.state.project=crate::app::test_project();
+        let mut app=App::new(None);app.state.session.project=crate::locked::Locked::new(crate::app::test_project());
         app.state.piano.harmony.midi_snap=true;
         app.transport.pretend_at(0.,false);app.toggle_record();
         app.midi_notes(vec![on(61),on(60)]);

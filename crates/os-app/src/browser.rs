@@ -843,7 +843,7 @@ impl App {
                 if s.project.channels.get(target).is_some_and(|ch|ch.kind.is_sampler()){
                     return send_sample_to(s,target,&p,&row.label);
                 }
-                let ok=self.plugins.browser_sample_to_plugin(target,&crate::plugins::resolve_sample(&p));
+                let ok=self.editors.browser_sample_to_plugin(&mut self.state.session.plugins,target,&crate::plugins::resolve_sample(&p));
                 return Some(if ok {"Sample sent to plugin".into()} else {"The selected plugin did not accept this sample".into()});
             }
             RowCmd::NewChannel => {self.sample_to_channel(sample?,None); if !self.alt {self.open_channel_window(self.state.selected_channel);}}

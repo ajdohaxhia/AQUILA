@@ -1053,7 +1053,7 @@ pub mod fake {
 #[cfg(test)] mod community_preview_tests {
     use super::*;
     #[test] fn community_sampler_preview_cancel_keeps_channel() {
-        let mut app=App::new(None);app.state.project=crate::app::test_project();
+        let mut app=App::new(None);app.state.session.project=crate::locked::Locked::new(crate::app::test_project());
         let before=app.state.project.clone();
         let mut f=crate::filedlg::FileDlg::new(crate::filedlg::Mode::Open,"Load sample","audio",Then::RackSample(0));
         f.dir=std::env::temp_dir();f.entries=vec![crate::filedlg::Entry{name:"lemon-preview-test.wav".into(),dir:false,size:0,modified:None}];f.sel=Some(0);

@@ -224,9 +224,12 @@ pub(super) fn run(app: &mut App, semitones: i32) -> Option<String> {
                     s.project.channels.push(ch);
                     crate::vocal::clone_source(s, old, id);
                 } else {
-                    let sound = &mut s.project.channels[row].sound;
-                    sound.stretch = stretch;
-                    app.plugins.set_sampler_stretch(row, sound);
+                    let sound = {
+                        let c = &mut (*s.session.project).channels[row];
+                        c.sound.stretch = stretch;
+                        c.sound.clone()
+                    };
+                    s.session.plugins.set_sampler_stretch(row, &sound);
                 }
             }
         }
@@ -263,7 +266,7 @@ mod tests {
     #[test]
     fn playlist_transpose_shortcuts_isolate_shared_sources_and_undo_together() {
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         app.state.z = vec![crate::app::Win::Playlist];
         let p = &mut app.state.project;
         p.patterns[0].notes = vec![Note {
@@ -405,7 +408,7 @@ mod tests {
         os_engine::wav::write_f32_stereo(&mut std::fs::File::create(&path).unwrap(), rate, &tone)
             .unwrap();
         let mut app = App::new(None);
-        app.state.project = crate::app::empty_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::empty_project());
         app.plugins = crate::plugins::Plugins::builtins();
         app.state.tempo = 120.0;
         app.state.project.tempo = Some(120.0);
@@ -453,9 +456,10 @@ mod tests {
             freq(&after)
         );
 
-        let sound = &mut app.state.project.channels[0].sound;
+        let mut sound = app.state.project.channels[0].sound.clone();
         sound.stretch = [0, 0, 10000, stretch_mode::RESAMPLE as u32];
-        assert!(app.plugins.set_sampler_stretch(0, sound));
+        assert!(app.plugins.set_sampler_stretch(0, &sound));
+        app.state.session.project.channels[0].sound = sound;
         let before = render(&app);
         assert!((freq(&before) - 110.0).abs() < 3.0);
         assert!(run(&mut app, 12).unwrap().starts_with("Transposed 1 clip"));

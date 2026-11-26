@@ -90,12 +90,12 @@ impl Editor{
     }}
 }
 impl Drop for Editor{fn drop(&mut self){unsafe{crate::plugin_window::embedded_exposed();SetWindowLongPtrW(self.hwnd,GWLP_USERDATA,0);DestroyWindow(self.hwnd);}}}
-impl crate::plugins::Plugins {
+impl crate::editor_host::EditorHost {
     /// User-triggered hidden original-editor fit check before altering a channel.
-    pub fn validate_vertical_rack(&mut self,key:usize,owner:isize,scale:f32,area:[i32;4])->Result<(),String>{
+    pub fn validate_vertical_rack(&mut self, pl: &mut crate::plugins::Plugins, key:usize,owner:isize,scale:f32,area:[i32;4])->Result<(),String>{
         if owner==0{return Ok(());} // Offscreen model tests have no native owner.
-        let h=self.hosted.get_mut(&key).ok_or("Plugin unavailable")?;
-        if h.window.is_some(){return Err("Close the plugin window before docking this strip.".into());}
+        let h=pl.hosted.get_mut(&key).ok_or("Plugin unavailable")?;
+        if self.editors.get(&key).is_some_and(|e| e.window.is_some()){return Err("Close the plugin window before docking this strip.".into());}
         let mut e=Editor::new(owner,scale)?;e.rect=area;
         let mut p=h.plugin.lock().map_err(|_|"Plugin busy")?;
         if !p.has_editor() { return Err("This effect has no native editor to dock.".into()); }
@@ -103,15 +103,28 @@ impl crate::plugins::Plugins {
         prepare(&d,scale,area,|scale|{let result=p.open_editor(e.area(),scale);p.close_editor();result})?;
         Ok(())
     }
-    pub fn close_rack(&mut self,key:usize){if let Some(h)=self.hosted.get_mut(&key){if h.rack_editor.is_some(){if let Ok(mut p)=h.plugin.lock(){p.close_editor();}h.rack_editor=None;}h.rack_error=None;}}
-    pub fn close_racks(&mut self){let keys:Vec<_>=self.hosted.keys().copied().collect();for key in keys{self.close_rack(key);}}
-    pub fn show_rack(&mut self,key:usize,owner:isize,scale:f32,r:[i32;4],clip:[i32;4],covers:&[[i32;4]],preview: Option<&Preview>){
-        let page=self.hosted.get(&key).and_then(|h|h.rack_editor.as_ref()).map_or(0,|e|e.page);
-        if self.hosted.get_mut(&key).and_then(|h|h.rack_editor.as_mut()).is_some_and(|e|e.owner!=owner||e.scale!=scale||e.rescale_due(r[3]-r[1])){self.close_rack(key);}
-        let Some(h)=self.hosted.get_mut(&key)else{return};
+    pub fn close_rack(&mut self, pl: &mut crate::plugins::Plugins, key: usize) {
+        if let Some(editor) = self.editors.get_mut(&key) {
+            if editor.rack_editor.take().is_some() {
+                if let Some(host) = pl.hosted.get(&key) {
+                    if let Ok(mut plugin) = host.plugin.lock() { plugin.close_editor(); }
+                }
+            }
+            editor.rack_error = None;
+        }
+    }
+    pub fn close_racks(&mut self, pl: &mut crate::plugins::Plugins) {
+        let keys: Vec<_> = self.editors.keys().copied().collect();
+        for key in keys { self.close_rack(pl, key); }
+    }
+    pub fn show_rack(&mut self, pl: &mut crate::plugins::Plugins, key:usize,owner:isize,scale:f32,r:[i32;4],clip:[i32;4],covers:&[[i32;4]],preview: Option<&Preview>){
+        let page=self.editors.get(&key).and_then(|h|h.rack_editor.as_ref()).map_or(0,|e|e.page);
+        if self.editors.get_mut(&key).and_then(|h|h.rack_editor.as_mut()).is_some_and(|e|e.owner!=owner||e.scale!=scale||e.rescale_due(r[3]-r[1])){self.close_rack(pl, key);}
+        let Some(h)=pl.hosted.get_mut(&key)else{return};
+        let editor = self.editors.entry(key).or_default();
         // A plugin owns one editor. Leave an explicitly opened floating editor alone.
-        if h.window.is_some()||h.rack_error.is_some(){return;}
-        if h.rack_editor.is_none(){
+        if editor.window.is_some()||editor.rack_error.is_some(){return;}
+        if editor.rack_editor.is_none(){
             // Drawing must not wait for the audio/worker thread to release an instance.
             // Retry on the next frame, without marking a busy plugin as broken.
             let Ok(mut p)=h.plugin.try_lock() else{return};
@@ -129,9 +142,9 @@ impl crate::plugins::Plugins {
                 e.page=page.min(e.pages.len()-1);e.data.x=e.pages[e.page].left;e.data.page_width=e.pages[e.page].width();
                 e.rect=[0;4];Ok::<_,String>(e)
             })();
-            match result {Ok(e)=>h.rack_editor=Some(e),Err(e)=>{h.rack_error=Some(e);return;}}
+            match result {Ok(e)=>editor.rack_editor=Some(e),Err(e)=>{editor.rack_error=Some(e);return;}}
         }
-        if let Some(e)=&mut h.rack_editor{
+        if let Some(e)=&mut editor.rack_editor{
             e.paging.preview(preview);
             e.accept_size(e.size());
             e.place(r,clip,covers);

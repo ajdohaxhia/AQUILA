@@ -315,20 +315,10 @@ fn levels(mix: f64, on: bool) -> (f32, f32) {
 }
 
 /// A container being played: the slot's or channel's id, the state its chain was built from, the members' instances
-/// and the chain.
-pub struct Live {
-    pub id: Id,
-    /// The slot's state the chain was built from: compared every tick, decoded only when it changed.
-    src: Vec<u8>,
-    /// The members' ids and identities by position (another list rebuilds the chain; other levels only set them).
-    shape: Vec<(u32, String)>,
-    /// Whether it plays a channel (its members' instruments play the channel's notes).
-    pub channel: bool,
-    /// The members' `hosted` keys by position (`None`: its effect was not found, left out of the chain).
-    pub keys: Vec<Option<usize>>,
-    pub fx: Arc<Mutex<Chain>>,
-}
+/// and the chain. The session owns it (`os_session::container`): the interface reaches it through this module.
+pub use os_session::container::Live;
 
+/// The members' ids and identities by position, as a chain's live state records them.
 fn shape(members: &[Member]) -> Vec<(u32, String)> {
     members.iter().map(|m| (m.id, m.uid.clone())).collect()
 }
@@ -460,6 +450,15 @@ fn pct(v: f32) -> i32 {
 }
 
 /// The wet (`wet`) or dry level of member `id` of the container in slot `k` of track `t`.
+/// A member's level as the session reports it moved (`follow::View::MemberLevel`): the container window's meter.
+pub fn show_level(s: &mut State, t: u16, k: u8, id: u32, wet: bool, v: f32) {
+    if s.container.at == (t, k) {
+        if let Some(l) = s.container.live.get_mut(&id) {
+            *(if wet { &mut l.0 } else { &mut l.1 }) = v;
+        }
+    }
+}
+
 pub fn level(s: &State, t: u16, k: u8, id: u32, wet: bool) -> Option<f32> {
     members(s, t, k)?.into_iter().find(|m| m.id == id).map(|m| if wet { m.wet } else { m.dry })
 }
@@ -811,7 +810,7 @@ fn relink(s: &mut State, name: &str, moved: &Moved) {
         return;
     }
     crate::remote::set_links(&all);
-    let back = pairs.into_iter().map(|(a, b)| (b, a)).collect();
+    let back = pairs.into_iter().filter_map(|(a, b)| Some((crate::typein::to_session(b)?, crate::typein::to_session(a)?))).collect();
     crate::history::extend_newest(s, |cmds| cmds.push(crate::control::Command::Put(Box::new(crate::control::command::Taken::Links(back)))));
 }
 
@@ -1145,7 +1144,7 @@ impl App {
         let ch = &mut s.project.channels[row];
         // A new id at once, before the container plays the channel.
         ch.id = Id::NONE;
-        s.control.settle(&mut s.project);
+        s.session.control.settle(&mut s.session.project);
         let ch = &mut s.project.channels[row];
         ch.plugin = Some(CONTAINER.into());
         ch.plugin_state = Some(encode(&[member]));
@@ -1276,7 +1275,7 @@ impl App {
         #[cfg(plugin_windows)]
         {
             let info = self.member_infos().remove(&key)?;
-            match self.plugins.open_window(key, info) {
+            match self.editors.open_window(&mut self.state.session.plugins, key, info) {
                 Ok(()) => {
                     self.state.raise(crate::app::Win::Hosted(key));
                     None
@@ -1369,8 +1368,8 @@ impl App {
         let mut missing = Vec::new();
         for (key, id) in want {
             let Some((t, k)) = key_place(key) else { continue };
-            let Some(p) = state_in(&self.state.project, t, k) else { continue };
-            if let Some(live) = self.plugins.containers.get_mut(&key) {
+            let Some(p) = state_in(&self.state.session.project, t, k) else { continue };
+            if let Some(live) = self.state.session.plugins.containers.get_mut(&key) {
                 live.id = id;
                 if live.src == p {
                     continue;
@@ -1459,7 +1458,7 @@ impl App {
             // Which member each hosted key is, for its parameters' targets and links (`params::target_of`).
             let members = &mut self.state.params.members;
             members.clear();
-            for (&slot_key, live) in &self.plugins.containers {
+            for (&slot_key, live) in &self.state.session.plugins.containers {
                 let Some((t, k)) = key_place(slot_key) else { continue };
                 for ((id, _), key) in live.shape.iter().zip(&live.keys) {
                     if let Some(key) = key {
@@ -1515,7 +1514,7 @@ mod tests {
 
     /// A tick as the program runs it for the mixer: ids for new slots, the mixer's requests, instances following ids.
     fn tick(a: &mut App) {
-        a.state.control.settle(&mut a.state.project);
+        { let s = &mut a.state.session; s.control.settle(&mut s.project); }
         a.mixer_tick();
         a.follow_ids(false, true);
     }
@@ -1523,10 +1522,10 @@ mod tests {
     /// An app with Lemon Studio's effects, the limiter in slot 1 and the delay in slot 2 of track 2; the two names.
     fn two_effects() -> (App, String, String) {
         let mut a = App::new(None);
-        a.state.project = crate::app::test_project();
+        a.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         a.reset_hosted();
         a.plugins.effects = crate::plugins::builtin_effects();
-        a.state.plugdb.rebuild(&a.plugins);
+        a.state.plugdb.rebuild(&a.state.session.plugins);
         let find = |a: &App, n: &str| a.plugins.effects.iter().position(|e| e.desc.name.contains(n)).unwrap();
         let (lim, del) = (find(&a, "Limiter"), find(&a, "Delay"));
         let names = (a.plugins.effects[lim].desc.name.clone(), a.plugins.effects[del].desc.name.clone());
@@ -1964,7 +1963,7 @@ mod tests {
         a.plugins.available = crate::plugins::builtin();
         a.plugins.effects = crate::plugins::builtin_effects();
         a.plugins.set_rate(48000);
-        a.state.plugdb.rebuild(&a.plugins);
+        a.state.plugdb.rebuild(&a.state.session.plugins);
         a.plugin_tick();
         a.plugin_tick();
         let trio = a.plugins.index_of(crate::osc3::LEMON_TRIO).unwrap();
@@ -2137,7 +2136,7 @@ mod tests {
         let mix = target::slot(2, 1, target::SLOT_MIX);
         crate::playlist::run(&mut a, Cmd::CreateAutomation(mix, "Mix".into(), 0.5));
         let p = &mut a.state.project;
-        p.patterns[0].controls.push(os_model::ControlPoint { position: 0, kind: target::slot_param(2, 1, 3), value: 9 });
+        p.patterns[0].controls.push(os_model::ControlPoint { position: 0, kind: target::slot_param(2, 1, 3), value: 9, id: Default::default() });
         p.controller_links.push(os_model::ControllerLink::new(0x7000 + 3 * 64, 0, target::slot_param(2, 0, 1)));
         p.init_controls.push(os_model::InitControl { head: 0, target: target::slot_param(2, 0, 2), value: 7 });
         p.init_controls.push(os_model::InitControl { head: 0, target: target::slot_param(2, 1, 2046), value: 1 });
@@ -2439,7 +2438,7 @@ mod tests {
     fn the_originals_serial_patches_open_as_containers() {
         crate::project_plugins::NATIVE_FIRST.with(|n| n.set(Some(false)));
         let mut a = App::new(None);
-        a.state.project = crate::app::test_project();
+        a.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         a.reset_hosted();
         a.plugins.effects = crate::plugins::builtin_effects();
         let effect = |a: &App, n: &str| a.plugins.effects.iter().position(|e| e.desc.name == n).unwrap_or_else(|| panic!("{n}"));
@@ -2454,7 +2453,8 @@ mod tests {
         (t.slots[0], t.slots[1]) = (patcher(&serial), patcher(&leveled));
         a.state.project.channels[0].plugin = Some(os_flp::patcher::PATCHER.into());
         a.state.project.channels[0].name = Some("Keys".into());
-        let msg = open_patchers(&mut a.state, &a.plugins.effects).expect("a hint");
+        let effects = a.plugins.effects.clone();
+        let msg = open_patchers(&mut a.state, &effects).expect("a hint");
         let bus = crate::mixer::name(&a.state, 2);
         assert_eq!(msg, format!("Patcher: {bus}, slot 1 opened as a container; left as they were: {bus}, slot 2 (link levels other than 1.0), Keys (an instrument patch)"));
         let list = members(&a.state, 2, 0).expect("a container");
@@ -2481,7 +2481,7 @@ mod tests {
         // Audio input straight to Audio output (an unlinked surface beside it) is an empty container; 16 effects are
         // more than a container holds.
         let mut a = App::new(None);
-        a.state.project = crate::app::test_project();
+        a.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         let empty = patcher_state(&[("Control Surface", "Surface", &[])], &[(1001, 1000, 1.0)]);
         let many: Vec<(&str, &str, &[u8])> = vec![("Fruity Limiter", "Fruity Limiter", &[][..]); MAX_MEMBERS + 1];
         let many = patcher_state(&many, &chain_links(MAX_MEMBERS as u32 + 1, 1.0));

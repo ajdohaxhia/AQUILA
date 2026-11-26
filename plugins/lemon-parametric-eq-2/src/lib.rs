@@ -11,6 +11,7 @@
 
 pub mod analyzer;
 mod gain_match;
+#[cfg(feature = "editor")]
 pub mod editor;
 pub mod params;
 pub mod view;
@@ -216,6 +217,7 @@ impl Plugin for LemonEq {
         self.params.clone()
     }
 
+    #[cfg(feature = "editor")]
     fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
         Some(Box::new(editor::EqEditor::new(self.params.clone(), self.shared.clone())))
     }

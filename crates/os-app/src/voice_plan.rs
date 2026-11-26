@@ -107,7 +107,7 @@ mod tests {
     fn voice_plan_routes_real_wave_and_reuses_eq() {
         let mut app=App::new(None);
         app.plugins=crate::plugins::Plugins::builtins();
-        app.state.plugdb.rebuild(&app.plugins);
+        app.state.plugdb.rebuild(&app.state.session.plugins);
         let n=app.state.project.channels.len();
         run(&mut app,json!({"steps":[
             {"tool":"lemon_transport","arguments":{"op":"show","window":"rack"}},
@@ -139,7 +139,7 @@ mod tests {
         let cancel=std::sync::atomic::AtomicBool::new(false);
         let mut app=App::new(None);
         app.plugins=crate::plugins::Plugins::builtins();
-        app.state.plugdb.rebuild(&app.plugins);
+        app.state.plugdb.rebuild(&app.state.session.plugins);
         for request in ["Open the channel rack, load up ML Wave and then route it to track 8 in the mixer", "Open up EQ on track 13", "Could you bring up the EQ for mixer track thirteen please?"] {
             let before=app.state.project.channels.len();
             let context=ai_commands::voice_context(&mut app);
@@ -167,7 +167,7 @@ mod tests {
         let offset=wave.windows(4).position(|w|w==b"data").unwrap();
         let count=u32::from_le_bytes(wave[offset+4..offset+8].try_into().unwrap()) as usize;
         let samples:Vec<_>=wave[offset+8..offset+8+count].chunks_exact(2).map(|v|i16::from_le_bytes([v[0],v[1]])).collect();
-        let mut app=App::new(None); app.plugins=crate::plugins::Plugins::builtins(); app.state.plugdb.rebuild(&app.plugins);
+        let mut app=App::new(None); app.plugins=crate::plugins::Plugins::builtins(); app.state.plugdb.rebuild(&app.state.session.plugins);
         let n=app.state.project.channels.len();
         let context=ai_commands::voice_context(&mut app);
         let now=Instant::now();

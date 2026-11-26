@@ -1,0 +1,317 @@
+// Copyright (C) 2026 ItsAlphaNeon
+// Copyright (C) 2026 thacer13
+// SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
+//! AQUILA's application and desktop shell.
+
+#![cfg_attr(not(plugin_windows), allow(dead_code))]
+
+mod anim;
+#[cfg(feature = "rt-audit")]
+#[global_allocator]
+static AUDIO_AUDIT_ALLOCATOR: os_dsp::rt_audit::Allocator = os_dsp::rt_audit::Allocator;
+mod app;
+#[cfg(test)]
+mod audio_test_plugin;
+mod collaboration;
+mod marker_profiles;
+mod instrument_stack;
+mod clip_effects;
+mod ml_patch;
+mod ara;
+mod ai_control;
+mod voice_assistant;
+mod studio_helper;
+mod visualizer;
+mod visualizer_video;
+mod visual_scenes;
+mod notation;
+mod helper_install;
+mod voice_runtime;
+mod voice_plan;
+mod ai_commands;
+mod updates;
+mod donate;
+mod arrange;
+mod audio_clipboard;
+mod help_links;
+mod diagnostics;
+mod audio_cfg;
+mod auto_close;
+pub use os_session::autoscroll;
+mod backup;
+mod safe_save;
+mod job_scratch;
+#[cfg(test)] mod audit_fixes;
+#[cfg(test)]
+mod audio_bench;
+#[cfg(target_os = "linux")]
+pub use os_session::dropout_log;
+#[cfg(test)]
+mod checks;
+#[cfg(test)]
+mod equiv;
+#[cfg(test)]
+mod open_bench;
+mod browser;
+#[cfg(any(windows, target_os = "macos"))]
+mod sample_drag;
+mod browser_files;
+mod browser_preview;
+mod plugin_downloads;
+#[cfg(all(windows, target_arch = "x86_64"))]
+mod legacy_vst;
+mod plugin_picker;
+mod plugin_artwork;
+mod plugin_previews;
+mod starter_pack;
+mod feedback;
+mod change_log;
+mod help;
+mod browser_index;
+mod wav_facts;
+mod burn_midi;
+mod cable;
+mod capture;
+mod input_monitor;
+mod detached;
+mod edited_sample;
+pub use os_session::replace_file;
+mod panic_log;
+#[cfg(target_os = "linux")]
+pub use os_session::rt;
+mod one_click;
+mod track_rec;
+mod audio_log;
+pub use os_session::score_log;
+pub use os_session::clip_colors;
+mod clock;
+mod control;
+mod cpu;
+mod data_folder;
+mod device;
+mod dialog;
+mod floating;
+mod filedlg;
+pub use os_session::enable_groups;
+mod export;
+mod export_form;
+mod factory_folder;
+mod high_visibility;
+mod follow;
+mod editor_host;
+mod control_ui;
+mod keys;
+pub mod winit_keys;
+pub use os_session::{session, time, edit};
+// The parts of the session Lemon's own suites name at the crate root.
+pub(crate) use os_session::{knob_id, locked, midi_notes, project_io, projects};
+mod history;
+mod history_ui;
+mod plugin_state_undo;
+mod hold;
+pub use os_session::keep_on_disk;
+mod icons;
+mod init;
+mod knobs;
+mod layout;
+mod lemon_state;
+mod workspace_layout;
+mod loading;
+mod missing;
+mod import_report;
+mod drop_preview;
+mod playlist_motion;
+mod mix_threads;
+mod zipped;
+#[cfg(target_os = "macos")]
+mod macos;
+#[cfg(target_os = "macos")]
+mod menu_bar;
+mod messages;
+mod meters;
+mod metronome;
+mod controller;
+mod midi_cfg;
+mod midi_file;
+mod midi_in;
+mod mpe;
+mod midi_out;
+mod lemon_midi_out;
+mod lemon_midi_out_ui;
+mod track_links;
+mod midi_play;
+mod container;
+mod mixer;
+mod mix_assistant;
+mod attached_mixer;
+mod playlist_tracks;
+mod playlist_links;
+mod rack_mixer;
+mod strip_layout;
+#[cfg(any(windows,target_os="macos"))] mod strip_geometry;
+#[cfg(windows)] mod strip_editor;
+#[cfg(target_os="macos")] #[path="strip_editor_mac.rs"] mod strip_editor;
+mod mini_eq;
+mod mixer_recording;
+mod recording_pickup;
+mod smart_recording;
+mod automation_feedback;
+mod recording_merge;
+mod comping;
+pub use os_session::mixer_state;
+pub use os_session::osc3;
+mod osc3_ui;
+pub use os_session::citrus;
+mod citrus_ui;
+pub use os_session::smith;
+mod smith_ui;
+mod chord_tool;
+pub use os_session::slicer;
+mod slicer_ui;
+pub use os_session::drums;
+mod drums_ui;
+pub use os_session::soundfont;
+mod soundfont_ui;
+mod monitor;
+mod motion;
+mod params;
+mod piano;
+mod piano_note_mode;
+mod piano_note_properties;
+mod piano_snap;
+pub use os_session::piano_split;
+mod piano_tools;
+mod rack;
+mod rack_controls;
+mod rack_drag;
+mod remote;
+mod peak_link;
+mod render;
+mod pattern_render;
+mod track_render;
+mod quick_sidechain;
+mod headphones;
+#[cfg(feature = "master-assistant")]
+mod master_assistant;
+#[cfg(not(feature = "master-assistant"))]
+#[path = "master_assistant_disabled.rs"]
+mod master_assistant;
+mod route_picker;
+mod patterns;
+mod perf;
+mod perform;
+mod playlist;
+mod scoring;
+mod loop_fit;
+mod stem_separation;
+mod playlist_controls;
+mod playlist_tools;
+mod clip_picker;
+pub use os_session::plugin_db;
+mod plugin_manager;
+mod plugin_menu;
+mod plugin_palette;
+mod plugin_popup;
+mod plugin_rebuild;
+pub use os_session::plugin_scan;
+#[cfg(plugin_windows)]
+mod plugin_window;
+mod plugins;
+mod ppi;
+mod prefs;
+pub use os_session::preview_track;
+mod project_files;
+mod project_forms;
+mod project_info;
+mod project_picker;
+mod project_plugins;
+mod presets;
+mod misc;
+mod misc_page;
+mod typing_layout;
+mod sample_route;
+mod clip_normalize;
+mod clip_cleanup;
+mod strip_silence;
+pub use os_session::note_names;
+mod save_form;
+mod scroll_speed;
+mod search_folders;
+mod settings_file;
+mod workspace_visibility;
+mod vintage;
+mod vintage_cursors;
+mod vintage_rack_art;
+mod vintage_skin;
+mod menu_layout;
+mod input_bindings;
+mod update;
+mod version;
+mod shortcuts;
+mod warp;
+mod vocal_align;
+mod vocal;
+mod audio_edits;
+mod smooth;
+mod elastic_scroll;
+mod snap;
+pub use os_session::song_pos;
+mod toolbar;
+mod splash;
+mod startup_sound;
+pub use os_session::stall;
+mod step_edit;
+mod strum;
+pub use os_session::flam;
+pub use os_session::flip;
+mod levels;
+mod channel_states;
+use os_model::chords;
+mod harmony;
+pub use os_session::claw;
+mod limit;
+mod lfo;
+mod quantize;
+mod randomize;
+mod chop;
+mod piano_dlg;
+mod arpeggiate;
+mod tapper;
+mod tempo_menu;
+mod touch;
+mod events;
+mod record;
+mod record_light;
+mod record_lead;
+mod recent;
+mod theme_adjust;
+mod advanced_theme;
+mod mixer_skin;
+mod theme_identity;
+mod theme_library;
+mod templates;
+mod timesig;
+mod transport;
+mod typein;
+mod views;
+mod detached_win;
+mod wallpaper;
+mod waves;
+mod win_clamp;
+#[cfg(windows)]
+mod file_assoc;
+#[cfg(target_os = "linux")]
+mod linux_launcher;
+mod channel_bounce;
+mod bounce_route;
+mod shell;
+mod song_pos_ui;
+mod score_log_ui;
+mod clip_colors_ui;
+mod plugin_scan_ui;
+pub use shell::run;
+pub(crate) use shell::{gui_scale, wake_ui, ctrl, frame_of, place_k, ui_scale, Shell, CursorCache, screen_state, screens, apply_window_cursor};
+#[cfg(all(unix, not(target_os = "macos")))]
+pub(crate) use shell::icon_rgba;

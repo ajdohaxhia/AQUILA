@@ -154,7 +154,7 @@ pub fn record(app:&mut App,row:u16)->Option<String>{
             app.end_take();let s=&mut app.state;let arr=pl::arr_mut(s).number;let id=s.project.channels[ch].index;
             if !s.project.instrument_lanes.iter().any(|v|v.0==id&&v.1==arr&&v.2==row){
                 crate::history::record(s,"Set instrument recording track",crate::history::Snap::InstrumentLanes(s.project.instrument_lanes.clone()));
-                s.project.instrument_lanes.retain(|v|v.0!=id||v.1!=arr);s.project.instrument_lanes.push((id,arr,row,s.pattern.max(1)));
+                s.project.instrument_lanes.retain(|v|v.0!=id||v.1!=arr);let pat=s.pattern.max(1);s.project.instrument_lanes.push((id,arr,row,pat));
             }
             s.selected_channel=ch;s.rack.select_only(ch);s.selected_mixer=s.project.channels[ch].mixer_track;s.playlist.track=row;s.song_mode=true;
             crate::mixer_recording::flag(crate::record::Opt::Notes,!armed);crate::mixer_recording::flag(crate::record::Opt::Smart,true);
@@ -188,7 +188,7 @@ pub fn set_input(app:&mut App,row:u16,input:Option<crate::capture::Input>)->Opti
         let name=pl::track_name(s,row);let color=pl::track_info(s,row).and_then(|t|t.color);
         let n=mixer::add_track(s,None);attached::bind(s,row,n);
         if let Some(m)=mixer::track_mut(s,n){m.name=Some(name);m.color=color;}
-        s.history.wrap_attached_instrument(snapshot,n,selected);n
+        crate::history::wrap_attached_instrument(s, snapshot,n,selected);n
     };
     app.state.playlist.track=row;
     let requested=input.clone();
@@ -205,6 +205,6 @@ pub fn set_input(app:&mut App,row:u16,input:Option<crate::capture::Input>)->Opti
             attached::clear(&mut app.state);
         }
     }
-    app.state.history.end_sequence_named(previous, "Set Playlist recording input");
+    crate::history::end_sequence(&mut app.state, previous, "Set Playlist recording input");
     app.invalidate();result
 }

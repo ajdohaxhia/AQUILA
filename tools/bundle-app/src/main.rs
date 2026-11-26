@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
 
-//! `cargo run -p bundle-app [-- --install]` (macOS): builds Lemon Studio in release mode and writes
-//! `<target>/bundled/Lemon Studio.app`: the program, its icon and an `Info.plist` that lets the Finder open `.flp`
+//! `cargo run -p bundle-app [-- --install]` (macOS): builds AQUILA in release mode and writes
+//! `<target>/bundled/AQUILA.app`: the program, its icon and an `Info.plist` that lets the Finder open `.flp`
 //! projects with it and says why it uses the microphone (without that, macOS does not let an app hear its audio
 //! inputs: the mixer tracks' inputs and audio recording). `tools/logo/macos-icon.sh` generates
 //! `assets/lemonstudio.icns` from the AQUILA emblem. `Assets.car` stays in the signed bundle layout so existing
@@ -50,14 +50,14 @@ fn main() {
     let app_target = std::env::var("LEMON_APP_TARGET").ok();
     let target_args: Vec<&str> = app_target.as_deref().map(|t|vec!["--target",t]).unwrap_or_default();
     let ok = Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".into()))
-        .args(["build", "--locked", "--release", "--bin", EXE, "-p", "os-app"])
+        .args(["build", "--locked", "--release", "--bin", EXE, "-p", "lemonstudio"])
         .args(&target_args)
         .current_dir(&root)
         .env("CARGO_TARGET_DIR", &target)
         .status()
         .expect("cargo")
         .success();
-    assert!(ok, "build of os-app failed");
+    assert!(ok, "build of the AQUILA executable failed");
 
     let app = target.join("bundled").join(format!("{}.app", id.name));
     if app.exists() {

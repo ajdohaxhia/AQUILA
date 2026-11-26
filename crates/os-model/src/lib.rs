@@ -509,6 +509,14 @@ impl PlaylistView {
 pub const UNSORTED_GROUP: &str = "Unsorted";
 
 impl Project {
+    /// The index the file gives channels in no group: the "Unsorted" entry of [`Project::groups`], or one past the end
+    /// when the list has none.
+    pub fn unsorted_group(&self) -> u32 {
+        self.groups.iter().position(|g| g == UNSORTED_GROUP).unwrap_or(self.groups.len()) as u32
+    }
+}
+
+impl Project {
     /// Index into `arrangements` of the current arrangement (the first when unset or not found).
     pub fn arrangement_index(&self) -> usize {
         self.current_arrangement.and_then(|n| self.arrangements.iter().position(|a| a.number == n)).unwrap_or(0)
@@ -772,6 +780,8 @@ pub struct Channel {
     /// Sound settings the engine reads that have no other place in the model (filter, sampler flags, declick,
     /// stretch).
     pub sound: ChannelSound,
+    /// Lemon Studio's icon for the channel (by name), kept in `.lemon`; FL's own is [`ChannelRack::icon`].
+    pub lemon_icon: Option<String>,
 }
 
 impl Channel {
@@ -1257,8 +1267,9 @@ pub struct ChannelRack {
     pub locked: bool,
     /// Zipped row (event 15).
     pub zipped: bool,
-    /// Filter group index into [`Project::groups`] (event 145).
-    pub group: u32,
+    /// Filter group: an index into [`Project::groups`] (event 145); `None` in no group, which the file writes as the
+    /// "Unsorted" entry's index ([`Project::unsorted_group`]).
+    pub group: Option<u32>,
     /// The colour event 128 holds, whether or not it is a custom colour: the playlist draws audio and automation
     /// clips with it (spec: ui/playlist.md §2, "Channel-colour rule"). Display only; saving writes `Channel::color`.
     pub stored_color: Option<Rgb>,
@@ -1372,12 +1383,14 @@ pub struct Pattern {
     /// Length set in the channel rack's pattern length box, in ticks; `None` = Auto (whole bars past the last
     /// note). Stored as metadata event 164 plus a "Length" marker (spec: flp/events/patterns.md).
     pub length: Option<u32>,
-    /// Per-channel loop lengths `(channel, steps)` in channel order (events 160/161 after the notes);
-    /// steps [`Pattern::LOOP_FOLLOW`] = a channel that only follows "Loop all channels".
+    /// Per-channel loop points `(channel, value)` in channel order (events 160/161 after the notes), as FL 24.1.1 writes
+    /// them: a length in steps, 0 = no loop, or [`Pattern::LOOP_STEP`], [`Pattern::LOOP_BEAT`], [`Pattern::LOOP_BAR`]
+    /// (Advanced looping's units; Bar is also what "Loop all channels" writes for a channel that loops).
     pub loops: Vec<(u16, u32)>,
-    /// Loop mode off with loop lengths kept: the loop type value (metadata events 26 = 1 and 162; 3 = loop step
-    /// channels, 2 = loop all channels). `None` = loop mode on (or no loops).
-    pub loop_off: Option<u32>,
+    /// Loop mode on, with its type: event 162 after event 26 = 1 in the metadata block, 1 = Loop step channels, 2 = Loop
+    /// all channels, 3 = Advanced looping. FL 24.1.1 writes them while loop mode is on (spec: flp/events/patterns.md
+    /// "Loop settings on FL 24.1.1"; what FL 26 writes is REQUESTS #15). `None` = loop mode off.
+    pub loop_mode: Option<u32>,
     /// The pattern's own time markers (piano-roll Alt+T markers, time signatures, kinds kept as read), sorted by
     /// position; the "Length" marker is not among them (it follows `length`). Metadata marker groups (spec:
     /// flp/events/patterns.md, metadata block).
@@ -1385,8 +1398,12 @@ pub struct Pattern {
 }
 
 impl Pattern {
-    /// Stored loop length of channels that follow "Loop all channels" (0xFFFFFFFD).
-    pub const LOOP_FOLLOW: u32 = 0xFFFF_FFFD;
+    /// Loop points of [`Pattern::loops`]: Advanced looping's Step, Beat and Bar (−1, −2, −3).
+    pub const LOOP_STEP: u32 = 0xFFFF_FFFF;
+    pub const LOOP_BEAT: u32 = 0xFFFF_FFFE;
+    pub const LOOP_BAR: u32 = 0xFFFF_FFFD;
+    /// What "Loop all channels" writes for a channel that loops: Bar.
+    pub const LOOP_FOLLOW: u32 = Self::LOOP_BAR;
 }
 
 /// One point of a pattern's channel control lane (event 223 record). `kind` is
@@ -1398,6 +1415,9 @@ pub struct ControlPoint {
     pub kind: u32,
     /// Volume and pan 0..=12800 (pan centre 6400); pitch in signed cents.
     pub value: i32,
+    /// Who it is: given by the session (`os_session::control::ids`), not saved; `==` ignores it.
+    #[serde(default)]
+    pub id: Id,
 }
 
 impl ControlPoint {
@@ -1406,7 +1426,7 @@ impl ControlPoint {
     pub const PITCH: u16 = 4;
 
     pub fn new(position: u32, channel: u16, param: u16, value: i32) -> Self {
-        ControlPoint { position, kind: u32::from(channel) << 16 | u32::from(param), value }
+        ControlPoint { position, kind: u32::from(channel) << 16 | u32::from(param), value, id: Id::NONE }
     }
 
     pub fn channel(&self) -> u16 {
@@ -1453,6 +1473,9 @@ pub struct Note {
     pub unk14: u16,
     /// Note repeat index 0..=14 (byte 17; 0 = off; spec: flp/events/patterns.md).
     pub repeat: u8,
+    /// Who it is: given by the session (`os_session::control::ids`), not saved; `==` ignores it.
+    #[serde(default)]
+    pub id: Id,
 }
 
 fn note_marks_empty(marks: &notation::NoteMarks) -> bool {
@@ -1533,6 +1556,7 @@ impl Note {
     /// A step-sequencer step with default parameters.
     pub fn step(channel: u16, position: u32) -> Self {
         Note {
+            id: Id::NONE,
             notation: Default::default(),
             drive:0,expression:0,
             position,
@@ -1679,6 +1703,16 @@ pub struct MixerTrack {
     /// Per slot: the slot plugin's CPU switches (event 212 flags; they follow the plugin when it moves).
     #[serde(with = "collab_array")]
     pub slot_cpu: [PluginCpu; 64],
+    /// Lemon Studio's own per slot: a name typed for it, its colour and its icon (by name), kept in `.lemon` (FL's file
+    /// has none); they follow the slot's track when it moves.
+    #[serde(default = "empty_mixer_slots", with = "collab_array")]
+    pub slot_names: [Option<String>; 64],
+    #[serde(default = "empty_mixer_slots", with = "collab_array")]
+    pub slot_colors: [Option<Rgb>; 64],
+    #[serde(default = "empty_mixer_slots", with = "collab_array")]
+    pub slot_icons: [Option<String>; 64],
+    /// Lemon Studio's icon for the track (by name), kept in `.lemon`; FL's own is [`MixerTrack::icon`].
+    pub lemon_icon: Option<String>,
     /// Armed for disk recording (the strip's record button). Not saved, and not part of the track: tracks that differ
     /// only here are equal (spec: audio/track-io.md §1.5).
     pub armed: bool,
@@ -1737,6 +1771,10 @@ impl PartialEq for MixerTrack {
             rec_source,
             monitor,
             slot_cpu,
+            slot_names,
+            slot_colors,
+            slot_icons,
+            lemon_icon,
             armed: _,
             origin: _,
         } = self;
@@ -1779,6 +1817,10 @@ impl PartialEq for MixerTrack {
             && *rec_source == o.rec_source
             && *monitor == o.monitor
             && *slot_cpu == o.slot_cpu
+            && *slot_names == o.slot_names
+            && *slot_colors == o.slot_colors
+            && *slot_icons == o.slot_icons
+            && *lemon_icon == o.lemon_icon
     }
 }
 
@@ -1797,6 +1839,9 @@ pub const DOCK_RIGHT: u8 = 2;
 /// A new track's equaliser: flat, at the default frequencies and widths.
 pub const EQ_DEFAULT: [[i32; 3]; 3] = [[0, 5777, 17500], [0, 33145, 17500], [0, 55825, 17500]];
 
+/// The range a track's latency setting takes, in ms, either sign (spec: audio/delay-compensation.md "Settings").
+pub const LATENCY_MAX_MS: f64 = 1000.0;
+
 impl MixerTrack {
     /// Factory effect returns; the main FX bus is deliberately excluded.
     pub fn is_fx_return(&self) -> bool {
@@ -1806,6 +1851,14 @@ impl MixerTrack {
     pub fn is_vocal(&self) -> bool { self.index != 0 && self.channel_layout == 2 }
     pub fn deess_amount(&self) -> u16 {
         if self.is_vocal() { self.deess.unwrap_or(0) } else { 0 }
+    }
+
+    /// The output and input latency settings in their range: a file can hold any value (an infinite one, a NaN), and
+    /// the delay compensation counts in samples with them.
+    pub fn latency(&self) -> (f32, f32) {
+        let max = LATENCY_MAX_MS as f32;
+        let ok = |v: f32| if v.is_finite() { v.clamp(-max, max) } else { 0.0 };
+        (ok(self.latency_out), ok(self.latency_in))
     }
 
     /// A default track: unnamed, enabled, unity volume, centred, empty slots, routed to the master (except the master).
@@ -1855,6 +1908,10 @@ impl MixerTrack {
             rec_source: REC_POST_EQ,
             monitor: MONITOR_ARMED,
             slot_cpu: [PluginCpu::default(); 64],
+            slot_names: empty_mixer_slots(),
+            slot_colors: empty_mixer_slots(),
+            slot_icons: empty_mixer_slots(),
+            lemon_icon: None,
             armed: false,
             origin: None,
         }
@@ -2181,6 +2238,9 @@ pub struct TimeMarker {
     pub flag: u8,
     /// Event 168: a key marker's place in [`SCALES`]; −1 Default, −2 Black notes.
     pub scale_index: i32,
+    /// Who it is: given by the session (`os_session::control::ids`), not saved; `==` ignores it.
+    #[serde(default)]
+    pub id: Id,
 }
 
 /// The Add key marker list's scales in its order, each with the notes it leaves out at root C in event 101's bits
@@ -2243,7 +2303,7 @@ impl TimeMarker {
     pub const KEY: u8 = 12;
 
     pub fn new(position: u32, name: &str) -> Self {
-        TimeMarker { color: None, linear_us: None, position, kind: Self::PLAIN, name: name.into(), numerator: 4, denominator: 4, scale: 0, root: 0, flag: 0, scale_index: 0 }
+        TimeMarker { id: Id::NONE, color: None, linear_us: None, position, kind: Self::PLAIN, name: name.into(), numerator: 4, denominator: 4, scale: 0, root: 0, flag: 0, scale_index: 0 }
     }
 
     /// The key marker Add key marker ▸ adds (spec: ui/playlist.md §7a): `scale` is a place in [`SCALES`], −1 for
@@ -2320,12 +2380,16 @@ pub struct PlaylistTrack {
     /// The track's link to a mixer track or a channel: the original's audio and instrument tracks (event 238 bytes 49 to
     /// 60; spec: flp/events/playlist.md, ui/playlist.md §6c).
     pub link: TrackLink,
+    /// Who it is: given by the session (`os_session::control::ids`), not saved; `==` ignores it.
+    #[serde(default)]
+    pub id: Id,
 }
 
 impl PlaylistTrack {
     /// Track `number` as a new project has it: unnamed, default colour, on, not grouped, not linked.
     pub fn new(number: u32) -> Self {
         PlaylistTrack {
+            id: Id::NONE,
             mode: PlaylistTrackMode::Legacy,
             attached_mixer: None,
             height: None,
@@ -2517,11 +2581,14 @@ pub struct AutoPoint {
     pub mode: AutoMode,
     /// Byte 23 of the record, kept as read.
     pub flag: u8,
+    /// Who it is: given by the session (`os_session::control::ids`), not saved; `==` ignores it.
+    #[serde(default)]
+    pub id: Id,
 }
 
 impl AutoPoint {
     pub fn new(beat: f64, value: f64) -> Self {
-        AutoPoint { beat, value, tension: 0.0, mode: AutoMode::Single, flag: 2 }
+        AutoPoint { beat, value, tension: 0.0, mode: AutoMode::Single, flag: 2, id: Id::NONE }
     }
 }
 
@@ -3272,6 +3339,10 @@ mod collab_raw_clip {
 }
 
 // Collaboration wire arrays; the native project codec remains unchanged.
+fn empty_mixer_slots<T>() -> [Option<T>; 64] {
+    std::array::from_fn(|_| None)
+}
+
 mod collab_array {
  use serde::{Serialize,Deserialize,Serializer,Deserializer};
  pub fn serialize<T:Serialize,S:Serializer,const N:usize>(v:&[T;N],s:S)->Result<S::Ok,S::Error>{v.as_slice().serialize(s)}

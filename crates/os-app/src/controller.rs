@@ -583,7 +583,7 @@ mod tests {
     #[test]
     fn controller_ports_keep_keys_separate_and_mcu_releases_do_not_play_notes() {
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         set_mode("Controller DAW", 1);
         let note = Msg::On { ch: 0, key: 60, vel: 100 };
         assert!(!app.controller_event(&event("Controller MIDI", note)));
@@ -603,7 +603,7 @@ mod tests {
         use crate::views::settings::MIDI;
 
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         app.state.settings.open = true;
         app.state.settings.tab = MIDI;
         let surface = "Test = DAW";
@@ -631,7 +631,7 @@ mod tests {
         assert_eq!(bindings("Test %3D DAW"), Bindings::default());
 
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         crate::settings_file::set_flag(VISIBILITY, false);
         app.midi_events(vec![event("Test Keys", note)]);
         assert_eq!(app.midi_play.lit().count(), 1);
@@ -658,7 +658,7 @@ mod tests {
     #[test]
     fn controller_monitor_and_roles_keep_unmapped_buttons_out_of_instruments() {
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         app.state.settings.open = true;
         app.state.settings.tab = crate::views::settings::MIDI;
         app.state.midi.monitor = true;
@@ -679,7 +679,7 @@ mod tests {
     #[test]
     fn controller_legacy_learn_and_single_press_preset_round_trip() {
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         let input = "Learn controller";
         let binding = Binding::Cc { ch: 2, n: 42 };
         crate::settings_file::write(&device_key("midi_transport", input),
@@ -704,7 +704,7 @@ mod tests {
     #[test]
     fn controller_mcu_feedback_and_launchkey_frames_follow_device_and_touch() {
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         let launchkey = "Launchkey DAW input";
         let mcu = "X-Touch DAW input";
         for (input, output, profile) in [(launchkey, "Launchkey DAW output", LAUNCHKEY), (mcu, "X-Touch DAW output", 4)] {
@@ -730,7 +730,7 @@ mod tests {
     #[test]
     fn controller_mmc_is_opt_in_and_keeps_akai_notes() {
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         let input = "Akai MPK";
         let play = crate::midi_in::parse(&[0xf0, 0x7f, 0x7f, 0x06, 0x02, 0xf7]).unwrap();
         app.midi_events(vec![event(input, play)]);
@@ -745,7 +745,7 @@ mod tests {
     #[test]
     fn controller_korg_factory_fader_and_button_release() {
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         set_mode("Korg test", 5);
         app.midi_events(vec![event("Korg test", Msg::Cc { ch: 0, n: 0, v: 127 })]);
         assert_eq!(crate::mixer::track(&app.state, 1).unwrap().volume, Some(1.0));
@@ -757,7 +757,7 @@ mod tests {
     #[test]
     fn controller_faders_respect_locks_and_banks_are_per_device() {
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         set_mode("Surface A", 1);
         set_mode("Surface B", 1);
         app.controller_event(&event("Surface A", Msg::Bend { ch: 0, v: 16383 }));

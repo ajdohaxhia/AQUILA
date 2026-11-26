@@ -331,7 +331,7 @@ mod tests {
     #[test]
     fn picker_preview_renders_audio_from_later_rack_slots() {
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         let audio = 3;
         let sampler = 4;
         let key = "clip-picker-preview-test.wav";

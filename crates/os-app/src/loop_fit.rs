@@ -329,9 +329,12 @@ fn fit_selected_bars(app: &mut App, indices: &[usize]) -> Result<String, String>
         } else {
             row
         };
-        let sound = &mut s.project.channels[row].sound;
-        set_fitted_time(sound, beats);
-        app.plugins.set_sampler_stretch(row, sound);
+        let sound = {
+            let c = &mut (*s.session.project).channels[row];
+            set_fitted_time(&mut c.sound, beats);
+            c.sound.clone()
+        };
+        s.session.plugins.set_sampler_stretch(row, &sound);
         pl::arr_mut(s).clips[index].length = length;
     }
     s.playlist.brush = None;
@@ -395,14 +398,17 @@ pub fn run(app: &mut App, i: usize, cmd: Fit) -> Option<String> {
     };
     pl::snapshot_as(&mut app.state,"Fit audio loop");
     let ratio=visible_beats*ppq/f64::from(clip.length.max(1));
-    let sound = &mut app.state.project.channels[row].sound;
-    if cmd == Fit::Reset {
-        sound.stretch[0] = 0;
-        sound.stretch[2] = 0;
-    } else {
-        set_fitted_time(sound, (visible_beats / fraction).clamp(1.0 / 192.0, 4096.0));
-    }
-    app.plugins.set_sampler_stretch(row, sound);
+    let sound = {
+        let c = &mut (*app.state.session.project).channels[row];
+        if cmd == Fit::Reset {
+            c.sound.stretch[0] = 0;
+            c.sound.stretch[2] = 0;
+        } else {
+            set_fitted_time(&mut c.sound, (visible_beats / fraction).clamp(1.0 / 192.0, 4096.0));
+        }
+        c.sound.clone()
+    };
+    app.state.session.plugins.set_sampler_stretch(row, &sound);
     pl::arr_mut(&mut app.state).clips[i].length = (f64::from(clip.length) * ratio).round().max(1.0) as u32;
     if let Some(fits) = pl::audio_fits(&app.state) { pl::fit_clips(&mut app.state.project.arrangements, &fits); }
     app.state.piano.dirty=true;
@@ -414,7 +420,7 @@ pub fn run(app: &mut App, i: usize, cmd: Fit) -> Option<String> {
 mod tests {
  #[test]
  fn workflow_features_fit_imports_without_changing_recordings() {
-    let mut app=crate::app::App::new(None);app.state.project=crate::app::test_project();app.state.tempo=120.;
+    let mut app=crate::app::App::new(None);app.state.session.project=crate::locked::Locked::new(crate::app::test_project());app.state.tempo=120.;
     let path=std::env::temp_dir().join(format!("lemon-drop-{}-90bpm.wav",std::process::id()));
     os_engine::wav::write_f32_stereo(&mut std::fs::File::create(&path).unwrap(),8000,&vec![0.2;128000]).unwrap();
     let text=path.to_string_lossy();
@@ -436,7 +442,7 @@ mod tests {
     use crate::dialog::{Body, DHit};
     use winit::keyboard::{Key, NamedKey};
     let mut app = App::new(None);
-    app.state.project = crate::app::test_project();
+    app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
     app.state.tempo = 120.0;
     let detected = Some((24.0, 90.123));
     let show_result = |app: &mut App| {
@@ -478,7 +484,7 @@ mod tests {
 
  #[test]
  fn rack_sample_fit_without_playlist_supports_bpm_lengths_reset_and_undo(){
-    let mut app=App::new(None);app.state.project=crate::app::test_project();app.state.tempo=120.;
+    let mut app=App::new(None);app.state.session.project=crate::locked::Locked::new(crate::app::test_project());app.state.tempo=120.;
     let path=std::env::temp_dir().join(format!("lemon-rack-fit-{}-90bpm.wav",std::process::id()));
     os_engine::wav::write_f32_stereo(&mut std::fs::File::create(&path).unwrap(),8000,&vec![0.2;128000]).unwrap();
     let row=0;app.state.project.channels[row].sample_path=Some(path.to_string_lossy().into_owned());
@@ -519,7 +525,7 @@ mod tests {
 
  #[test]
  fn playlist_release_checks_fitting_selected_audio_preserves_positions_and_undo(){
-    let mut app=App::new(None);app.state.project=crate::app::test_project();app.state.tempo=120.;
+    let mut app=App::new(None);app.state.session.project=crate::locked::Locked::new(crate::app::test_project());app.state.tempo=120.;
     let dir=std::env::temp_dir().join(format!("lemon-minibpm-fit-{}",std::process::id()));std::fs::create_dir_all(&dir).unwrap();
     let a=dir.join("drum-90bpm.wav");let b=dir.join("vocal.wav");
     for path in [&a,&b]{os_engine::wav::write_f32_stereo(&mut std::fs::File::create(path).unwrap(),8000,&vec![0.2;128000]).unwrap();}

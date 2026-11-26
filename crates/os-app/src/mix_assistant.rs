@@ -2964,7 +2964,7 @@ mod tests {
         let baseline = capture_project(&project, &samples, None, vec![1, 2, 3, 4, 5, 6]);
         let mut app = App::new(None);
         app.plugins.effects = crate::plugins::builtin_effects();
-        app.state.project = project.clone();
+        app.state.session.project = crate::locked::Locked::new(project.clone());
         open(&mut app);
         process(&mut app);
         let f = form(&mut app).unwrap();
@@ -3185,7 +3185,7 @@ mod tests {
         project.channels[3].volume = 0.78125;
         let mut app = App::new(None);
         app.plugins.effects = crate::plugins::builtin_effects();
-        app.state.project = project.clone();
+        app.state.session.project = crate::locked::Locked::new(project.clone());
         app.state.tempo = 120.;
         open(&mut app);
         process(&mut app);
@@ -3330,7 +3330,7 @@ mod tests {
         let mut app = App::new(None);
         app.plugins.effects = crate::plugins::builtin_effects();
         app.state.tempo = 120.0;
-        app.state.project = project.clone();
+        app.state.session.project = crate::locked::Locked::new(project.clone());
         app.state.selected_mixer = 2;
         app.state.mixer.sel = vec![1, 2];
         app.state.raise(crate::app::Win::Mixer);
@@ -3545,7 +3545,7 @@ mod tests {
         project.mixer[8].routes = vec![9];
         project.mixer[9].name = Some("MIX BUS".into());
         let mut app = App::new(None);
-        app.state.project = project;
+        app.state.session.project = crate::locked::Locked::new(project);
         open(&mut app);
         process(&mut app);
         let f = form(&mut app).unwrap();
@@ -3590,7 +3590,7 @@ mod tests {
     fn mix_assistant_loud_mix_keeps_individual_moves() {
         let mut app = App::new(None);
         app.plugins.effects = crate::plugins::builtin_effects();
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         open(&mut app);
         let project = app.state.project.clone();
         let f = form(&mut app).unwrap();
@@ -3662,7 +3662,7 @@ mod tests {
         let (project, samples) = song();
         let mut app = App::new(None);
         app.plugins.effects = crate::plugins::builtin_effects();
-        app.state.project = project.clone();
+        app.state.session.project = crate::locked::Locked::new(project.clone());
         let mut measured = capture_project(&project, &samples, None, vec![1, 2, 3, 4, 5, 6]);
         let mut tracks = setup::inventory(&app.state, &project);
         for track in &mut tracks {
@@ -3826,7 +3826,7 @@ mod tests {
         }
         let mut app = App::new(None);
         app.plugins.effects = crate::plugins::builtin_effects();
-        app.state.project = project.clone();
+        app.state.session.project = crate::locked::Locked::new(project.clone());
         open(&mut app);
         process(&mut app);
         command(&mut app, Hit::ConfirmRoles);
@@ -3954,7 +3954,7 @@ mod tests {
         let (project, samples) = song();
         let mut app = App::new(None);
         app.plugins.effects = crate::plugins::builtin_effects();
-        app.state.project = project.clone();
+        app.state.session.project = crate::locked::Locked::new(project.clone());
         let mut tracks = setup::inventory(&app.state, &project);
         let audio = |hz: f64, bright: bool| {
             (0..48000 * 3)

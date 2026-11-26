@@ -788,7 +788,7 @@ mod tests {
         let guide = make("Guide", &[(0.28, 0.52, 220.), (0.79, 1.07, 420.), (1.40, 1.63, 650.)]);
         let dub = make("Dub", &[(0.43, 0.67, 245.), (0.95, 1.23, 490.), (1.33, 1.57, 700.)]);
         let mut app = App::new(None);
-        app.state.project = crate::app::default_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::default_project());
         app.state.tempo = 120.;
         app.state.project.data_folder = Some(os_model::DataFolder { choice: 2, folder: root.to_string_lossy().into_owned() });
         let g = pl::add_audio_clip(&mut app.state, guide.to_str().unwrap(), 0, 24).unwrap();
@@ -817,7 +817,7 @@ mod tests {
         assert_eq!(&rendered.left[..source.frames()], source.left.as_slice());
         assert!(rendered.left[source.frames()..].iter().all(|&sample| sample == 0.));
         command(&mut app, Command::Close);
-        app.state.project = unpadded;
+        app.state.session.project = crate::locked::Locked::new(unpadded);
         app.state.playlist.sel = vec![a, g, b];
         assert!(pl::clip_menu(&app.state, g, 0., 0.).items.iter().any(|p| p.cmd == pl::Cmd::VocalAlign(g)));
         crate::workspace_visibility::toggle("visible_playlist-vocal-align");

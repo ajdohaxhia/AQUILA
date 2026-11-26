@@ -307,7 +307,7 @@ mod tests {
         output.ch[0].fill(0.05);
         std::fs::write(&cleaned, tesla::wav::write(&output, tesla::wav::Depth::Own)).unwrap();
         let mut a = App::new(None);
-        a.state.project = crate::app::default_project();
+        a.state.session.project = crate::locked::Locked::new(crate::app::default_project());
         let i = pl::add_audio_clip(&mut a.state, original.to_str().unwrap(), 2, 384).unwrap();
         let mut clip = pl::clips(&a.state)[i].clone();
         clip.window = Some((125., 750.));
@@ -386,7 +386,7 @@ mod tests {
         );
         std::fs::write(&path, tesla::wav::write(&sample, tesla::wav::Depth::Own)).unwrap();
         let mut a = App::new(None);
-        a.state.project = crate::app::default_project();
+        a.state.session.project = crate::locked::Locked::new(crate::app::default_project());
         a.plugins.effects = crate::plugins::builtin_effects();
         let i = pl::add_audio_clip(&mut a.state, path.to_str().unwrap(), 0, 0).unwrap();
         crate::settings_file::set_flag(tesla::cleanup::VISIBILITY, false);

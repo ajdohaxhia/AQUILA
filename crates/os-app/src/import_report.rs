@@ -318,11 +318,11 @@ pub fn relink(app: &mut App, row: usize, old: &str, path: &Path) {
         .unwrap_or_else(|_| path.to_owned())
         .to_string_lossy()
         .into_owned();
-    for (i, ch) in app.state.project.channels.iter_mut().enumerate() {
+    for (i, ch) in app.state.session.project.channels.iter_mut().enumerate() {
         if ch.sample_path.as_deref() == Some(old) {
             ch.sample_path = Some(new.clone());
             if ch.kind.is_sampler() {
-                app.state.sample_loads.push((i, new.clone()));
+                app.state.session.sample_loads.push((i, new.clone()));
             }
         }
     }
@@ -371,7 +371,7 @@ mod tests {
         let original = root.join("Source.flp");
         let copy = root.join("Source.lmn");
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         let mut file = os_flp::project::create(&app.state.project).unwrap();
         file.chunks
             .retain(|c| !matches!(&c.tag.0, b"LPCH" | b"LSCL" | b"LSKB"));
@@ -451,7 +451,7 @@ mod tests {
     #[test]
     fn report_names_retained_unsupported_automation_and_has_bounded_pages() {
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         let a = os_flp::project::new_automation(0, 0x000e000f, 0.5, 4.);
         app.state.project.automations.push(a);
         app.state

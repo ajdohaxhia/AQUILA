@@ -103,7 +103,7 @@ pub fn paint(ui:&mut Ui,r:Rect,f:&Form){
 mod tests{
     use super::*;
     use crate::{app::Win,playlist as pl};
-    fn app()->App{let mut a=App::new(None);a.state.project=crate::app::test_project();a.state.selected_channel=0;a.state.z=vec![Win::PianoRoll];a}
+    fn app()->App{let mut a=App::new(None);a.state.session.project=crate::locked::Locked::new(crate::app::test_project());a.state.selected_channel=0;a.state.z=vec![Win::PianoRoll];a}
     fn click_note(a:&mut App,c:&mut os_ui::Canvas,i:usize){a.paint(c,None);let h=a.hits.iter().find(|h|h.action==Action::PianoNote(i)).unwrap();let r=h.rect;a.mouse_move(r.x+5.,r.cy());a.mouse_down();a.mouse_up();}
     #[test]
     fn note_workflow_double_click_properties_selected_apply_cancel_and_undo(){

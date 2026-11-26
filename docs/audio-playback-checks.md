@@ -11,7 +11,7 @@ duration per scenario (default 10 seconds, capped at 120). Use an isolated
 Run the normal storage guard before compiling.
 
 ```text
-cargo test --locked --release -p os-app installed_vst_three_track_queue_probe -- --ignored --nocapture --test-threads=1
+cargo test --locked --release -p os-session --lib installed_vst_three_track_queue_probe -- --ignored --nocapture --test-threads=1
 ```
 
 The test renders a synthetic 44.1 kHz sample through two actual hosted stock

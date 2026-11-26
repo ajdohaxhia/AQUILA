@@ -719,7 +719,7 @@ pub fn sub_items(cmd: MenuCmd) -> Option<fn(&State) -> Vec<crate::playlist::PIte
         // spec: ui/one-click-recording.md §2
         Sub::OneClick => crate::one_click::items,
         // spec: ui/recording.md §6
-        Sub::DumpLog => crate::score_log::items,
+        Sub::DumpLog => crate::score_log_ui::items,
         Sub::AudioLog => crate::audio_log::items,
         Sub::Declick => crate::rack::declick_items,
         Sub::ClipsAll => |_| crate::rack::stretch_items(true),

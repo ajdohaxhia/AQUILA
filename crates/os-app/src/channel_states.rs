@@ -186,7 +186,7 @@ pub(crate) mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         ROOT.with(|r| *r.borrow_mut() = Some(dir.clone()));
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         let row = 1;
         {
             let ch = &mut app.state.project.channels[row];

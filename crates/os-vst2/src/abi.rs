@@ -180,6 +180,7 @@ pub mod op {
     /// Returns 0 when unknown, 1 for no tail, else the tail in frames.
     pub const TAIL_SAMPLES: i32 = 0x34;
     /// Parameter `index`'s properties into `ptr` (a [`ParameterProperties`]); returns 1 when it has them.
+    pub const OUTPUT_PROPERTIES: i32 = 0x22;
     pub const PARAM_PROPERTIES: i32 = 0x38;
     pub const VST_VERSION: i32 = 0x3A;
     /// A shell's next plugin: its name into `ptr`, its id returned (0 after the last).

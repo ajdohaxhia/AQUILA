@@ -42,15 +42,8 @@ pub enum Body {
     Params(Vec<(String, f64)>),
 }
 
-/// One preset in a plugin's list.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Preset {
-    /// Shown name: the file stem, with its sub-folder ("Bass/Deep") when it sits one level down.
-    pub name: String,
-    pub path: PathBuf,
-    /// One of the presets compiled into the program (read-only; its path is under [`FACTORY_ROOT`]).
-    pub factory: bool,
-}
+/// One preset in a plugin's list. The session owns it (`os_session::presets`): the interface reaches it here.
+pub use os_session::presets::Preset;
 
 /// `Presets` in the user folder (`os_paths::user_dir`; `OPENSTUDIO_PRESETS` overrides it, used by tests).
 pub fn root() -> Option<PathBuf> {
@@ -172,8 +165,8 @@ fn factory_in(files: &[(&str, &[u8])], plugin: &str) -> Vec<Preset> {
 /// The factory presets of `plugin`: Lemon Studio's, then (for Citrus and Smith) the `.fst` files of an installed copy.
 pub fn factory(plugin: &str) -> Vec<Preset> {
     let mut v = factory_in(FACTORY, plugin);
-    v.extend(crate::citrus::more_presets(plugin));
-    v.extend(crate::smith::more_presets(plugin));
+    v.extend(crate::citrus::more_presets(&crate::settings_file::store(), plugin));
+    v.extend(crate::smith::more_presets(&crate::settings_file::store(), plugin));
     v
 }
 
@@ -626,17 +619,17 @@ fn programs(app: &App, key: usize) -> Vec<(u32, u32, String)> {
 
 fn load_program(app: &mut App, key: usize, program: (u32, u32, String)) -> Option<String> {
     if crate::mixer::locked_effect(&app.state, key) { return Some(crate::mixer::LOCK_MESSAGE.into()); }
-    let hosted = app.plugins.hosted.get_mut(&key)?;
+    let hosted = app.state.session.plugins.hosted.get_mut(&key)?;
     if !hosted.plugin.lock().ok()?.select_program(program.0, program.1) {
         return Some("Plugin declined the program".into());
     }
     let message = format!("Preset: {}", program.2);
     #[cfg(plugin_windows)]
-    if let Some(window) = hosted.window.as_ref() {
+    if let Some(window) = app.editors.editors.get(&key).and_then(|e| e.window.as_ref()) {
         window.set_preset(Some(program.2.clone()));
     }
     hosted.preset_program = Some(program);
-    app.plugins.presets.remove(&key);
+    app.state.session.plugins.presets.remove(&key);
     app.plugins.mark_edited(key);
     app.state.params.lists.remove(&key);
     Some(message)
@@ -672,7 +665,7 @@ pub fn window_edit(app: &mut App, key: usize) {
     use crate::plugins::WindowEdit;
     let Some(mut before) = side(app, key) else { return };
     let changes = app.state.history.changes();
-    let edit = app.plugins.take_known(key, &before.state, changes);
+    let edit = app.editors.take_known(key, &before.state, changes);
     if edit == WindowEdit::Nothing {
         return;
     }
@@ -746,7 +739,7 @@ fn apply(app: &mut App, key: usize, body: &Body) -> Result<Vec<String>, String> 
 /// the old editor alive until its instance has left every playing engine.
 pub(crate) fn restore_state(app: &mut App, key: usize, state: &[u8]) -> Result<(), String> {
     if let Some(result)=crate::ml_patch::restore(app,key,state){return result;}
-    let next = match app.plugins.prepare_preset(key, state) {
+    let next = match app.state.session.plugins.prepare_preset(key, state) {
         Ok(next) => next,
         // An instance whose library is not listed cannot be made anew: it takes the state itself, as before
         // ML Studio's prepared loads.
@@ -765,8 +758,8 @@ pub(crate) fn restore_state(app: &mut App, key: usize, state: &[u8]) -> Result<(
 
 fn commit_prepared(app: &mut App, key: usize, next: crate::plugins::Hosted) {
     #[cfg(plugin_windows)]
-    let reopen = app.plugins.hosted.get(&key).is_some_and(|h| h.window.is_some());
-    app.plugins.install_preset(key, next);
+    let reopen = app.editors.close_if_open(&mut app.state.session.plugins, key);
+    app.state.session.plugins.install_preset(key, next);
     if crate::plugins::fx_of(key).is_none() {
         if let Some(range) = app.state.project.channels.get(key).and_then(|c| c.plugin_state.as_deref()).and_then(os_flp::wrapper::bend_range) {
             app.plugins.set_bend_range(key, range);
@@ -778,7 +771,7 @@ fn commit_prepared(app: &mut App, key: usize, next: crate::plugins::Hosted) {
         let info = if crate::plugins::fx_of(key).is_some() {
             crate::mixer::fx_info(&app.state.project, &app.state.mixer, key)
         } else { crate::app::channel_info(&app.state.project, key) };
-        if let Some(info) = info { let _ = app.plugins.open_window(key, info); }
+        if let Some(info) = info { let _ = app.editors.open_window(&mut app.state.session.plugins, key, info); }
     }
     app.params_tick();
     app.transport.preset(key, app.plugins.hosted[&key].plugin.clone());
@@ -896,7 +889,7 @@ pub fn rename_chosen(app: &mut App, key: usize, old: PathBuf, target: PathBuf) -
     }
     Some(match std::fs::rename(&old, &target) {
         Ok(()) => {
-            for job in &mut app.plugins.preview_jobs{if job.path==preview_path(&old){job.path=preview_path(&target);}}
+            for job in &mut app.editors.preview_jobs{if job.path==preview_path(&old){job.path=preview_path(&target);}}
             let _=std::fs::rename(preview_path(&old),preview_path(&target));
             if app.plugins.presets.get(&key) == Some(&old) {
                 app.plugins.set_preset(key, Some(target.clone()));
@@ -911,7 +904,7 @@ pub fn rename_chosen(app: &mut App, key: usize, old: PathBuf, target: PathBuf) -
 pub fn delete_chosen(app: &mut App, key: usize, path: PathBuf) -> Option<String> {
     Some(match std::fs::remove_file(&path) {
         Ok(()) => {
-            app.plugins.preview_jobs.retain(|job|job.path!=preview_path(&path));let _=std::fs::remove_file(preview_path(&path));
+            app.editors.preview_jobs.retain(|job|job.path!=preview_path(&path));let _=std::fs::remove_file(preview_path(&path));
             if app.plugins.presets.get(&key) == Some(&path) {
                 app.plugins.set_preset(key, None);
             }
@@ -1023,7 +1016,7 @@ fn queue_preview(app: &mut App, key: usize, path: &Path, state: &[u8]) {
         return;
     }
     let sidecar = preview_path(path);
-    app.plugins.preview_jobs.retain(|job| job.path != sidecar);
+    app.editors.preview_jobs.retain(|job| job.path != sidecar);
     let _ = std::fs::remove_file(&sidecar);
     let Some(desc) = app.plugins.descriptor(key) else {
         return;
@@ -1045,7 +1038,7 @@ fn queue_preview(app: &mut App, key: usize, path: &Path, state: &[u8]) {
     {
         return;
     }
-    app.plugins.preview_jobs.push(PreviewJob {
+    app.editors.preview_jobs.push(PreviewJob {
         path: sidecar,
         plugin,
         audio: Vec::with_capacity(196608),
@@ -1096,7 +1089,7 @@ fn render_preview(job: &mut PreviewJob) -> bool {
 }
 
 pub fn pending_tick(app: &mut App) {
-    if let Some(job)=app.plugins.preview_jobs.first_mut() && render_preview(job){app.plugins.preview_jobs.remove(0);}
+    if let Some(job)=app.editors.preview_jobs.first_mut() && render_preview(job){app.editors.preview_jobs.remove(0);}
     if app.plugins.preset_waits.is_empty() {
         return;
     }
@@ -1116,7 +1109,7 @@ mod tests {
     fn prepared_preset_commits_new_state_and_rejection_keeps_old_instance() {
         use std::sync::Arc;
         let mut app = crate::app::App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         let lib = crate::audio_test_plugin::library(20);
         let desc = lib.plugins()[0].clone();
         app.plugins.available = vec![crate::plugins::Available { lib, desc }];
@@ -1645,3 +1638,5 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 }
+
+pub use os_session::presets::WindowEdit;

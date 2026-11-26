@@ -137,8 +137,8 @@ impl App {
                 pat.notes.push(os_model::Note{channel:id,key:60,position:0,length:p.end,velocity:100,..os_model::Note::step(id,0)});
             }
             s.hosted_rows.retain(|r|*r!=p.row);
-            self.plugins.drop_key(p.row);
-            self.transport.set_instruments(self.plugins.instruments());
+            s.session.plugins.drop_key(p.row);
+            s.session.transport.set_instruments(s.session.plugins.instruments());
             s.piano.dirty=true;
             Ok(if p.wet {"Channel bounced with mixer effects and tails to a free Mixer insert. Original retained muted; Undo restores it."} else {"Channel rendered to its original Mixer insert. Mixer effects stay live; Undo restores the instrument and MIDI. Original source saved beside the WAV."}.to_string())
         });
@@ -151,7 +151,7 @@ mod tests {
     use super::*;
     #[test]
     fn forum_save_preserves_disabled_pitch_follow_and_undo() {
-        let mut a=App::new(None);a.state.project=crate::app::test_project();
+        let mut a=App::new(None);a.state.session.project=crate::locked::Locked::new(crate::app::test_project());
         a.plugins.available=crate::plugins::builtin();a.sync_samplers(None);a.params_tick();
         let row=*a.state.hosted_rows.iter().next().expect("hosted sampler");
         a.state.project.main_pitch=Some(300);
@@ -174,7 +174,7 @@ mod tests {
     #[test]
     fn rack_features_compact_controls_and_filtered_piano_layout() {
         use crate::{app::{Action,Win},knobs::KnobId};
-        let mut a=App::new(None);a.state.project=crate::app::test_project();
+        let mut a=App::new(None);a.state.session.project=crate::locked::Locked::new(crate::app::test_project());
         a.state.z=vec![Win::ChannelRack];a.state.rack_size=crate::views::rack::DEFAULT_SIZE;
         let mut c=os_ui::Canvas::new(1280,900,1.).unwrap();a.paint(&mut c,None);
         let find=|a:&App,action:Action|a.hits.iter().find(|h|h.action==action).unwrap().rect;
@@ -200,7 +200,7 @@ mod tests {
     #[test]
     fn rack_features_pitch_follow_persistence_and_scale_geometry() {
         use crate::{knobs::KnobId,rack::{self,RCmd},piano::Geom};
-        let mut a=App::new(None);a.state.project=crate::app::test_project();
+        let mut a=App::new(None);a.state.session.project=crate::locked::Locked::new(crate::app::test_project());
         assert_eq!(os_model::ChannelMisc::default().pitch_range,12);
         a.state.set_knob(KnobId::ChanPitch(0),0.75);
         assert_eq!(a.state.project.channels[0].pitch_cents,600);
@@ -242,7 +242,7 @@ mod tests {
     fn rack_features_bounce_renders_real_audio_and_undo_restores_source() {
         for wet in [false,true] {
         crate::prefs::set_check(&crate::prefs::BOUNCE_FREE,wet);
-        let mut app=App::new(None);app.state.project=crate::app::test_project();app.state.tempo=120.;app.state.song_mode=true;
+        let mut app=App::new(None);app.state.session.project=crate::locked::Locked::new(crate::app::test_project());app.state.tempo=120.;app.state.song_mode=true;
         app.state.project.mixer[1].volume=Some(0.65);
         app.state.project.mixer[1].eq[0][0]=600;
         let dir=std::env::temp_dir().join(format!("lemon-rack-bounce-{}",std::process::id()));std::fs::create_dir_all(&dir).unwrap();

@@ -36,7 +36,7 @@ impl App{
 #[cfg(test)]
 mod tests{
     use super::*;use crate::{app::{Action,Win},playlist as pl};
-    fn app()->App{let mut a=App::new(None);a.state.project=crate::app::test_project();a.state.selected_channel=0;a.state.project.patterns.iter_mut().for_each(|p|p.notes.clear());a.state.project.automations.clear();pl::arr_mut(&mut a.state).clips.clear();a}
+    fn app()->App{let mut a=App::new(None);a.state.session.project=crate::locked::Locked::new(crate::app::test_project());a.state.selected_channel=0;a.state.project.patterns.iter_mut().for_each(|p|p.notes.clear());a.state.project.automations.clear();pl::arr_mut(&mut a.state).clips.clear();a}
     #[test]
     fn lead_fix_modes_timing_note_automation_gates_and_stop(){
         let mut a=app();a.state.project.ppq=96;a.state.rec.armed=true;a.state.piano.marker=1536;

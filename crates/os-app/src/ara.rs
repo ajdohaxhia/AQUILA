@@ -168,7 +168,7 @@ pub fn choose(app: &mut App, i: usize, k: usize) -> Option<String> {
         }
         return open_link(app, source);
     }
-    let ch = &app.state.project.channels[r];
+    let ch = &app.state.session.project.channels[r];
     let (plugin_path, class_id) = if k == OPEN_INDEPENDENT || k == OPEN_EXISTING {
         let saved = match os_vst3::ara::State::decode(ch.plugin_state.as_deref()?) {
             Ok(saved) => saved,
@@ -226,7 +226,7 @@ pub fn choose(app: &mut App, i: usize, k: usize) -> Option<String> {
         next
     };
     let owner = (arrangement.number, clip_id);
-    match app.plugins.create_ara(target_row, &plugin_path, &class_id, &source, None, Some(owner)) {
+    match app.state.session.plugins.create_ara(target_row, &plugin_path, &class_id, &source, None, Some(owner)) {
         Err(e) => Some(format!("ARA: {e}")),
         Ok(name) => {
             pl::snapshot_with(&mut app.state, "Add ARA editor", crate::history::Snap::Several(undo));
@@ -247,7 +247,7 @@ pub fn choose(app: &mut App, i: usize, k: usize) -> Option<String> {
             if !app.state.hosted_rows.contains(&r) {
                 app.state.hosted_rows.push(r);
             }
-            app.plugins.added(r);
+            app.state.session.plugins.added(&app.state.session.settings, r);
             app.transport.set_instruments(app.plugins.instruments());
             app.state.piano.dirty = true;
             app.state.pending_open = Some(r);
@@ -290,14 +290,14 @@ pub fn remove(app: &mut App, i: usize) -> Option<String> {
     Some("ARA removed; original audio restored. Undo restores the edits.".into())
 }
 pub fn restore(app: &mut App, r: usize) -> Result<(), String> {
-    let ch = &app.state.project.channels[r];
+    let ch = &app.state.session.project.channels[r];
     let saved =
         os_vst3::ara::State::decode(ch.plugin_state.as_deref().ok_or("Missing ARA archive")?)?;
     let source = ch
         .sample_path
         .as_deref()
         .ok_or("ARA source audio is missing")?;
-    app.plugins.create_ara(
+    app.state.session.plugins.create_ara(
         r,
         &saved.plugin_path,
         &saved.class_id,
@@ -454,7 +454,7 @@ mod tests {
     #[test]
     fn ara_mixer_link_is_saved_and_follows_channel_identity() {
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         let source = app.state.project.channels[1].index;
         let slot = link_slot(&app, 0, source).unwrap();
         add_link(&mut app, 0, slot, source, "Editor · Clip");
@@ -473,7 +473,7 @@ mod tests {
     #[test]
     fn an_earlier_copy_does_not_take_ownership_of_the_original_document() {
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         let channel = &mut app.state.project.channels[0];
         channel.kind = os_model::ChannelKind::AudioClip;
         channel.plugin = Some(MARKER.into());
@@ -500,7 +500,7 @@ mod tests {
         let channel = &project.channels[0];
         assert!(!current_document(&project, &clips[0], channel));
         assert!(current_document(&project, &clips[1], channel));
-        app.state.project = project;
+        app.state.session.project = crate::locked::Locked::new(project);
         menu(&mut app, 0);
         assert!(app.state.playlist.popup.as_ref().unwrap().items.iter()
             .any(|item| item.cmd == Cmd::AraChoose(0, OPEN_INDEPENDENT)));

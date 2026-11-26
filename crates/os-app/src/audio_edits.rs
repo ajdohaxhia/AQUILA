@@ -45,15 +45,15 @@ pub fn channel(s: &State, ci: usize) -> Option<u16> {
 pub fn attach(s: &mut State, ci: usize, analyzed: bool) {
     ids(s);
     let Some(ch) = channel(s, ci) else { return };
-    let Some(d) = s.project.vocal_edits.iter().find(|d| d.channel == ch) else {
+    let Some(d) = s.project.vocal_edits.iter().find(|d| d.channel == ch).cloned() else {
         return;
     };
     if s.project.audio_edits.iter().any(|h| h.channel == ch) {
         return;
     }
-    let c = &pl::clips(s)[ci];
+    let c = pl::clips(s)[ci].clone();
     let duration = d.frames as f64 / d.rate as f64;
-    let (a, b) = pl::window(s, c);
+    let (a, b) = pl::window(s, &c);
     let range = (
         (a / 1000.).clamp(0., duration),
         (b / 1000.).clamp(0., duration),
@@ -64,7 +64,7 @@ pub fn attach(s: &mut State, ci: usize, analyzed: bool) {
     let arr = s.project.arrangement().map_or(0, |a| a.number);
     s.project
         .audio_edits
-        .push(Document::new(d, c.id(), arr, range, analyzed));
+        .push(Document::new(&d, c.id(), arr, range, analyzed));
 }
 /// Isolate only the placement being edited. Original samples/analysis are reusable.
 pub fn isolate(s: &mut State, ci: usize) -> Option<u16> {
@@ -103,7 +103,8 @@ pub fn restrict(s: &mut State, ci: usize) {
     let Some(ch) = channel(s, ci) else { return };
     let c = pl::clips(s)[ci].clone();
     let (a, b) = pl::window(s, &c);
-    let Some(h) = s.project.audio_edits.iter_mut().find(|h| h.channel == ch) else {
+    let p = &mut *s.session.project;
+    let Some(h) = p.audio_edits.iter_mut().find(|h| h.channel == ch) else {
         return;
     };
     let range = (a / 1000., b / 1000.);
@@ -111,14 +112,14 @@ pub fn restrict(s: &mut State, ci: usize) {
         return;
     }
     h.restrict(range);
-    if let Some(d) = s.project.vocal_edits.iter_mut().find(|d| d.channel == ch) {
+    if let Some(d) = p.vocal_edits.iter_mut().find(|d| d.channel == ch) {
         h.restore(d);
     }
 }
 pub fn finish(s: &mut State) {
-    for h in &mut s.project.audio_edits {
-        if let Some(d) = s
-            .project
+    let p = &mut *s.session.project;
+    for h in &mut p.audio_edits {
+        if let Some(d) = p
             .vocal_edits
             .iter()
             .find(|d| d.channel == h.channel)
@@ -199,15 +200,14 @@ pub fn history(app: &mut App, ch: u16, timing: bool, redo: bool) {
             "Restore clip pitch edits"
         },
     );
-    let h = &mut app.state.project.audio_edits[i];
+    let p = &mut *app.state.session.project;
+    let h = &mut p.audio_edits[i];
     if timing {
         h.timing.step(redo);
     } else {
         h.pitch.step(redo);
     }
-    if let Some(d) = app
-        .state
-        .project
+    if let Some(d) = p
         .vocal_edits
         .iter_mut()
         .find(|d| d.channel == ch)
@@ -252,8 +252,9 @@ pub fn analyzed(s: &State, ch: u16) -> bool {
         .is_none_or(|h| h.analyzed)
 }
 pub fn analysis_ready(s: &mut State, ch: u16) {
-    if let Some(h) = s.project.audio_edits.iter_mut().find(|h| h.channel == ch) {
-        if let Some(d) = s.project.vocal_edits.iter().find(|d| d.channel == ch) {
+    let p = &mut *s.session.project;
+    if let Some(h) = p.audio_edits.iter_mut().find(|h| h.channel == ch) {
+        if let Some(d) = p.vocal_edits.iter().find(|d| d.channel == ch) {
             h.analyzed = true;
             if h.pitch.current.notes.is_empty() {
                 h.pitch = os_model::audio_edit::History::new(Pitch::read(d));
@@ -498,7 +499,7 @@ pub(crate) mod tests {
         )
         .unwrap();
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         app.state.tempo = 120.;
         app.state.project.tempo = Some(120.);
         app.state.project.data_folder = Some(os_model::DataFolder {
@@ -581,7 +582,7 @@ pub(crate) mod tests {
         let p =
             os_flp::project::load(&os_flp::project::create(&app.state.project).unwrap()).unwrap();
         assert_eq!(p.audio_edits, app.state.project.audio_edits);
-        app.state.project = p;
+        app.state.session.project = crate::locked::Locked::new(p);
         history(&mut app, left_ch, true, true);
         render(&mut app);
         for (a, b) in pl::clips(&app.state).iter().zip(&placement) {
@@ -711,7 +712,7 @@ pub(crate) mod tests {
         crate::vocal::command(&mut app, crate::vocal::Command::Cancel);
         assert!(app.state.playlist.vocal.pending_output.is_none());
         assert!(app.export.is_none());
-        app.state.project = saved;
+        app.state.session.project = crate::locked::Locked::new(saved);
         app.state.playlist.vocal.ready = Some(true);
         render(&mut app);
         assert!(!pending(&app.state.project));
@@ -754,16 +755,12 @@ pub(crate) mod tests {
         };
         assert_ne!(original, copied);
         let before = app
-            .state
-            .project
-            .vocal_edits
+            .state.session.project.vocal_edits
             .iter()
             .find(|d| d.channel == copied)
             .unwrap()
             .clone();
-        app.state
-            .project
-            .vocal_edits
+        app.state.session.project.vocal_edits
             .iter_mut()
             .find(|d| d.channel == original)
             .unwrap()
@@ -854,9 +851,7 @@ pub(crate) mod tests {
             Some(app.state.project.vocal_edits[0].source.as_str())
         );
         history(&mut app, ch, false, true);
-        app.state
-            .project
-            .channels
+        app.state.session.project.channels
             .iter_mut()
             .find(|c| c.index == ch)
             .unwrap()
@@ -882,9 +877,7 @@ pub(crate) mod tests {
         let (mut app, _, ci) = fixture("histories");
         let ch = channel(&app.state, ci).unwrap();
         let c = app
-            .state
-            .project
-            .channels
+            .state.session.project.channels
             .iter_mut()
             .find(|c| c.index == ch)
             .unwrap();
@@ -914,7 +907,7 @@ pub(crate) mod tests {
         assert_eq!(p.audio_edits, app.state.project.audio_edits);
         assert_eq!(p.channel(ch).unwrap().sound.stretch, sound.stretch);
         assert_eq!(pl::clips(&app.state)[ci].position, 384);
-        app.state.project = p;
+        app.state.session.project = crate::locked::Locked::new(p);
         history(&mut app, ch, true, true);
         render(&mut app);
         assert_eq!(

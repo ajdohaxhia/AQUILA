@@ -18,7 +18,7 @@ fn save(app: &App) -> &crate::save_form::SaveForm {
 fn language_files_save_name_clipboard_mouse_selection_and_reopen() {
     let dir=std::env::temp_dir().join(format!("lemon_text_save_{}",std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    let mut app=App::new(None);app.state.project=crate::app::test_project();
+    let mut app=App::new(None);app.state.session.project=crate::locked::Locked::new(crate::app::test_project());
     app.open_save_form(None);
     if let Body::Project(Form::Save(f))=&mut app.state.dialogs.last_mut().unwrap().body { f.root=dir.clone();f.new_folder=false;f.copy=false;f.files=2; }
     assert!(!app.typing_key(KeyCode::Space,true,false,false));
@@ -94,7 +94,7 @@ fn language_files_browser_empty_menu_import_cancel_undo_and_visibility() {
     let dir=std::env::temp_dir().join(format!("lemon_browser_files_{}",std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();let path=dir.join("Sample With Space.wav");
     os_engine::wav::write_f32_stereo(&mut std::fs::File::create(&path).unwrap(),44100,&[0.;32]).unwrap();
-    let mut app=App::new(None);app.state.project=crate::app::test_project();app.state.show_browser=true;
+    let mut app=App::new(None);app.state.session.project=crate::locked::Locked::new(crate::app::test_project());app.state.show_browser=true;
     app.state.browser_search="no-results-for-empty-area-test".into();
     let mut canvas=Canvas::new(1280,800,1.).unwrap();app.paint(&mut canvas,None);
     let bg=hit(&app,Action::BrowserList);app.mouse_move(bg.cx(),bg.bottom()-10.);app.mouse_down_right();

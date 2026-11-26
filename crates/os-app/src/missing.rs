@@ -260,11 +260,12 @@ fn relink(app: &mut App, before: &[(usize, String)]) -> usize {
             continue;
         }
         found += 1;
-        let Some(ch) = app.state.project.channels.get_mut(*row) else { continue };
+        let project = &mut *app.state.session.project;
+        let Some(ch) = project.channels.get_mut(*row) else { continue };
         ch.sample_path = Some(now.clone());
-        for warp in &mut app.state.project.audio_warps {if warp.rendered==*old {warp.rendered=now.clone();}}
+        for warp in &mut project.audio_warps {if warp.rendered==*old {warp.rendered=now.clone();}}
         if ch.kind.is_sampler() {
-            app.state.sample_loads.push((*row, now));
+            app.state.session.sample_loads.push((*row, now));
         }
     }
     found
@@ -364,7 +365,7 @@ pub(crate) mod tests {
         let wav = wav(4410);
         std::fs::write(dir.join("Here.wav"), &wav).unwrap();
         let mut app = App::new(None);
-        app.state.project = crate::app::default_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::default_project());
         let a = crate::app::add_channel(&mut app.state.project);
         let b = crate::app::add_channel(&mut app.state.project);
         app.state.project.channels[a].sample_path = Some(r"C:\Users\someone\AppData\Local\Temp\Image-Line\x\Here.wav".into());

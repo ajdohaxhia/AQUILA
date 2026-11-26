@@ -489,18 +489,19 @@ fn finish(app: &mut App, target: Target) {
         let prepared = app.plugins.prepare_effect(index, None, true);
         match prepared {
             Ok(hosted) => {
-                if let Err(error) = crate::project_plugins::store_hosted(&mut app.state.project, &app.plugins) {
+                if let Err(error) = crate::project_plugins::store_hosted(&mut app.state.session.project, &app.state.session.plugins) {
                     app.state.message = Some(error);
                     app.invalidate();
                     return;
                 }
+                let desc = app.state.session.plugins.effects[index].desc.clone();
                 let state = &mut app.state;
                 if let Some(copy) = mx::channel_copy(state, target.track) {
                     crate::history::record(state, "Add ML Visualizer", crate::history::Snap::MixerChannel(Box::new(copy)));
                 }
                 let slot = target.slot as usize;
                 let track = mx::track_mut(state, target.track).unwrap();
-                let reference = crate::project_plugins::plugin_ref(&app.plugins.effects[index].desc, Vec::new());
+                let reference = crate::project_plugins::plugin_ref(&desc, Vec::new());
                 track.slots[slot] = Some(os_model::SlotPlugin {
                     id: os_model::Id::NONE,
                     name: os_flp::wrapper::WRAPPER.into(),
@@ -512,7 +513,7 @@ fn finish(app: &mut App, target: Target) {
                 state.mixer.slot_names.insert((target.track, target.slot), LABEL.into());
                 app.wrap_failed.retain(|&failed| failed != key);
                 app.plugins.hosted.insert(key, hosted);
-                app.plugins.added(key);
+                app.state.session.plugins.added(&app.state.session.settings, key);
                 app.transport.set_effects(app.plugins.effects());
                 app.state.piano.dirty = true;
                 app.open_fx(target.track, target.slot);
@@ -520,7 +521,7 @@ fn finish(app: &mut App, target: Target) {
             Err(error) => app.show_msg(Msg::new(DialogKind::Error, LABEL, spans(&[&error]), &[Answer::Ok], Then::Nothing)),
         }
     }
-    app.state.plugdb.rebuild(&app.plugins);
+    app.state.plugdb.rebuild(&app.state.session.plugins);
     app.invalidate();
 }
 
@@ -532,7 +533,7 @@ mod tests {
     fn visualizer_menu_requires_consent_and_honors_visibility() {
         if package().is_none() { return; }
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         crate::settings_file::set_flag(VISIBILITY, true);
         assert!(mx::effect_menu(&app.state, 0, 0., 0.).items.iter().any(|i| i.label == LABEL));
         open(&mut app, 0, 0);

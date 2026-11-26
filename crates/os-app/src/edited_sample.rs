@@ -10,8 +10,8 @@ static RESULTS: Mutex<Vec<Result<PathBuf, String>>> = Mutex::new(Vec::new());
 pub fn update_target(app: &crate::app::App, target: Option<(&Window, f64, f64, f64)>) {
     let mut pitches = CHANNEL_PITCH.lock().unwrap();
     pitches.clear();
-    for (row, hosted) in &app.plugins.hosted {
-        let Some(window) = &hosted.window else {
+    for (row, editor) in &app.editors.editors {
+        let Some(window) = &editor.window else {
             continue;
         };
         let Some(ch) = app.state.project.channels.get(*row) else {

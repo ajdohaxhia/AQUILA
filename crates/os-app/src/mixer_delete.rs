@@ -37,7 +37,7 @@ impl DeleteSnapshot {
         }
     }
     pub(crate) fn put(self,s:&mut State) {
-        for t in &s.project.mixer {for slot in 0..64 {s.mixer.pending.push(FxReq::Delete{track:t.index,slot});}}
+        for t in &s.session.project.mixer {for slot in 0..64 {s.mixer.pending.push(FxReq::Delete{track:t.index,slot});}}
         crate::peak_link::restore_removed(s,&self.peaks);
         s.project.mixer=self.tracks;s.project.automations=self.automations;s.project.init_controls=self.init;s.project.peak_links=self.peaks;
         s.project.arrangements=self.arrangements;

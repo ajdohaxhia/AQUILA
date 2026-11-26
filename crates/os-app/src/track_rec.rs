@@ -238,7 +238,7 @@ mod tests {
     #[test]
     fn an_armed_track_records_into_the_playlist() {
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         app.state.song_mode = true;
         if Opt::Audio.on() {
             Opt::Audio.toggle();
@@ -273,7 +273,7 @@ mod tests {
         assert!(path.parent().unwrap().ends_with("Recorded") && name.ends_with("_Bus 1.wav"), "{name}");
         let clip = app.state.project.arrangement().unwrap().clips.last().unwrap().clone();
         assert_eq!(clip.position, 96);
-        assert!(app.state.history.entries().iter().any(|e| e.1 == crate::one_click::RECORDED));
+        assert!(app.state.history.entries(&app.state.session.settings).iter().any(|e| e.1 == crate::one_click::RECORDED));
         assert_eq!(app.arm_tracks(&[1], false), None);
         assert!(!app.state.project.mixer.iter().any(|m| m.armed));
         let _ = std::fs::remove_file(&path);

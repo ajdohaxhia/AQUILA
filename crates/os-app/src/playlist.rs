@@ -1726,7 +1726,7 @@ pub fn audio_fits(s: &State) -> Option<Fits> {
 /// with the edit that made them. As with the fits, the saved copy gets them too: an opened project's crossfades are
 /// not an unsaved change.
 pub fn follow_crossfades(app: &mut App) {
-    if !app.state.piano.dirty || !os_model::crossfade::derive(&mut app.state.project, app.state.tempo) {
+    if !app.state.piano.dirty || !os_model::crossfade::derive(&mut app.state.session.project, app.state.tempo) {
         return;
     }
     os_model::crossfade::derive(&mut app.saved.0, app.saved.1);
@@ -3212,7 +3212,7 @@ fn create_automation_with_history(s:&mut State,tgt:u32,name:&str,value:f64,free:
         Some((r0,r1)) if r1>r0 => (r0,r1), _=>automation_span(s),
     });
     let beats = f64::from(b - a) / f64::from(ppq(s));
-    s.project.channels.push(Channel {
+    s.session.project.channels.push(Channel {
         id: os_model::Id::NONE,
         index,
         kind: ChannelKind::Automation,
@@ -3220,7 +3220,7 @@ fn create_automation_with_history(s:&mut State,tgt:u32,name:&str,value:f64,free:
         plugin: None,
         plugin_state: None,
         // Spec: ui/settings-choices.md "Light mode and clip note colours (2026-10-16)" (`clip_colors`).
-        color: Some(s.clip_colors.new_channel(index)),
+        color: Some(s.session.clip_colors.new_channel(index)),
         enabled: true,
         // The clip's range 0..1: stored pan 0 (minimum), volume 12800 (maximum), as FL stores a new clip's
         // (spec: audio/automation.md "Range").
@@ -3231,6 +3231,7 @@ fn create_automation_with_history(s:&mut State,tgt:u32,name:&str,value:f64,free:
         sample_path: None,
         layer_children: Vec::new(),
         envelopes: Default::default(), rack: Default::default(), misc: Default::default(), sound: Default::default(),
+        lemon_icon: None,
     });
     s.project.automations.push(os_flp::project::new_automation(index, tgt, value.clamp(0.0, 1.0), beats));
     s.playlist.original_values.insert(index, value.clamp(0.0, 1.0));
@@ -3269,14 +3270,14 @@ pub fn automation_channel(s: &mut State, target: u32, name: &str, points: Vec<os
     snapshot_with(s, crate::events::TURN_INTO_CLIP, before);
     let name = unique_channel_name(s, name);
     let index = s.project.channels.iter().map(|c| c.index + 1).max().unwrap_or(0);
-    s.project.channels.push(Channel {
+    s.session.project.channels.push(Channel {
         id: os_model::Id::NONE,
         index,
         kind: ChannelKind::Automation,
         name: Some(name),
         plugin: None,
         plugin_state: None,
-        color: Some(s.clip_colors.new_channel(index)),
+        color: Some(s.session.clip_colors.new_channel(index)),
         enabled: true,
         // The clip's range 0..1, as `create_automation` makes it.
         volume: 1.0,
@@ -3286,6 +3287,7 @@ pub fn automation_channel(s: &mut State, target: u32, name: &str, points: Vec<os
         sample_path: None,
         layer_children: Vec::new(),
         envelopes: Default::default(), rack: Default::default(), misc: Default::default(), sound: Default::default(),
+        lemon_icon: None,
     });
     let beats = points.last().map_or(0.0, |p| p.beat);
     let mut a = os_flp::project::new_automation(index, target, points.first().map_or(0.0, |p| p.value), beats);
@@ -3330,7 +3332,7 @@ pub fn add_clip_channel(s: &mut State, kind: ChannelKind) -> usize {
     let before = crate::history::Snap::Rack(Box::new(crate::history::RackSide::now(s, s.project.channels.len())));
     snapshot_with(s, if audio { "Add audio clip" } else { "Add automation clip" }, before);
     let name = unique_channel_name(s, if audio { "Audio Clip" } else { "Automation Clip" });
-    s.project.channels.push(Channel {
+    s.session.project.channels.push(Channel {
         id: os_model::Id::NONE,
         index,
         kind,
@@ -3347,6 +3349,7 @@ pub fn add_clip_channel(s: &mut State, kind: ChannelKind) -> usize {
         sample_path: None,
         layer_children: Vec::new(),
         envelopes: Default::default(), rack: Default::default(), misc: Default::default(), sound: Default::default(),
+        lemon_icon: None,
     });
     if !audio {
         // Two points, at 0 and at 4 beats (one 4/4 bar), both 0.5, single curve without tension (§2).
@@ -3372,7 +3375,7 @@ pub fn add_layer_channel(s: &mut State) -> usize {
     let before = crate::history::Snap::Rack(Box::new(crate::history::RackSide::now(s, s.project.channels.len())));
     snapshot_with(s, "Add layer", before);
     let name = unique_channel_name(s, "Layer");
-    s.project.channels.push(Channel {
+    s.session.project.channels.push(Channel {
         id: os_model::Id::NONE,
         index,
         kind: ChannelKind::Layer,
@@ -3388,6 +3391,7 @@ pub fn add_layer_channel(s: &mut State) -> usize {
         sample_path: None,
         layer_children: children,
         envelopes: Default::default(), rack: Default::default(), misc: Default::default(), sound: Default::default(),
+        lemon_icon: None,
     });
     let row = s.project.channels.len() - 1;
     s.selected_channel = row;
@@ -3471,6 +3475,7 @@ fn audio_clip_channel() -> Channel {
         rack: Default::default(),
         misc: Default::default(),
         sound: os_model::ChannelSound { sampler_flags: Some(os_model::ChannelSound::AUDIO_CLIP_FLAGS), ..Default::default() },
+        lemon_icon: None,
     }
 }
 
@@ -3493,11 +3498,11 @@ fn add_audio_clip_in_fit(s: &mut State, path: &str, track: u16, tick: u32, mixer
         (crate::playlist_links::mode(s,track)==os_model::PlaylistTrackMode::Audio).then(||crate::playlist_links::linked_output(s,track)).flatten()
     ).unwrap_or(0);
     if mixer.is_none() && mixer_track>0 {crate::attached_mixer::bind(s,track,mixer_track);}
-    s.project.channels.push(Channel {
+    s.session.project.channels.push(Channel {
         index,
         name: Some(name),
         // Spec: ui/settings-choices.md "Light mode and clip note colours (2026-10-16)" (`clip_colors`).
-        color: Some(s.clip_colors.new_channel(index)),
+        color: Some(s.session.clip_colors.new_channel(index)),
         mixer_track,
         sample_path: Some(path.to_string()),
         ..audio_clip_channel()
@@ -3603,7 +3608,7 @@ pub fn add_point(s: &mut State, ch: u16, beat: f64, value: f64) -> Option<usize>
     // A new point takes the mode / tension of the segment it splits ("new segments use the last tension").
     let (mode, tension) = if step { (AutoMode::Hold, 0.0) } else { a.points.get(i).map_or((AutoMode::Single, 0.0), |q| (q.mode, q.tension)) };
     let flag = if mode.has_tension() { 2 } else { 0 };
-    a.points.insert(i, AutoPoint { beat: beat.max(0.0), value: value.clamp(0.0, 1.0), tension, mode, flag });
+    a.points.insert(i, AutoPoint { beat: beat.max(0.0), value: value.clamp(0.0, 1.0), tension, mode, flag, id: Default::default() });
     s.piano.dirty = true;
     Some(i)
 }
@@ -5597,7 +5602,8 @@ pub fn drag_end(app: &mut App, d: PlDrag, grid: Rect) {
             // Stretched channels: their Lemon Sampler takes the new stretch settings (§9b).
             for (ch, _) in std::mem::take(&mut s.playlist.stretch_base) {
                 let Some(row) = s.project.channels.iter().position(|c| c.index == ch) else { continue };
-                app.plugins.set_sampler_stretch(row, &s.project.channels[row].sound);
+                let sound = s.session.project.channels[row].sound.clone();
+                s.session.plugins.set_sampler_stretch(row, &sound);
             }
         }
         PlDrag::Marker { i, t0, .. } => {
@@ -6059,13 +6065,28 @@ pub fn commit_edit(s: &mut State) {
     if matches!(e.target, EditTarget::TimelineTempo(_) | EditTarget::TimelineTempoPosition(_) | EditTarget::TimelineChord(_) | EditTarget::TimelineVideoStart(_) | EditTarget::TimelineMarkerSeconds(_)) {
         return crate::scoring::edit(s, e.target, e.text.trim());
     }
-    snapshot(s);
+    // The pattern's and the arrangement's names record their own step (a command on the project), and the name box
+    // ArrAdd / ArrClone opened joins theirs (`newest_done`): a snapshot here would come first and split it off.
+    if !matches!(e.target, EditTarget::PatternName(_) | EditTarget::ArrangementName) {
+        snapshot(s);
+    }
     let text = e.text.trim().to_string();
     match e.target {
         EditTarget::VisualText(..) | EditTarget::VisualValue(..) | EditTarget::Tempo | EditTarget::TimelineTempo(_) | EditTarget::TimelineTempoPosition(_) | EditTarget::TimelineChord(_) | EditTarget::TimelineVideoStart(_) | EditTarget::TimelineMarkerSeconds(_) => unreachable!(),
         EditTarget::ArrangementName => {
             if !text.trim().is_empty() {
-                crate::control::edit(s, "Arrangement name", crate::control::command::Region::Arrangement, |s| arr_mut(s).name = Some(text.trim().to_string()));
+                // The box ArrAdd / ArrClone just opened names the arrangement they made: their step, not a second one.
+                // Still the name Add one... / Clone... gave it ("Arrangement N", or "<name> #2").
+                let fresh = s.session.history.newest_done() == Some("Add arrangement")
+                    && s.project.arrangement().and_then(|a| a.name.as_deref()).is_none_or(|n| n.starts_with("Arrangement ") || n.ends_with(" #2"));
+                if fresh {
+                    if let Some(before) = s.project.arrangement().cloned() {
+                        arr_mut(s).name = Some(text.trim().to_string());
+                        crate::history::extend_newest(s, |cmds| cmds.push(crate::control::Command::Put(Box::new(crate::control::command::Taken::Arrangement(Box::new(before))))));
+                    }
+                } else {
+                    crate::control::edit(s, "Arrangement name", crate::control::command::Region::Arrangement, |s| arr_mut(s).name = Some(text.trim().to_string()));
+                }
             }
         }
         EditTarget::TrackName(t) => {
@@ -6110,11 +6131,8 @@ pub fn commit_edit(s: &mut State) {
         }
         EditTarget::SlotName(t, k) => crate::control::edit(s, "Slot name", crate::control::command::Region::Project, |s| {
             if crate::mixer::locked(s, t) { return; }
-            if text.is_empty() {
-                s.mixer.slot_names.remove(&(t, k));
-            } else {
-                s.mixer.slot_names.insert((t, k), text);
-            }
+            // The name is kept in the project (`edit::mixer::set_slot_label`), so undo and redo carry it.
+            crate::edit::mixer::set_slot_label(&mut s.session, t, k, (!text.is_empty()).then_some(text));
         }),
         EditTarget::MemberName(t, k, id) => crate::container::rename(s, t, k, id, &text),
         EditTarget::TypeIn(t, norm) => crate::typein::accept(s, t, norm, &text),
@@ -6477,13 +6495,13 @@ pub fn run(app: &mut App, cmd: Cmd) -> Option<String> {
                     app.plugins.close_window(row);if let Err(error)=app.plugins.open_window(row,info){return Some(error);}
                 }
                 #[cfg(target_os="macos")]
-                if let Some(w)=app.plugins.hosted.get(&row).and_then(|h|h.window.as_ref()){w.set_editor_zoom(crate::plugins::wave_zoom());}
+                if let Some(w)=app.editors.editors.get(&row).and_then(|h|h.window.as_ref()){w.set_editor_zoom(crate::plugins::wave_zoom());}
             }
             let _=(row,pct);
             return None;
         }
         Cmd::PluginDetach(row, on) => {
-            app.plugins.set_detached(row, on);
+            app.editors.set_detached(&mut app.state.session.plugins, row, on);
             app.state.raise(crate::app::Win::Hosted(row));
             app.invalidate();
             return None;
@@ -7275,10 +7293,7 @@ pub fn run(app: &mut App, cmd: Cmd) -> Option<String> {
             *flag = !*flag;
             Some(format!("{name}: {}", if *flag { "on" } else { "off" }))
         }
-        Cmd::PerfToggle => {
-            snapshot_as(s, "Performance mode");
-            Some(crate::perform::toggle(s))
-        }
+        Cmd::PerfToggle => Some(crate::perform::toggle(s)),
         Cmd::PerfSet(t, which, v) => {
             snapshot_as(s, "Performance settings");
             let p = &mut arr_mut(s).tracks[usize::from(t)].perf;
@@ -7843,7 +7858,7 @@ mod unique_audio_tests {
     fn playlist_audio_clip_appearance_round_trip() {
         let mut app = App::new(None);
         let source = ClipSource::Channel(0);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         let channel = &mut app.state.project.channels[0];
         channel.kind = ChannelKind::AudioClip;
         channel.name = Some("Shared source".into());
@@ -7881,7 +7896,7 @@ mod unique_audio_tests {
 
     #[test]
     fn make_unique_audio_slice_preserves_trim_and_isolates_settings() {
-        let mut app=App::new(None);app.state.project=crate::app::test_project();
+        let mut app=App::new(None);app.state.session.project=crate::locked::Locked::new(crate::app::test_project());
         let s=&mut app.state;
         let mut ch=s.project.channels[0].clone();
         ch.index=0;ch.kind=os_model::ChannelKind::AudioClip;
@@ -7919,7 +7934,7 @@ mod unique_audio_tests {
 
     #[test]
     fn make_unique_pattern_still_clones_and_undo_removes_clone() {
-        let mut app=App::new(None);app.state.project=crate::app::test_project();
+        let mut app=App::new(None);app.state.session.project=crate::locked::Locked::new(crate::app::test_project());
         arr_mut(&mut app.state).clips=vec![Clip::new(0,384,0,ClipSource::Pattern(1))];
         let patterns=app.state.project.patterns.clone();
         run(&mut app,Cmd::ClipUnique(0));
@@ -8087,7 +8102,7 @@ mod tests {
 
     fn app() -> App {
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         app
     }
 
@@ -8396,7 +8411,7 @@ mod tests {
     fn slot_window_menu_entries() {
         let mut app = app();
         app.plugins.effects = crate::plugins::builtin_effects();
-        app.state.plugdb.rebuild(&app.plugins);
+        app.state.plugdb.rebuild(&app.state.session.plugins);
         let (t, k) = (3u16, 2u8);
         crate::mixer::track_mut(&mut app.state, t).unwrap().slots[usize::from(k)] = Some(crate::plugins::new_slot("Test FX"));
         app.state.selected_mixer = 5;
@@ -8447,7 +8462,7 @@ mod tests {
     #[test]
     fn change_icon() {
         let mut app = app();
-        app.state.control.settle(&mut app.state.project);
+        { let s = &mut app.state.session; s.control.settle(&mut s.project); }
         app.state.project.channels[0].kind = os_model::ChannelKind::AudioClip;
         let ch = app.state.project.channels[0].index;
         let menu = |app: &App| entry(&pick_menu(&app.state, ch, 0.0, 0.0), "Change icon...").clone();
@@ -8479,7 +8494,7 @@ mod tests {
             fill_plugin_window_menu(&app.state, key, &mut m);
             m
         };
-        app.state.control.settle(&mut app.state.project);
+        { let s = &mut app.state.session; s.control.settle(&mut s.project); }
         app.state.project.channels[1].kind = os_model::ChannelKind::Sampler;
         for label in ["Allow threaded processing", "Auto-bypass when silent"] {
             assert!(!entry(&menu(&app, 1), label).enabled, "{label}: a sampler hosts no plugin");

@@ -55,7 +55,7 @@ pub fn remove_slot(s:&mut State,track:u16,slot:u8){s.project.peak_links.retain(|
 #[cfg(test)]mod tests{
  use super::*;
  #[test]fn peak_eq_link_menu_undo_and_reorder(){
-  let mut a=crate::app::App::new(None);a.state.project=crate::app::test_project();let t=os_model::target::slot_param(2,0,3);
+  let mut a=crate::app::App::new(None);a.state.session.project=crate::locked::Locked::new(crate::app::test_project());let t=os_model::target::slot_param(2,0,3);
   crate::playlist::run(&mut a,Cmd::PeakLink(Command::Open(t,0.8)));
   let popup=a.state.playlist.popup.as_ref().unwrap();let source=popup.items.iter().find(|i|i.label=="Duck from source").unwrap();
   assert!(!source.children.is_empty());assert!(source.children.iter().all(|i|i.children.is_empty()),"only one submenu level");

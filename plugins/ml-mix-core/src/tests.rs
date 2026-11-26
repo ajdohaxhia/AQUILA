@@ -200,9 +200,13 @@ fn shaper_editing_automation_stereo_and_reset() {
         assert_eq!(rms(&l), 0.);
     }
 }
+fn render_dir() -> std::path::PathBuf {
+    let root = std::env::var_os("ML_TOOLS_RENDER_DIR").map(std::path::PathBuf::from).unwrap_or_else(std::env::temp_dir);
+    let _ = std::fs::create_dir_all(&root);
+    root
+}
 fn fixture(name: &str) -> std::path::PathBuf {
-    let root = std::env::var("ML_TOOLS_RENDER_DIR").expect("tests need E: output directory");
-    let path = std::path::Path::new(&root).join(format!("{name}.wav"));
+    let path = render_dir().join(format!("{name}.wav"));
     let s = tone(48000 * 4, 48000., 1000., 0.4);
     let data: Vec<f32> = s.iter().flat_map(|x| [*x, *x]).collect();
     os_engine::wav::write_f32_stereo(&mut std::fs::File::create(&path).unwrap(), 48000, &data)
@@ -428,7 +432,7 @@ fn editor_renders_and_parameter_text() {
             canvas
                 .pixmap
                 .save_png(
-                    std::path::Path::new(&std::env::var("ML_TOOLS_RENDER_DIR").unwrap())
+                    render_dir()
                         .join(format!("{} {scale}.png", spec.name)),
                 )
                 .unwrap();

@@ -22,7 +22,7 @@ pub const TOP_KEY: i32 = 131;
 
 /// Key name in FL's naming (key 60 = C5) (§3), as the settings choose it (`crate::note_names`).
 pub fn key_name(key: i32) -> String {
-    crate::note_names::note_name(key)
+    crate::note_names::note_name(&crate::settings_file::store(), key)
 }
 
 pub fn is_black(key: i32) -> bool {
@@ -1082,7 +1082,7 @@ mod overview_clip_tests{
     #[test]
     fn piano_row_seams_stay_consistent_while_scrolling() {
         let mut app = crate::app::App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         crate::piano::pattern_mut(&mut app.state).notes.clear();
         app.state.z = vec![Win::PianoRoll];
         app.state.vintage_2005 = true;
@@ -1111,7 +1111,7 @@ mod overview_clip_tests{
 
     #[test]
     fn lead_fix_piano_overview_notes_never_paint_over_scroll_arrows(){
-        let mut a=crate::app::App::new(None);a.state.project=crate::app::test_project();a.state.selected_channel=0;a.state.z=vec![Win::PianoRoll];
+        let mut a=crate::app::App::new(None);a.state.session.project=crate::locked::Locked::new(crate::app::test_project());a.state.selected_channel=0;a.state.z=vec![Win::PianoRoll];
         crate::piano::pattern_mut(&mut a.state).notes=vec![Note{length:8192,key:120,..Note::step(0,0)}];
         let mut c=os_ui::Canvas::new(1280,800,1.).unwrap();
         crate::prefs::set_text("piano_mini_preview","0");a.invalidate();a.paint(&mut c,None);let mut off=vec![0;1280*800];c.copy_to_xrgb(&mut off);

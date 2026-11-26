@@ -55,7 +55,7 @@ fn flush_parameters(app: &mut App) {
         let Some((k, id)) = model::parameter_key(&app.state.project, &key) else {
             continue;
         };
-        let Some(h) = app.plugins.hosted.get(&k) else {
+        let Some(h) = app.state.session.plugins.hosted.get(&k) else {
             app.collaboration.remote_parameters.insert(key, v);
             continue;
         };
@@ -77,7 +77,7 @@ fn put(s: &mut State, d: &Document) -> Result<()> {
 
 fn capture_plugin_states(app: &mut App) -> Result<()> {
     app.store_builtin_states();
-    crate::project_plugins::store_hosted(&mut app.state.project, &app.plugins)
+    crate::project_plugins::store_hosted(&mut app.state.session.project, &app.state.session.plugins)
 }
 fn retire_plugin(app: &mut App, key: usize) {
     app.plugins.drop_key(key);
@@ -1336,9 +1336,8 @@ mod tests {
         let dir = scratch();
         let mut app = App::new(None);
         let zip = dir.join("Project.zip");
-        app.state.project.patterns[0]
-            .notes
-            .push(os_model::Note::step(app.state.project.channels[0].index, 0));
+        let ch = app.state.project.channels[0].index;
+        app.state.project.patterns[0].notes.push(os_model::Note::step(ch, 0));
         crate::zipped::collaboration_pack(&mut app, &zip).unwrap()().unwrap();
         let project = crate::zipped::collaboration_unpack(&zip).unwrap();
         let bytes = std::fs::read(project).unwrap();
@@ -1371,6 +1370,7 @@ mod tests {
                 notes: vec![],
                 controls: vec![],
                 length: None,
+                loops: (vec![], None),
             },
         );
         let note = os_model::Note::step(a.state.project.channels[0].index, 0);

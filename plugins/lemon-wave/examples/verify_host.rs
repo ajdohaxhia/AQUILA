@@ -125,8 +125,10 @@ fn verify(lib: Arc<dyn Library>) {
         samples: (0..1024)
             .map(|i| (std::f32::consts::TAU * i as f32 / 1024.).sin() * 0.7)
             .collect(),
+        frame_size: lemon_wave::wavetable::SIZE,
     };
     let mut sources = lemon_wave::assets::Sources {
+        noise: None,
         samples: [
             None,
             Some(lemon_wave::sample::Sample {

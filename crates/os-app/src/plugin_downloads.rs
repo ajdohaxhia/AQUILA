@@ -578,8 +578,8 @@ mod tests {
         let saved = serde_json::to_vec(&app.state.plugdb.cache).unwrap();
         let mut app = App::new(None);
         app.state.plugdb.cache = serde_json::from_slice(&saved).unwrap();
-        app.plugins.merge(&app.state.plugdb.cache);
-        app.state.plugdb.rebuild(&app.plugins);
+        app.state.session.plugins.merge(&app.state.plugdb.cache);
+        app.state.plugdb.rebuild(&app.state.session.plugins);
         assert_eq!(app.state.plugdb.installed_downloads, [surge, zl, span].into_iter().collect());
         crate::prefs::set_text(DISCOVERY_VISIBILITY, "1");
         crate::prefs::set_text("catalog_favorite_surge-xt", "0");

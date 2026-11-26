@@ -75,10 +75,10 @@ fn project_part(p: &os_model::Project) -> os_model::Project {
     (p.tempo, p.current_pattern, p.song_mode, p.current_group) = (None, None, None, None);
     p.groups.clear();
     for c in &mut p.channels {
-        (c.rack.locked, c.rack.zipped, c.rack.group) = (false, false, 0);
+        (c.rack.locked, c.rack.zipped, c.rack.group) = (false, false, None);
     }
     for q in &mut p.patterns {
-        (q.loops, q.loop_off) = (Vec::new(), None);
+        q.loops.clear();
     }
     p
 }
@@ -141,7 +141,7 @@ impl Fp {
     fn of(app: &App) -> Fp {
         let s = &app.state;
         let side = hash(&side(app));
-        let history = hash(&(s.history.entries(), s.history.at()));
+        let history = hash(&(s.history.entries(&s.session.settings), s.history.at()));
         Fp(vec![
             ("project", project_hash(&s.project)),
             ("side", side),
@@ -538,7 +538,7 @@ impl Rig {
 
     /// With no steps in the history (just opened, or a project opened or made by a step), undo starts from here.
     fn undo_start(&self, start: &mut os_model::Project) {
-        if self.app.state.history.entries().len() <= 1 {
+        if self.app.state.history.entries(&self.app.state.session.settings).len() <= 1 {
             start.clone_from(&self.app.state.project);
         }
     }
@@ -674,7 +674,7 @@ fn canonical(p: &os_model::Project) -> os_model::Project {
     // keeps no loop lengths: FL keeps none for a pattern without notes (flp/events/patterns.md "Loop lengths").
     for q in &mut p.patterns {
         if q.notes.is_empty() {
-            (q.loops, q.loop_off) = (Vec::new(), None);
+            q.loops.clear();
         }
     }
     p.patterns.retain(|q| {

@@ -454,7 +454,7 @@ mod tests {
 
     fn app() -> App {
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         app
     }
 
@@ -529,7 +529,7 @@ mod tests {
         assert!(name.starts_with("untitled_") && name.ends_with("_REC.wav"), "{name}");
         let clip = app.state.project.arrangement().unwrap().clips.last().unwrap().clone();
         assert_eq!(clip.position, 0);
-        assert!(app.state.history.entries().iter().any(|e| e.1 == RECORDED));
+        assert!(app.state.history.entries(&app.state.session.settings).iter().any(|e| e.1 == RECORDED));
         let _ = std::fs::remove_file(&path);
     }
 
@@ -623,7 +623,7 @@ mod preroll_tests{
     #[test]
     fn lead_fix_audio_excludes_preroll_and_aborted_take(){
         let _lock=crate::capture::TEST_RECORDING.lock().unwrap_or_else(|e|e.into_inner());
-        let mut a=App::new(None);a.state.project=crate::app::test_project();a.state.project.ppq=96;a.state.project.tempo=Some(120.);a.state.tempo=120.;a.state.song_mode=true;a.state.rec.armed=true;
+        let mut a=App::new(None);a.state.session.project=crate::locked::Locked::new(crate::app::test_project());a.state.session.project.ppq=96;a.state.project.tempo=Some(120.);a.state.tempo=120.;a.state.song_mode=true;a.state.rec.armed=true;
         let root=std::env::temp_dir().join(format!("lemon-preroll-test-{}",std::process::id()));a.state.project.data_folder=Some(os_model::DataFolder{choice:os_model::DataFolder::SPECIFIED,folder:root.to_string_lossy().into_owned()});
         for abort in [false,true]{
             a.state.playlist.pos=384;a.one_click_begin(Input{device:"Test ASIO".into(),asio:true,first:0,stereo:true},None,false).unwrap();a.retarget_audio_take(384);

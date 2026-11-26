@@ -655,7 +655,7 @@ mod tests {
     // These tests need the user's FL install. They skip (pass) when it is absent, and are only
     // meaningful on Windows x64. No plugin DLL is bundled or committed.
     fn fl() -> Option<PathBuf> {
-        let d = default_fl_dir();
+        let d = os_paths::default_fl_dir();
         d.join("Plugins").join("Fruity").exists().then_some(d)
     }
 

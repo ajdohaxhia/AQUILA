@@ -634,7 +634,7 @@ mod tests {
             p.desc.path = PathBuf::from("SameShell.dll");
             app.plugins.effects.push(p);
         }
-        app.state.plugdb.rebuild(&app.plugins);
+        app.state.plugdb.rebuild(&app.state.session.plugins);
         let queue = tasks(&app);
         let shell: Vec<_> = queue.iter().filter(|task| task.path == Path::new("SameShell.dll")).collect();
         assert_eq!(shell.len(), 2, "each shell class is retained");

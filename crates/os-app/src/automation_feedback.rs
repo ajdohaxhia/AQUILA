@@ -78,7 +78,7 @@ mod tests {
     fn recorded_and_manual_clips_feed_original_controls_without_project_edits() {
         use os_model::{AutoPoint,Clip,ClipSource,target};
         for recorded in [false,true] {
-            let mut app=App::new(None);app.state.project=crate::app::test_project();
+            let mut app=App::new(None);app.state.session.project=crate::locked::Locked::new(crate::app::test_project());
             app.state.project.patterns[0].notes.push(os_model::Note::step(0,0));
             crate::playlist::arr_mut(&mut app.state).clips=vec![Clip::new(0,384,2,ClipSource::Pattern(1))];
             let tgt=target::channel(0,target::CHANNEL_VOLUME);

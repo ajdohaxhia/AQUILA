@@ -199,7 +199,7 @@ mod tests {
     use super::*;
     #[test]
     fn last_session_closed_windows_and_sizes_override_startup_project_only() {
-        let mut app=App::new(None);app.state.project=crate::app::test_project();
+        let mut app=App::new(None);app.state.session.project=crate::locked::Locked::new(crate::app::test_project());
         let mut canvas=os_ui::Canvas::new(1600,1000,1.).unwrap();app.paint(&mut canvas,None);
         let path=std::env::temp_dir().join(format!("ml-session-{}.lmn",std::process::id()));
         app.state.path=Some(path.clone());
@@ -212,7 +212,7 @@ mod tests {
         app.state.rack_size=(900.,370.);app.state.rack_pos=(280.,290.);
         app.state.wins[0].rect=os_ui::Rect::new(320.,150.,1000.,650.);
         crate::layout::save(&app.state);save_session(&app);
-        let mut restored=App::new(None);restored.state.project=app.state.project.clone();
+        let mut restored=App::new(None);restored.state.session.project=crate::locked::Locked::new(app.state.project.clone());
         restored.state.file=Some(file);restored.state.path=Some(path.clone());
         crate::layout::restore(&mut restored.state);assert!(restored.state.shown(Win::Playlist));
         restore_session(&mut restored);restored.paint(&mut canvas,None);
@@ -231,7 +231,7 @@ mod tests {
     }
     #[test]
     fn custom_layout_roundtrip_previous_and_invalid_are_non_destructive() {
-        let mut app=App::new(None); app.state.project=crate::app::test_project();
+        let mut app=App::new(None); app.state.session.project=crate::locked::Locked::new(crate::app::test_project());
         let mut canvas=os_ui::Canvas::new(1920,1080,1.).unwrap(); app.paint(&mut canvas,None);
         app.state.wins[0]=WinState{rect:os_ui::Rect::new(320.,400.,1000.,450.),maxed:false,mini:false};
         app.state.wins[1]=WinState{rect:os_ui::Rect::new(330.,100.,1100.,500.),maxed:false,mini:false};
@@ -250,7 +250,7 @@ mod tests {
         chosen(&mut app,&path,false);
         assert_eq!(serde_json::to_value(Layout::capture(&app.state)).unwrap(),serde_json::to_value(Layout::decode(&saved).unwrap()).unwrap());
         assert_eq!(app.state.project,project);
-        let mut restarted=App::new(None);restarted.state.project=project.clone();
+        let mut restarted=App::new(None);restarted.state.session.project=crate::locked::Locked::new(project.clone());
         run(&mut restarted,Command::Load(path.clone()));
         assert_eq!(restarted.state.rack_pos,(600.,230.));assert_eq!(restarted.state.native_frames,app.state.native_frames);
         // A failed decode has no partial window edits.
@@ -269,7 +269,7 @@ mod tests {
 
     #[test]
     fn custom_layout_attach_visibility_cancel_and_about() {
-        let mut app=App::new(None);app.state.project=crate::app::test_project();
+        let mut app=App::new(None);app.state.session.project=crate::locked::Locked::new(crate::app::test_project());
         let mut canvas=os_ui::Canvas::new(1600,1000,1.25).unwrap();app.paint(&mut canvas,None);
         crate::attached_mixer::toggle(&mut app);
         let layout=serde_json::to_vec(&Layout::capture(&app.state)).unwrap();

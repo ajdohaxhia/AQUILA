@@ -685,7 +685,7 @@ fn execute(app: &mut App, actions: Vec<String>, c: usize) {
         }
     }
     if let Some(previous) = history {
-        app.state.history.end_sequence(previous);
+        crate::history::end_sequence(&mut app.state, previous, "Custom action sequence");
     }
     app.input_bindings.replay = false;
     app.invalidate();
@@ -1945,7 +1945,7 @@ mod tests {
     use os_ui::Canvas;
     #[test]
     fn custom_layout_hotkey_assign_reopen_conflict_remove_and_hidden_menu() {
-        let mut app=App::new(None);app.state.project=crate::app::test_project();
+        let mut app=App::new(None);app.state.session.project=crate::locked::Locked::new(crate::app::test_project());
         let mut canvas=Canvas::new(1600,1000,1.).unwrap();app.paint(&mut canvas,None);
         app.state.rack_pos=(440.,310.);
         let path=std::env::temp_dir().join(format!("ml-hotkey-layout-{}.lslayout",std::process::id()));
@@ -1959,7 +1959,7 @@ mod tests {
         app.state.settings.input_editor.key="F8".into();
         edit(&mut app,Edit::Assign(id.clone()));
         assert_eq!(lookup(0,"Key F8",0),Some(vec![id.clone()]));
-        let mut reopened=App::new(None);reopened.state.project=crate::app::test_project();
+        let mut reopened=App::new(None);reopened.state.session.project=crate::locked::Locked::new(crate::app::test_project());
         reopened.state.rack_pos=(0.,0.);reopened.state.z=vec![Win::Playlist];
         crate::workspace_visibility::toggle(crate::workspace_layout::VISIBILITY);
         assert!(key(&mut reopened,&Key::Named(NamedKey::F8),false,false));
@@ -1985,7 +1985,7 @@ mod tests {
     #[test]
     fn binding_click_drag_cancel_and_undo() {
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         app.state.z = vec![Win::PianoRoll];
         app.state.piano.choose_tool(piano::Tool::Draw);
         let mut canvas = Canvas::new(1600, 900, 1.).unwrap();
@@ -2018,7 +2018,7 @@ mod tests {
     #[test]
     fn binding_context_and_settings_workflow() {
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         bind(0, "Key F3", &["ignore"]);
         bind(1, "Key F3", &["piano.up"]);
         assert_eq!(lookup(1, "Key F3", 0), Some(vec!["piano.up".into()]));
@@ -2053,7 +2053,7 @@ mod tests {
     #[test]
     fn binding_owner_modifiers_text_and_mixer_lock() {
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         app.state.z = vec![Win::PianoRoll];
         let mut canvas = Canvas::new(1600, 900, 1.).unwrap();
         app.paint(&mut canvas, None);
@@ -2171,7 +2171,7 @@ mod tests {
     #[test]
     fn binding_multiclick_hover_and_activation_are_deferred_and_cancellable() {
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         app.state.z = vec![Win::PianoRoll];
         let mut canvas = Canvas::new(1600, 900, 1.).unwrap();
         app.paint(&mut canvas, None);
@@ -2216,7 +2216,7 @@ mod tests {
     #[test]
     fn binding_named_actions_scripts_and_visibility() {
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         app.state.z = vec![Win::PianoRoll];
         let ch = piano::channel(&app.state).unwrap();
         let i = piano::add_note(&mut app.state, ch, 192, 60);
@@ -2272,7 +2272,7 @@ mod tests {
     #[test]
     fn binding_editor_surfaces_and_small_window() {
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         let mut canvas = Canvas::new(1600, 900, 1.).unwrap();
         for (c, win) in [
             (2, Win::Playlist),

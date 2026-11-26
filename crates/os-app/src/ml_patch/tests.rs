@@ -5,10 +5,10 @@ use crate::{
 };
 fn app() -> (App, usize) {
     let mut a = App::new(None);
-    a.state.project = crate::app::test_project();
+    a.state.session.project = crate::locked::Locked::new(crate::app::test_project());
     crate::playlist::arr_mut(&mut a.state);
     a.plugins.effects = plugins::builtin_effects();
-    a.state.plugdb.rebuild(&a.plugins);
+    a.state.plugdb.rebuild(&a.state.session.plugins);
     a.state.selected_mixer = 1;
     let i = a.plugins.effect_index(core::NAME).unwrap();
     assert!(a.plugins.effect_ready(i));
@@ -44,7 +44,7 @@ fn ml_patch_normal_picker_project_preset_undo_and_visibility() {
     let p = os_flp::project::load(&file).unwrap();
     let mut b = App::new(None);
     b.plugins.effects = plugins::builtin_effects();
-    b.state.project = p;
+    b.state.session.project = crate::locked::Locked::new(p);
     b.sync_effects();
     assert_eq!(
         b.plugins.state(key).expect(&format!(
@@ -97,7 +97,7 @@ fn ml_patch_normal_picker_project_preset_undo_and_visibility() {
         );
     }
     crate::settings_file::set_flag(VISIBILITY, false);
-    a.state.plugdb.rebuild(&a.plugins);
+    a.state.plugdb.rebuild(&a.state.session.plugins);
     assert!(
         !a.state
             .plugdb
@@ -108,7 +108,7 @@ fn ml_patch_normal_picker_project_preset_undo_and_visibility() {
     );
     assert_eq!(a.plugins.state(key).unwrap(), saved);
     crate::settings_file::set_flag(VISIBILITY, true);
-    a.state.plugdb.rebuild(&a.plugins);
+    a.state.plugdb.rebuild(&a.state.session.plugins);
     assert_eq!(
         mixer::track(&a.state, 1).unwrap().slots[0]
             .as_ref()

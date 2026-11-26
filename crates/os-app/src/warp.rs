@@ -1259,7 +1259,7 @@ mod tests {
         }
         os_engine::wav::write_f32_stereo(&mut std::fs::File::create(&source).unwrap(),rate,&audio).unwrap();
         let source_bytes=std::fs::read(&source).unwrap();
-        let mut app=App::new(None);app.state.project=crate::app::test_project();app.state.tempo=120.;
+        let mut app=App::new(None);app.state.session.project=crate::locked::Locked::new(crate::app::test_project());app.state.tempo=120.;
         app.state.project.channels[0].sample_path=Some(source.to_string_lossy().into());
         let ppq=app.state.project.ppq;
         pl::arr_mut(&mut app.state).clips=vec![os_model::Clip::new(0,ppq as u32*6,0,ClipSource::Channel(0))];
@@ -1325,7 +1325,7 @@ mod tests {
         )
         .unwrap();
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         app.state.tempo = 120.;
         let ppq = app.state.project.ppq;
         let ch = &mut app.state.project.channels[0];
@@ -1563,7 +1563,7 @@ mod tests {
         assert!(app.state.playlist.warp.is_none());
         let p=os_flp::project::load(&os_flp::project::create(&app.state.project).unwrap()).unwrap();
         assert_eq!(p.audio_edits,app.state.project.audio_edits);
-        app.state.project=p;open(&mut app,ci).unwrap();wait_loaded(&mut app);
+        app.state.session.project=crate::locked::Locked::new(p);open(&mut app,ci).unwrap();wait_loaded(&mut app);
         command(&mut app,Command::Undo);assert_eq!(app.state.project.vocal_edits[0].timing,before);
         command(&mut app,Command::Redo);assert_ne!(app.state.project.vocal_edits[0].timing,before);
     }

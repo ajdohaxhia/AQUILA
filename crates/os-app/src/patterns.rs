@@ -214,7 +214,7 @@ pub(crate) fn renumber(s: &mut State, map: impl Fn(u16) -> Option<u16>) {
     });
     s.playlist.picker_ui.selected.clear();
     s.playlist.picker_ui.stop_previews();
-    for a in s.project.arrangements.iter_mut() {
+    for a in s.session.project.arrangements.iter_mut() {
         for clips in std::iter::once(&mut a.clips).chain(a.tracks.iter_mut().filter_map(|t|t.frozen.as_mut())) {
         clips.retain_mut(|c| match c.source {
             ClipSource::Pattern(n) => match map(n) {
@@ -552,7 +552,8 @@ pub fn split(s: &mut State, group: Option<bool>) -> Option<String> {
                     }
                     for _ in 0..k { crate::playlist::insert_track(s, row + 1); }
                 } else {
-                    let arr = s.project.arrangements.iter_mut().find(|a| a.number == number).unwrap();
+                    let pj = &mut *s.session.project;
+                    let arr = pj.arrangements.iter_mut().find(|a| a.number == number).unwrap();
                     let shift = |track: u16| if track > row { track + k } else { track };
                     for clip in &mut arr.clips { clip.track = shift(clip.track); }
                     for t in &mut arr.tracks {
@@ -561,7 +562,7 @@ pub fn split(s: &mut State, group: Option<bool>) -> Option<String> {
                         }
                     }
                     arr.attached_order.iter_mut().for_each(|r| *r = shift(*r));
-                    for link in &mut s.project.instrument_lanes {
+                    for link in &mut pj.instrument_lanes {
                         if link.1 == number { link.2 = shift(link.2); }
                     }
                     while arr.tracks.len() <= usize::from(row) {
@@ -573,7 +574,8 @@ pub fn split(s: &mut State, group: Option<bool>) -> Option<String> {
                         track.number = i as u32 + 1;
                     }
                 }
-                let arr = s.project.arrangements.iter_mut().find(|a| a.number == number).unwrap();
+                let pj = &mut *s.session.project;
+                let arr = pj.arrangements.iter_mut().find(|a| a.number == number).unwrap();
                 let original = arr.clips.iter().filter(|clip| clip.track == row && clip.source == ClipSource::Pattern(cur)).cloned().collect::<Vec<_>>();
                 for (i, (id, name, track, color)) in part_tracks.iter().enumerate() {
                     let part = i as u16;
@@ -586,8 +588,8 @@ pub fn split(s: &mut State, group: Option<bool>) -> Option<String> {
                     } else {
                         track_info.mode = os_model::PlaylistTrackMode::Instrument;
                         track_info.attached_mixer = Some(*track);
-                        s.project.instrument_lanes.retain(|x| x.1 != number || x.2 != lane);
-                        s.project.instrument_lanes.push((*id, number, lane, cur + part));
+                        pj.instrument_lanes.retain(|x| x.1 != number || x.2 != lane);
+                        pj.instrument_lanes.push((*id, number, lane, cur + part));
                     }
                     if part == 0 { continue; }
                     arr.clips.extend(original.iter().cloned().map(|mut c| {
@@ -907,7 +909,7 @@ mod tests {
 
     fn app() -> App {
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         let s = &mut app.state;
         s.project.patterns = vec![
             Pattern { number: 1, name: Some("Kick".into()), notes: vec![Note::step(0, 0)], ..Pattern::default() },
@@ -1100,7 +1102,7 @@ mod split_workflow_tests {
     fn arranged_split_workflows_preserve_placements_lanes_and_undo() {
         for grouped in [false, true] {
             let mut app = App::new(None);
-            app.state.project = crate::app::test_project();
+            app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
             app.state.pattern = 1;
             pat_mut(&mut app.state, 1).notes = vec![Note::step(0, 0), Note::step(1, 24)];
             let mut source = Clip::new(384, 192, 2, ClipSource::Pattern(1));

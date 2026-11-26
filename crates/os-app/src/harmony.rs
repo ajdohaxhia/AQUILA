@@ -1772,7 +1772,7 @@ mod tests {
     #[test]
     fn harmony_generation_scale_stamp_and_undo() {
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         let ch = piano::channel(&app.state).unwrap();
         run(&mut app, HCmd::Root(2));
         run(&mut app, HCmd::Scale(73));

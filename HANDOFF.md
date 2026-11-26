@@ -756,3 +756,124 @@ List them with `git diff --name-only --diff-filter=U` and `grep -c '^<<<<<<< '`.
 - Engine tests passed 464, failed 0, ignored 11. Host-link tests passed 4. SoundFont/Sampler/Press tests passed 118, failed 0, ignored 1. Notices tests rerun after completing missing dependency licences.
 - Upstream device playback test requires explicit `OS_SIM_DEVICE=256@48000` and is ignored in the normal parallel suite. Windows i686 bridge test is wired into CI. Windows/Linux runtime verification is pending.
 - Supplied newer ML sources change at least 303 paths already tracked in the last merged ML 17.3 base. They need a separate merge after the Lemon architecture work.
+
+## 22. Lemon control-plane merge paused at owner's request (2026-11-25)
+
+### Git and working tree
+
+- Checkout: this repository, branch `michael-lane`. HEAD `176cedea260c336cfcebdcc0180610afe5a06d49` is published on both `ade/main` and `ade/michael-lane`.
+- A merge of `upstream/main` `349c6ba832c683c5e7bbbdf06edcf5e400efdcfe` is **in progress**. `MERGE_HEAD` is present. Git reports no unmerged entries, but this only means paths were staged; the integration is incomplete and does not compile. Do not commit or push it as complete.
+- Approximately 681 paths are modified/staged. Preserve both staged and unstaged work, including untracked `crates/os-session/src/ml_patch.rs`. Inspect `git status --short`, `git diff`, `git diff --cached`, and `git diff --cached --check` before resuming. Several files have trailing blank-line warnings.
+- Work stopped during edits. In particular `crates/os-app/src/lib.rs` has a standalone `pub` at approximately line 165, an incomplete edit that must be repaired. `crates/os-engine/src/engine.rs`, `crates/os-engine/src/engine/audit_tests.rs`, `crates/os-session/src/locked.rs`, and `crates/os-session/src/session.rs` have unstaged changes. Review and preserve them.
+- Owner requested stop and handoff. No commit or push was made for this second merge.
+
+### What was integrated so far
+
+- New `os-session` crate and `lemonstudio` launcher introduced, while retaining AQUILA's desktop shell and ML-based multi-output, solo and custom plugins.
+- `State` owns one shared `Session`; a project-only session has a disabled transport for GUI, while AQUILA's existing GUI transport owns audio. `follow.rs` contains an unverified `App::host` adapter intended to synchronize command edits, plugin hosts and GUI transport. Session direct project writes have a compatibility `DerefMut` which marks writes.
+- Desktop undo was adapted around a shared session history with GUI snapshot handling. Desktop RPC undo/redo defers through GUI history after session authorization. Plugin editor and touch-note calls were partially migrated to `EditorHost` and GUI transport.
+- Session capture/monitor/pickup statics were moved toward shared ownership with GUI shims. Verify recording and ASIO input device selection, and ensure there is only one set of capture rings.
+- Lemon's arbitrary extra output routing conflicts with AQUILA's engine. Session rejects the incompatible `SetChannel` outputs operation rather than silently claiming it worked. Preserve AQUILA's consecutive extra-output implementation, and validate normal plugin routing.
+- UI conflict resolution retained AQUILA's legacy UI modules; Lemon's new `*_ui` sources were retained but many are not currently compiled. The command-based UI migration and full parity therefore remain outstanding.
+- The prior published CI run `45469126783` failed on Windows because `os-vst2::abi::op::OUTPUT_PROPERTIES` was missing. A staged fix adds `0x22`; Linux was green, macOS was cancelled. Windows needs a fresh build.
+
+### Verification and continuation
+
+- Before the latest interrupted edits, `cargo check -p os-session --offline` passed with default features (log `/Users/ade/aqbuild/split-default5.log`) and `cargo check -p os-session --no-default-features --offline` passed (log `/Users/ade/aqbuild/split-check4.log`). Both must be rerun on the current tree.
+- The last app check against a scratch copy failed with 314 errors (log `/Users/ade/aqbuild/split-app.log`). Subsequent edits addressed some errors, but no later full app check completed. Expect missing module exports, plugin editor APIs, State/Session borrowing and history/transport interface mismatches.
+- Build from a copy without spaces. Sync into `/Users/ade/aqbuild/split-check`, then set `DEVELOPER_DIR=/Library/Developer/CommandLineTools PYTHON=python3 ML_PLASMA_BUNDLE_MACOS_AARCH64=/Users/ade/aqbuild/target/debug/build/ml-plasma-f7022116b0af3b77/out/plasma.zip CARGO_TARGET_DIR=/Users/ade/aqbuild/target`. Run `cargo check -p os-session --offline`, the no-default-features check, then `cargo check -p os-app --offline`. The bundled Plasma zip is an existing local artifact; a fresh native build can instead use a new space-free `ML_PLASMA_NATIVE_DIR`.
+- Agent findings to verify: plugin windows, presets and Session host method signatures remain incomplete; `follow.rs` previously referenced `params_ui` and `container_ui` which were absent from `lib.rs`; GUI Session commands and live playback must reach the GUI transport; restored UI modules still need command migration. Do not mark parity by merely recording Lemon as a merge parent.
+- Supplied ML source archives remain in Downloads. The Mac archive was extracted to `/Users/ade/aqbuild/ml-source-2026112402`; its changes from the previously merged ML 17.3 base have not been merged. See section 21.
+- After compilation, run meaningful session, GUI, host-link, plugin and audio tests, check Windows-specific struct literals and plugin command matches, review third-party notices, verify no contact with michaellanemusic.de, then commit and push to both AQUILA branches as the owner previously authorized.
+
+## 23. Lemon control-plane merge: continuation 2026-11-25
+
+### State
+- The Lemon merge of `upstream/main` `349c6ba8` is still **open** (`MERGE_HEAD` present, ~682 staged paths, nothing committed). The tree compiles as far as **`os-session` (clean, 0 errors)**; **`os-app` still has 196 errors**. The owner asked to finish this merge and only then merge ML Studio's new sources (see below).
+- ML Studio sources 2026.11.24.2 are in `/Users/ade/Downloads/ML-source` (four ZIPs, no Git repo; Mac archive VERSION `2026112402`). Already extracted at `/Users/ade/aqbuild/ml-source-2026112402`. **Not merged yet** — per the owner's decision it comes after the Lemon merge. A three-way merge is needed: base = the ML 17.3 tree already in this repo (`1e1823b5`), theirs = the 2026.11.24.2 snapshot, ours = AQUILA.
+
+### Environment for checks (verified this session)
+```
+rsync -a --delete --exclude .git --exclude target ./ /Users/ade/aqbuild/split-check/
+cd /Users/ade/aqbuild/split-check
+export DEVELOPER_DIR=/Library/Developer/CommandLineTools PYTHON=python3
+export ML_PLASMA_BUNDLE_MACOS_AARCH64=/Users/ade/aqbuild/target/debug/build/ml-plasma-f7022116b0af3b77/out/plasma.zip
+export CARGO_TARGET_DIR=/Users/ade/aqbuild/target
+cargo check -p os-session --offline   # passes
+cargo check -p os-app --offline       # 196 errors
+```
+The bundled Plasma zip is **required**: without it the build script runs CMake against a stale cache and fails. Full logs: `/Users/ade/aqbuild/split-app-short.log` (short format), `/Users/ade/aqbuild/split-app2.log`.
+
+### Fixed this session
+- `crates/os-app/src/winit_keys.rs`: added from upstream's `crates/lemonstudio/src/winit_keys.rs` (`use crate::keys`), `pub mod winit_keys;` in `lib.rs`.
+- `shell.rs`: `pub(crate) use macos::{… screen_state …}` so `lib.rs`'s re-export works.
+- `settings_file.rs`: added `store()` (memory in tests, user file otherwise) for the session APIs.
+- `lib.rs` wiring: `osc3/citrus/smith/slicer/drums` now `pub use os_session::…` + their `*_ui` modules; added `song_pos_ui`, `score_log_ui`, `clip_colors_ui`, `plugin_scan_ui`. `crate::song_pos::`/`crate::score_log::` call sites now point at the `_ui` modules.
+- `State`: added `rack_views: HashMap<u64, follow::RackView>` (upstream field dropped in the merge); `follow.rs` uses `s.params.remap`/`s.params.last` instead of upstream's separate `tweaks` vector, `rack::remap_ui` instead of `remap_view`, `app::retime` instead of `retime_views`, and `container::show_level` (added to `container.rs`).
+- `os-session::plugins::NO_LIBRARY` is now `pub`; `crates/os-app/src/plugins.rs` re-exports it.
+- `Channel` literals: `lemon_icon: None` added in `app.rs`, `pattern_render.rs`, `playlist.rs`. `TimeMarker`/`AutoPoint` literals: `id: Default::default()`.
+- **Do not compile `params_ui.rs` or `container_ui.rs`**: they are Lemon's UI and duplicate AQUILA's `params.rs`/`container.rs` (`E0592`, ambiguous names). AQUILA's legacy modules stay.
+
+### Remaining (in order)
+1. Plugin-host UI moved out of `Plugins` into `State.editors` (`EditorHost`): `row_at_screen`, `drop_file`, `cancel_sampler_track_step`, `close_if_open`, `open_window`, `set_detached`, `set_all_detached`, `set_editor_scale`, `rescale_window`, `refresh_known`, `take_known`, `stack`, `clip`, `idle`, `editor_open` — each call site must pass `&mut state.session.plugins`. `Hosted.window`/`rack_editor`/`detached`/`pending_editor_resize` became `EditorHost` state (`window_of`, `set_detached`, …).
+2. `preview_jobs` (preset previews) has no home now: move it to `EditorHost` or `App`.
+3. `plugins::browser_sample_to_plugin`, `plugins::load_slicer_loop` (session now offers `slicer_loop_state` + `set_state`), `plugins::fit_editor` (now `editor_host::fit_editor`), `mixer::track_ids`, `control::accept` (now `control_ui::accept`, done in `app.rs` only if it still compiles).
+4. Duplicate-type seams: `crate::history::Snap` vs `os_session::history::Snap`, `crate::typein::Target` vs `os_session::typein::Target`, `container::Live`, `lemon_midi_out::Live` — prefer re-exporting the session type from the legacy module.
+5. ~60 borrow-checker errors (`E0499`/`E0502`/`E0503`) from `State`'s `Deref` to `Session`: take a field out before calling, or borrow `session.plugins` once.
+6. `record::Log`/`DUMPED` are private in `os-session::record`; make them `pub`.
+7. Then: full workspace tests, Windows-only struct/`match cmd` scan, no michaellanemusic.de contact check, commit (owner confirmation), push, CI.
+
+### 23.3 Aggiornamento: prima passata di `cargo test --workspace`
+
+`cargo test --workspace --locked --offline --no-fail-fast` sulla copia `/Users/ade/aqbuild/split-check`: **139 test falliti** su 7 target (`lemon-small-fx` 3, `ml-mix-core` 4, `ml-utility-core` 1, `os-app` ~100, `os-session` 5, `os-theme` 1, `watermark` 1). Log: `/Users/ade/aqbuild/test-ws2.log`.
+
+Corretti e riverificati:
+- `lemon-small-fx`: nomi "ML …"/"Lemon …" accettati entrambi; i factory preset si cercano in `crates/os-app/factory-presets` e `crates/os-session/factory-presets`; menu About con il nome dello spec. Ora **63 passati, 0 falliti**.
+- `ml-utility-core` (7 passati) e 3 di `ml-mix-core`: `ML_TOOLS_RENDER_DIR` cade su `std::env::temp_dir()` quando non è impostata. Resta `reference_match_reload_missing_and_callback_safety`: **una deallocazione nel callback audio** quando adotta una nuova reference (difetto reale, non corretto).
+- Helper rack (`rack.rs`): `add_group`/`zip_rows`/`lock` specchiano progetto e lista mostrata; `set_mixer_track` passa da `control::run_edit`; `RBox::GroupSel/NewGroup/RenameGroup` ora scrivono i gruppi nel `Project` (`sync_groups`); `RCmd::Solo` registra un passo `MUTE_SOLO`, `GroupSel` no; `Cmd::PerfToggle` non registra più un passo. `control::tests::a_filter_group_and_performance_mode_are_no_step` passa.
+
+Restano da portare (il grosso): i test os-app leggono dal `Project` stato che l'app AQUILA tiene in `State.mixer`/`State.rack`/UI (colori slot, gruppi, performance), quindi edit e undo non si vedono; molti comandi registrano passi che Lemon considerava di sola interfaccia; `os-theme::design::classic_is_unchanged` e i test skins/temi hanno la palette AQUILA vs quella del merge; guide Help senza i topic nuovi ("Visibility: ML Patch…"); nomi plugin/progetti misti ML/Lemon; 7 test `audio_edits`/`warp`/`zipped` richiedono il motore nativo "Vocal tuning"; `factory_folder` richiede FL Studio installato; `ai_control` fallisce sul parsing della status line HTTP locale.
+
+### 23.2 Aggiornamento: anche `--all-targets` a zero errori
+
+`cargo check --workspace --all-targets --locked --offline` esce con **exit 0, zero errori** (stessa copia `/Users/ade/aqbuild/split-check`); restano solo warning. I test sono stati **compilati, non eseguiti**.
+
+- `crates/os-app/Cargo.toml`: `[dev-dependencies] os-session = { workspace = true, features = ["test-util"] }`. Le suite di os-app usano gli helper della sessione (`History::len`, `plugin_db::fake`, `capture::TEST_RECORDING`, `Transport::updates_for_tests`, `time::advance/set_clock`, ...).
+- os-session: `capture::push_inputs` è disponibile con `test-util` (era `cfg(any(windows, test))`); `input_monitor::Monitor::render` passa a `cfg(any(test, feature = "test-util"))` e nasce `render_owned_for_tests(owner)` per le suite esterne.
+- Suite Lemon riportate sull'architettura AQUILA: `Locked::new(...)` nelle 234 assegnazioni a `state.project`; `App.editors`/`EditorHost` al posto dei campi rimossi di `Plugins`/`Hosted` (`detached`, `rack_error`, `link`, `refresh_known`, `editor_open`); `vocal_edits` e `channels` letti dal `Project`; `History::entries(&SettingsStore::memory())`; `prefs`/`midi_in`/`transport`/`step_edit` presi da `os_session`; `crate::{locked, projects, midi_notes, project_io, knob_id}` ri-esportati in `lib.rs`; `presets`/`perform`/`song_pos_ui` al posto di `presets_ui`/`perform_ui`/`song_pos`; helper rack e `mixer::slot_names_of` aggiunti/ri-esportati.
+
+### 23.1 Aggiornamento: 262 → 0 errori
+
+Merge Lemon **ancora aperto** (`MERGE_HEAD` = `349c6ba8`), nulla committato/pushato. `cargo check -p os-app --offline` esce con **exit 0, zero errori** (verificato sulla copia di build `/Users/ade/aqbuild/split-check`, sorgenti identici).
+
+**Porting finale**: `plugins/window_check.rs` usa ora `EditorHost` (`idle`, `set_detached`, `open_window`, `rescale_window`, `editors[row].window`); rimosso il blocco `pending_editor_resize` (la coda non esiste più nel nuovo `Frame`). `plugin_window::new_frame(...)` è il nuovo costruttore che incapsula il `FrameWindow` di piattaforma in `Box<dyn Frame>` (usato da `ml_patch`). `typein`: `knob_to_session`/`knob_from_session` mappano i `KnobId` condivisi; `Varispeed`, `ChanPitch`, `Strip` e i knob dei dialoghi Strum/Arp/PianoDlg non hanno equivalente di sessione (ritornano `None`/fallback).
+
+**Nota**: il merge **non è committato**. Prossimi passi: `cargo check` dell'intero workspace, scan dei path Windows-only, controllo che nulla contatti michaellanemusic.de, poi conferma dell'owner prima di commit/push e del merge ML 2026.11.24.2.
+
+**Scoperta chiave**: `Session.project` è `Locked<Project>`. Per separare i campi bisogna dereferenziare una volta: `let p = &mut *s.session.project;` (non `&mut s.session.project`, che presta tutto il `Locked`). Stessa cosa per `&*s.session.project` nelle letture.
+
+**Regola d'oro per i borrow** (`State` fa `Deref` a `Session`, quindi ogni accesso via `s.campo` presta TUTTO `*s`):
+- Campi di `Session` (prefissarli `s.session.` per farli separare dal resto): `project settings history control file path dirty sample_loads retimed plugin_edited loop_type loop_type_of touched samples fx_requests link_moves plugin_members plugins hosted_rows pending_plugin pending_open params midi midi_play midi_channel midi_out rpc_server loading missing zipping export pattern_render saved backup perform live_synced clip_colors song_pos pat_pos ext_pending ext_tempo_at rec audio_rec track_rec transport`.
+- Tutti gli altri (`playlist rack mixer pattern tempo piano plugdb container palette events settings-ui …`) sono campi **di `State`**: restano `s.campo` e si separano da `s.session.*`.
+- Esempio: `let p = &mut s.session.project;` + `s.playlist…` funziona; `let p = &mut s.project;` + `s.playlist…` no.
+
+Completato:
+- **EditorHost**: ogni call site di finestra plugin passa da `Plugins` a `EditorHost`, che vive su **`App.editors`** (`State` non ha `editors`). `strip_editor*.rs` espongono già `show_rack`/`close_rack`/`close_racks`/`validate_vertical_rack` con `pl: &mut Plugins`.
+- `preview_jobs` su `EditorHost`; `browser_sample_to_plugin` aggiunto a `EditorHost`; `load_slicer_loop` riscritto con `slicer_loop_state` + `set_state`; `mixer::track_ids` era una chiamata morta, rimossa.
+- Seam: `lemon_midi_out` → re-export della sessione (+ `mod lemon_midi_out_ui` in `lib.rs`); `container::Live` → re-export (`src` reso `pub` in os-session); `presets::Preset` → re-export; `history::Snap`: arm `Snap::Session` duplicato rimosso, `put` delega alla sessione; `control_ui` usa `crate::history::record`.
+- os-session: `Plugins::prepare_preset`/`install_preset`; `Src::Mpe`; `input_monitor::Monitor.track` pub.
+- `rack.rs`: `pattern.loop_off` → `pattern.loop_mode`.
+- `plugins.added` prende lo store: `&state.session.settings` (`state.settings` è `SettingsUi`).
+- `note_name`/`key_hint`/`keep_long`/`more_presets`/`History::entries` prendono `&crate::settings_file::store()`; `ticks_per_second` in `score_log_ui`; `ClipColors::of` in `clip_colors_ui`; `PANEL` in `song_pos_ui`; `Locked` in `os_session::locked`.
+- Conversioni `typein::Target` ↔ `os_session::typein::Target` (`to_session`/`from_session`), usate da `follow.rs` e `container.rs`.
+
+Restano:
+1. **~96 errori di borrow** (`E0499/E0502/E0503`) dal `Deref` su `State`/`App`: scrivere i campi per esteso (`s.session.project` + `s.session.pattern`, `app.state.project` + `app.state.session.plugins`) o tirare fuori il valore in un `let` prima della chiamata mutabile. File: `mixer.rs` (13), `record.rs` (7), `rack.rs` (6), `app.rs` (6), `playlist.rs` (5), `audio_edits.rs` (5).
+2. **`KnobId` duplicato** (`crate::knobs::KnobId` con impl UI vs `os_session::knob_id::KnobId`): `typein::to_session`/`from_session` falliscono solo su `Target::Knob`.
+3. `plugins/window_check.rs` (7): riscrivere su `EditorHost` (`frames`, `open_window`, `rescale_window`, `close_if_open`).
+4. `ml_patch/mod.rs`: `FrameWindow::new` non esiste più (aprire via `Frames`).
+5. `editor_host.rs`: `Plugin::take_playback_request` rimosso/rinominato in `os_host`.
+6. `app.rs:3213` e `app.rs:8028`: due chiamate con arità cambiata.
+
+Verifica: `rsync -a --delete --exclude .git --exclude target ./ /Users/ade/aqbuild/split-check/`, poi in quella cartella `cargo check -p os-app --offline --message-format=short` con `DEVELOPER_DIR=/Library/Developer/CommandLineTools`, `PYTHON=python3`, `ML_PLASMA_BUNDLE_MACOS_AARCH64=/Users/ade/aqbuild/target/debug/build/ml-plasma-f7022116b0af3b77/out/plasma.zip`, `CARGO_TARGET_DIR=/Users/ade/aqbuild/target`.
+

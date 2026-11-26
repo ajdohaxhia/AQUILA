@@ -621,7 +621,7 @@ mod tests {
     #[test]
     fn stereo_separation_moves_in_64ths() {
         let mut app = crate::app::App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         app.state.set_knob(KnobId::MixSep(1), 0.5 + 0.01 / 2.0);
         let sep = |app: &crate::app::App| crate::mixer::track(&app.state, 1).unwrap().stereo_separation;
         assert_eq!(sep(&app), Some(1.0 / 64.0));
@@ -633,7 +633,7 @@ mod tests {
     #[test]
     fn all_effect_slot_mix_knobs_address_their_own_slot() {
         let mut app = crate::app::App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         app.state.project.mixer[1].slot_mix = [1.0;64];
         for slot in 0..64 {
             let id = KnobId::SlotMix(1,slot as u8);
@@ -673,7 +673,7 @@ mod tests {
         use crate::app::Action;
         use crate::views::settings::SAct;
         let mut app = crate::app::App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         assert_eq!(Control::of(&Action::Knob(KnobId::Swing)), Some(Control::Knob(KnobId::Swing)));
         assert_eq!(Control::of(&Action::Fader(2)), Some(Control::Fader(2)));
         assert_eq!(Control::of(&Action::Settings(SAct::ThemeKnob(3))), Some(Control::Theme(3)));

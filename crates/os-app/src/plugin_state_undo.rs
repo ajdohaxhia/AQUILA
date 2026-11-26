@@ -83,7 +83,7 @@ impl App {
         #[cfg(plugin_windows)]
         for (area, token) in crate::plugin_window::take_state_links() {
             let edit = os_hostlink::take_state_edit(token);
-            let row = self.plugins.hosted.iter().find(|(_, h)| h.window.as_ref().is_some_and(|w| w.area() as isize == area)).map(|(&r, _)| r);
+            let row = self.editors.editors.iter().find(|(_, e)| e.window.as_ref().is_some_and(|w| w.area() as isize == area)).map(|(&r, _)| r);
             if let (Some(row), Some(edit)) = (row, edit) { self.record_plugin_state_edit(row, &edit); }
         }
     }
@@ -147,9 +147,9 @@ mod tests {
             assert_eq!(state(&app, row)["fields"], before["fields"], "Ctrl+Z restores Citrus");
             app.plugin_undo_key(false, true);
             assert_eq!(state(&app, row)["fields"], after["fields"], "Ctrl+Shift+Z redoes even with alternate mode off");
-            let count = app.state.history.entries().len();
+            let count = app.state.history.entries(&app.state.session.settings).len();
             for _ in 0..3 { app.params_tick(); }
-            assert_eq!(app.state.history.entries().len(), count, "restore does not echo edits");
+            assert_eq!(app.state.history.entries(&app.state.session.settings).len(), count, "restore does not echo edits");
         }
         crate::prefs::set_check(&crate::prefs::ALTERNATE_UNDO, true);
     }
@@ -222,19 +222,19 @@ mod tests {
         assert!(unsafe { edit(8) }, "popup slider accepts a fractional drag from zero percent");
         for command in [1, 2, 6] { // asset-only, bulk edits, and filter send controls
             let before = state(&app, row);
-            let count = app.state.history.entries().len();
+            let count = app.state.history.entries(&app.state.session.settings).len();
             assert!(unsafe { edit(command) });
             app.plugins.hosted[&row].plugin.lock().unwrap().idle();
             app.params_tick();
             let after = state(&app, row);
             assert_ne!(before["plugin"], after["plugin"]);
-            assert_eq!(app.state.history.entries().len(), count + 1, "one grouped edit");
+            assert_eq!(app.state.history.entries(&app.state.session.settings).len(), count + 1, "one grouped edit");
             app.plugin_undo_key(false, false);
             assert_eq!(state(&app, row)["plugin"], before["plugin"], "host Ctrl+Z command {command}");
             app.plugin_undo_key(false, true);
             assert_eq!(state(&app, row)["plugin"], after["plugin"], "host redo command {command}");
             app.params_tick();
-            assert_eq!(app.state.history.entries().len(), count + 1, "no restore echo");
+            assert_eq!(app.state.history.entries(&app.state.session.settings).len(), count + 1, "no restore echo");
         }
     }
 

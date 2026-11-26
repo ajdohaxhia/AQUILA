@@ -319,7 +319,7 @@ mod tests {
         assert_eq!(processed(sample.clone(),false,false,false).frames(),8000);
         let trimmed=processed(sample.clone(),false,false,true);assert_eq!(trimmed.frames(),2000);assert_eq!(trimmed.right[1999],0.0001);
         assert_eq!(sample.frames(),8000);assert_eq!(trim_bounds(&os_engine::Sample{rate,left:vec![0.;20],right:vec![0.;20]}),(0,20));
-        let mut app=App::new(None);app.state.project=crate::app::test_project();
+        let mut app=App::new(None);app.state.session.project=crate::locked::Locked::new(crate::app::test_project());
         let old=crate::playlist::add_audio_clip(&mut app.state,&text,0,0).unwrap();
         let old_clip=crate::playlist::arr_mut(&mut app.state).clips[old].clone();
         let old_trim=app.state.project.channels[0].sound.fx.trim;

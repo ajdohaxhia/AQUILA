@@ -7,7 +7,7 @@ use crate::app::App;
  let file=dir.join("song.lmn");app.save_to(file.clone());assert!(file.exists(),"{:?}",app.state.message);assert!(!app.unsaved());
  app.plugins.mark_edited(row);assert!(app.unsaved());assert!(app.changed_since_backup());
  let at=chrono::NaiveDate::from_ymd_opt(2026,11,3).unwrap().and_hms_opt(12,0,0).unwrap();assert!(app.write_backup(at).unwrap().is_ok());assert!(app.unsaved());assert!(!app.changed_since_backup());app.plugins.mark_edited(row);assert!(app.changed_since_backup());
- let model=app.state.project.clone();app.plugins.state_fail.insert(row);assert!(crate::project_plugins::store_hosted(&mut app.state.project,&app.plugins).is_err());assert_eq!(model,app.state.project);
+ let model=app.state.project.clone();app.plugins.state_fail.insert(row);assert!(crate::project_plugins::store_hosted(&mut app.state.session.project,&app.state.session.plugins).is_err());assert_eq!(model,app.state.project);
  app.state.tempo=153.;
  app.save_to(file.clone());assert!(app.state.message.as_ref().unwrap().contains("Plugin settings warning:"));assert!(!app.unsaved());
  let saved=os_flp::project::load(&os_flp::FlpFile::parse(&std::fs::read(&file).unwrap()).unwrap()).unwrap();

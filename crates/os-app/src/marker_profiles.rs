@@ -18,7 +18,7 @@ fn load(s:&mut State,data:&[u8],merge:bool)->Result<(),String> {
     for m in profile.markers {
         let pos=(u64::from(m.position)*u64::from(s.project.ppq)+u64::from(profile.ppq)/2)/u64::from(profile.ppq);
         if pos>u32::MAX as u64{return Err("Marker position exceeds project range".into());}
-        markers.push(os_model::TimeMarker{color:m.color.map(|c|c&0xffffff),linear_us:m.linear_us.filter(|u|m.kind==0&&*u<=86_400_000_000),position:pos as u32,kind:m.kind,name:m.name,numerator:m.numerator,denominator:m.denominator,scale:m.scale,root:0,flag:0,scale_index:Default::default()});
+        markers.push(os_model::TimeMarker{color:m.color.map(|c|c&0xffffff),linear_us:m.linear_us.filter(|u|m.kind==0&&*u<=86_400_000_000),position:pos as u32,kind:m.kind,name:m.name,numerator:m.numerator,denominator:m.denominator,scale:m.scale,root:0,flag:0,scale_index:Default::default(),id:Default::default()});
     }
     pl::snapshot_as(s,"Load marker profile");
     let dest=&mut pl::arr_mut(s).markers;
@@ -51,7 +51,7 @@ pub fn chosen(app:&mut App,path:&Path,mode:u8) {
     use super::*;
     #[test]fn batch2_pattern_stretch_roundtrip_reset_split_and_undo(){
         use os_model::{Clip,ClipSource};
-        let mut a=App::new(None);a.state.project=crate::app::test_project();a.state.playlist.stretch=true;
+        let mut a=App::new(None);a.state.session.project=crate::locked::Locked::new(crate::app::test_project());a.state.playlist.stretch=true;
         let orig=Clip::new(0,192,0,ClipSource::Pattern(1));pl::arr_mut(&mut a.state).clips=vec![orig.clone(),Clip::new(768,192,0,ClipSource::Pattern(1))];
         let patterns=a.state.project.patterns.clone();pl::snapshot(&mut a.state);assert!(pl::stretch_clip(&mut a.state,0,&orig,0,384));
         assert_eq!(pl::clips(&a.state)[0].pattern_speed,0.5);assert_eq!(pl::clips(&a.state)[1].pattern_speed,1.);assert_eq!(a.state.project.patterns,patterns);
@@ -62,7 +62,7 @@ pub fn chosen(app:&mut App,path:&Path,mode:u8) {
         pl::run(&mut a,pl::Cmd::ResetPatternStretch(0));assert_eq!(pl::clips(&a.state)[0].length,96);assert_eq!(pl::clips(&a.state)[0].pattern_speed,1.);
     }
     #[test]fn batch2_profiles_preserve_properties_rescale_merge_and_undo_without_touching_clips(){
-        let mut a=App::new(None);a.state.project=crate::app::test_project();
+        let mut a=App::new(None);a.state.session.project=crate::locked::Locked::new(crate::app::test_project());
         let mut marker=os_model::TimeMarker::new(96,"Verse");marker.color=Some(0x7298b1);marker.kind=os_model::TimeMarker::SIGNATURE;marker.numerator=3;marker.denominator=4;
         pl::arr_mut(&mut a.state).markers=vec![marker];a.state.project.ppq=96;
         let bytes=encode(&a.state).unwrap();

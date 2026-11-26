@@ -138,7 +138,7 @@ impl App {
     fn step_edit_write(&mut self, keys: &[(u16, u8)]) {
         let s = &mut self.state;
         let Some(ch) = crate::piano::channel(s) else { return };
-        let pos = crate::song_pos::stored(s);
+        let pos = crate::song_pos_ui::stored(s);
         let at = if s.song_mode {
             let Some(t) = crate::piano::pattern_tick_in_song(s, f64::from(pos)) else {
                 let m = format!("Step edit: {} does not play at the song position", crate::patterns::name_of(s, s.pattern));
@@ -168,7 +168,7 @@ impl App {
         } else {
             s.piano.marker = to;
         }
-        self.hint = Cow::Owned(crate::song_pos::hint(&self.state, to));
+        self.hint = Cow::Owned(crate::song_pos_ui::hint(&self.state, to));
         self.damage_band(HINT_RECT);
         self.invalidate();
     }
@@ -309,7 +309,7 @@ mod tests {
         assert_eq!((app.state.piano.marker, selected(&app)), (st, vec![0, 1, 2, 3]));
         let h = &app.state.history;
         assert_eq!(h.at(), at + 1, "one undo step");
-        assert_eq!(h.entries().into_iter().find(|e| e.0 == h.at()).map(|e| e.1), Some("Step edit"));
+        assert_eq!(h.entries(&app.state.session.settings).into_iter().find(|e| e.0 == h.at()).map(|e| e.1), Some("Step edit"));
         app.key(&Key::Character("z".into()), true, false);
         assert!(notes(&app).is_empty(), "one undo removes the chord");
         assert_eq!(app.state.history.at(), at);

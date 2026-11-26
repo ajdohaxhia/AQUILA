@@ -70,7 +70,7 @@ pub enum Target {
 }
 
 /// What picking plugin `index` (a generator, or an effect with `effect`) runs for `target`.
-pub(crate) fn pick(target: Target, effect: bool, index: usize) -> Cmd {
+pub fn pick(target: Target, effect: bool, index: usize) -> Cmd {
     use crate::mixer::MCmd;
     match target {
         Target::Container(slot) if effect => return Cmd::Mixer(MCmd::MemberAdd(slot, index)),
@@ -526,7 +526,7 @@ pub fn run(app: &mut App, c: PlugCmd) -> Option<String> {
 
 /// A new channel for generator `index` (spec §1): at the bottom of the rack, or right below row `after`; selected and
 /// in view. Lemon Sampler makes an empty sampler channel (hosted on the next tick); any other generator a plugin
-/// channel hosting it. Its plugin window opens once it is hosted. One undo step, "Add channel" (`control::edit_app`):
+/// channel hosting it. Its plugin window opens once it is hosted. One undo step, "Add channel" (`Command::AddChannel`):
 /// undone, the channel goes and its instance is kept; redone, it comes back with it (`control::host`).
 pub fn add_generator(app: &mut App, index: usize, after: Option<usize>) -> Option<String> {
     crate::control::edit_app(app, crate::history::ADD_CHANNEL, crate::control::command::Region::Project, |app| add_generator_now(app, index, after))
@@ -544,7 +544,7 @@ pub(crate) fn add_generator_for_playlist(app: &mut App, index: usize) -> Option<
 
 fn add_generator_with_route(app: &mut App, index: usize, after: Option<usize>, route: Option<(u16, bool)>) -> Option<String> {
     let d = app.plugins.available.get(index)?.desc.clone();
-    let s = &mut app.state;
+    let mut s = &mut app.state;
     let sampler = d.name == crate::plugins::LEMON_SAMPLER && crate::project_plugins::is_builtin(&d);
     let mut ch = if sampler { crate::app::add_channel(&mut s.project) } else { crate::app::add_plugin_channel(&mut s.project, &d.name) };
     if let Some(route) = route {
@@ -560,8 +560,8 @@ fn add_generator_with_route(app: &mut App, index: usize, after: Option<usize>, r
         let order: Vec<usize> = (0..=r).chain([ch]).chain(r + 1..ch).collect();
         crate::rack::reorder(app, &order);
         ch = r + 1;
+        s = &mut app.state;
     }
-    let s = &mut app.state;
     s.selected_channel = ch;
     s.rack.select_only(ch);
     crate::rack::added_instrument(s,ch);
@@ -573,49 +573,40 @@ fn add_generator_with_route(app: &mut App, index: usize, after: Option<usize>, r
     sampler.then(|| "Added a sampler channel (ML Sampler)".into())
 }
 
+/// Whether generator `d` is the built-in Lemon Sampler (a channel of its own kind, no plugin).
+pub fn is_sampler(d: &os_host::Descriptor) -> bool {
+    d.name == crate::plugins::LEMON_SAMPLER && crate::project_plugins::is_builtin(d)
+}
+
+/// Channel `id` on row `row` just given generator `index`: the interface hosts it its own way, so its plugin window
+/// opens (a command's own hosting opens none, `control::host`).
+pub fn open_hosted(s: &mut crate::app::State, id: u32, row: usize, sampler: bool, index: usize) {
+    s.session.control.host.retain(|r| !matches!(r, crate::control::HostReq::Instrument { channel, .. } if channel.0 == id));
+    if sampler {
+        s.session.pending_open = Some(row);
+    } else {
+        s.session.pending_plugin = Some((row, index));
+    }
+}
+
 /// Generator `index` in place of rack row `row`'s (channel menu and plugin window menu > Replace ▸; FL: "the plugin list
 /// of Add one", spec ui/channel-rack.md §18). The channel keeps its row, notes and steps, mixer track, levels and
 /// Misc settings; its old instance goes, the new one starts from its defaults, and the channel takes the new
 /// plugin's name. Lemon Studio choice where FL was not measured: the name follows the plugin. One undo step, "Replace
-/// channel" (`control::edit_app`): the channel takes a new id, so its old instrument, kept by the old one's
+/// channel" (`Command::ReplaceInstrument`): the channel takes a new id, so its old instrument, kept by the old one's
 /// (`Plugins::keep`), comes back with an undo and the new one with a redo (`control::host`).
 pub fn replace_generator(app: &mut App, index: usize, row: usize) -> Option<String> {
-    crate::control::edit_app(app, crate::history::REPLACE_CHANNEL, crate::control::command::Region::Project, |app| replace_generator_now(app, index, row))
-}
-
-fn replace_generator_now(app: &mut App, index: usize, row: usize) -> Option<String> {
-    let d = app.plugins.available.get(index)?.desc.clone();
-    app.state.project.channels.get(row)?;
-    let sampler = d.name == crate::plugins::LEMON_SAMPLER && crate::project_plugins::is_builtin(&d);
-    app.plugins.keep(row);
-    app.plugins.drop_key(row);
-    app.state.hosted_rows.retain(|&r| r != row);
-    app.transport.set_instruments(app.plugins.instruments());
+    use crate::control::command::Command;
+    let d = app.state.session.plugins.available.get(index)?.desc.clone();
     let s = &mut app.state;
-    let ch = &mut s.project.channels[row];
-    ch.plugin_state = None;
-    // A new id at once, before the new instance is hosted and takes its channel's.
-    ch.id = os_model::Id::NONE;
-    s.control.settle(&mut s.project);
-    let ch = &mut s.project.channels[row];
-    if sampler {
-        ch.kind = os_model::ChannelKind::Sampler;
-        ch.plugin = None;
-        ch.clear_sample();
-        ch.name = Some(d.name.clone());
-        s.pending_open = Some(row);
-    } else {
-        ch.kind = os_model::ChannelKind::Plugin;
-        ch.plugin = Some(crate::osc3::file_name(&d.name).to_string());
-        ch.name = Some(d.name.clone());
-        // A Lemon Trio channel's sample is its custom shape's (spec: plugins/lemon-3x-osc.md §6): the new instance has
-        // none, so neither does the channel.
-        if crate::osc3::is_osc3(ch) {
-            ch.sample_path = None;
-        }
-        s.pending_plugin = Some((row, index));
-    }
-    s.piano.dirty = true;
+    let sampler = d.name == crate::plugins::LEMON_SAMPLER && crate::project_plugins::is_builtin(&d);
+    let channel = s.session.project.channels.get(row)?.id.0;
+    let c = Command::ReplaceInstrument { channel, plugin: (!sampler).then(|| d.name.clone()) };
+    let id = match crate::control_ui::command(s, crate::history::REPLACE_CHANNEL, None, vec![c]) {
+        Ok(r) => r.first().and_then(|v| v["channel"].as_u64())? as u32,
+        Err(e) => return Some(e),
+    };
+    open_hosted(s, id, row, sampler, index);
     s.selected_channel = row;
     s.rack.select_only(row);
     Some(format!("Replaced with {}", d.name))
@@ -681,7 +672,7 @@ mod tests {
     #[test]
     fn factory_folders_are_organized_on_first_install() {
         let root=std::env::temp_dir().join(format!("lemon-factory-layout-{}",std::process::id()));
-        let mut app=App::new(None);app.plugins=crate::plugins::Plugins::builtins();app.state.plugdb.rebuild(&app.plugins);
+        let mut app=App::new(None);app.plugins=crate::plugins::Plugins::builtins();app.state.plugdb.rebuild(&app.state.session.plugins);
         for(effect,list)in[(false,&app.state.plugdb.lists.gens),(true,&app.state.plugdb.lists.fx)] {
             let dir=root.join(if effect{"Effects"}else{"Instruments"});sync_folder(&dir,list,effect).unwrap();sync_folder(&dir,list,effect).unwrap();let groups=folder_groups(&dir).unwrap();
             assert!(!groups.contains_key("Unsorted"),"Every factory plugin needs a folder: {groups:?}");
@@ -701,7 +692,7 @@ mod tests {
         let mut app = App::new(None);
         app.plugins = crate::plugins::Plugins::builtins();
         app.plugins.effects.push(db::fake("Third party effect", os_host::Kind::Effect));
-        app.state.plugdb.rebuild(&app.plugins);
+        app.state.plugdb.rebuild(&app.state.session.plugins);
         let list = &app.state.plugdb.lists.fx;
         let stock = |name: &str| list.iter().find(|entry| entry.name == name).unwrap();
         let phase = stock("ML Phase");
@@ -746,7 +737,7 @@ mod tests {
         let mut app=App::new(None);
         app.plugins.effects.push(db::fake("A Test Effect",os_host::Kind::Effect));
         app.plugins.available.push(db::fake("A Test Instrument",os_host::Kind::Instrument));
-        app.state.plugdb.rebuild(&app.plugins);
+        app.state.plugdb.rebuild(&app.state.session.plugins);
         for effect in [true,false] {
             let dir=root.join(if effect {"Effects"} else {"Instruments"});
             let list=if effect {&app.state.plugdb.lists.fx} else {&app.state.plugdb.lists.gens};
@@ -771,7 +762,7 @@ mod tests {
             assert!(!source.exists() && !moved.exists());
         }
         app.plugins.effects.push(db::fake("New Scan Effect",os_host::Kind::Effect));
-        app.state.plugdb.rebuild(&app.plugins);
+        app.state.plugdb.rebuild(&app.state.session.plugins);
         sync_folder(&root.join("Effects"),&app.state.plugdb.lists.fx,true).unwrap();
         let groups=folder_groups(&root.join("Effects")).unwrap();
         let new=app.state.plugdb.lists.fx.iter().find(|e|e.name=="New Scan Effect").unwrap();
@@ -793,7 +784,7 @@ mod tests {
         let mut app = App::new(None);
         crate::prefs::set_text("fl_effect_groups", &serde_json::to_string(&groups).unwrap());
         for name in ["CLA-2A Mono", "Root Effect"] { app.plugins.effects.push(db::fake(name, os_host::Kind::Effect)); }
-        app.state.plugdb.rebuild(&app.plugins);
+        app.state.plugdb.rebuild(&app.state.session.plugins);
         let menu = crate::mixer::effect_menu(&app.state, 3, 0.0, 0.0);
         let go = menu.items.iter().find(|r|r.label=="00 GO TO").unwrap();
         assert!(matches!(go.children[0].cmd, Cmd::Plugin(PlugCmd::Effect{slot:Some(3),..})));
@@ -809,7 +800,7 @@ mod tests {
 
     #[test]
     fn native_default_tree_contains_every_shipped_effect() {
-        let mut app=App::new(None);app.plugins=crate::plugins::Plugins::builtins();app.state.plugdb.rebuild(&app.plugins);
+        let mut app=App::new(None);app.plugins=crate::plugins::Plugins::builtins();app.state.plugdb.rebuild(&app.state.session.plugins);
         let rows=items(&app.state,Target::Fx(Some(2)),false);
         assert!(rows.iter().any(|r|r.label=="Reverb and Delay"));
         assert!(!rows.iter().any(|r|r.label=="Other installed plugins"));
@@ -822,7 +813,7 @@ mod tests {
         let mut app=App::new(None);
         crate::prefs::set_text("fl_effect_groups",r#"{"Dynamics / Compression / Waves":["CLA-2A Mono"],"Dynamics / Limiting":["CLA-2A Mono"],"Vocals":["CLA-2A Mono"]}"#);
         app.plugins.effects.push(db::fake("CLA-2A Mono",os_host::Kind::Effect));
-        app.state.plugdb.rebuild(&app.plugins);
+        app.state.plugdb.rebuild(&app.state.session.plugins);
         let original=crate::mixer::effect_menu(&app.state,4,150.0,150.0);
         let parent=original.items.iter().position(|r|r.label=="Dynamics").unwrap();
         let mut canvas=os_ui::Canvas::new(1600,900,1.0).unwrap();
@@ -874,7 +865,7 @@ mod tests {
         for name in ["CLA-2A Mono", "ValhallaVintageVerb", "Uncategorized Test Effect"] {
             app.plugins.effects.push(db::fake(name, os_host::Kind::Effect));
         }
-        app.state.plugdb.rebuild(&app.plugins);
+        app.state.plugdb.rebuild(&app.state.session.plugins);
         let rows = items(&app.state, Target::Fx(Some(4)), false);
         let go = rows.iter().find(|r| r.label == "00 GO TO").expect("FL favorites folder");
         assert!(go.children.iter().any(|r| r.label == "CLA-2A Mono"));

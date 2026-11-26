@@ -48,6 +48,7 @@ fn project() -> Project {
             rack: Default::default(),
             misc: Default::default(),
             sound: Default::default(),
+            lemon_icon: None,
         }],
         patterns: vec![Pattern {
             number: 1,

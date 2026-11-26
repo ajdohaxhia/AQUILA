@@ -149,7 +149,7 @@ mod tests {
     #[test]
     fn rack_sample_routing_defaults_on_and_protects_templates() {
         let mut a = crate::app::App::new(None);
-        a.state.project = crate::app::default_project();
+        a.state.session.project = crate::locked::Locked::new(crate::app::default_project());
         a.state.project.mixer[2].name = Some("KICK".into());
         assert!(prefs::check(&prefs::ROUTE_RACK_SAMPLES));
         prefs::set_check(&prefs::ROUTE_RACK_SAMPLES, false);
@@ -181,7 +181,7 @@ mod tests {
     #[test]
     fn rack_instrument_claims_a_spare_insert_and_undoes_with_its_route() {
         let mut app = crate::app::App::new(None);
-        app.state.project = crate::app::default_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::default_project());
         let highest = mixer::inserts(&app.state);
         app.state.project.channels[0].mixer_track = highest;
         app.state.project.mixer[1].name = Some("Vocal bus".into());
@@ -204,7 +204,7 @@ mod tests {
     #[test]
     fn existing_recording_reuses_the_playlist_lane_and_its_routing() {
         let mut a = crate::app::App::new(None);
-        a.state.project = crate::app::default_project();
+        a.state.session.project = crate::locked::Locked::new(crate::app::default_project());
         let path = "recorded-vocal.wav";
         let ch = &mut a.state.project.channels[0];
         ch.kind = os_model::ChannelKind::AudioClip;

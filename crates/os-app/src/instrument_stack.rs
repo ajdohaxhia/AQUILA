@@ -54,7 +54,7 @@ pub fn edit(app:&mut App,row:usize,child:usize,action:u8)->Option<String>{
 #[cfg(test)]mod tests{
     use super::*;
     #[test]fn batch2_stack_preserves_original_state_and_restores_added_instrument(){
-        let mut a=App::new(None);a.state.project=crate::app::test_project();a.plugins.available=crate::plugins::builtin();
+        let mut a=App::new(None);a.state.session.project=crate::locked::Locked::new(crate::app::test_project());a.plugins.available=crate::plugins::builtin();
         let index=a.plugins.index_of(crate::plugins::LEMON_SAMPLER).unwrap();
         let row=crate::app::add_plugin_channel(&mut a.state.project,crate::plugins::LEMON_SAMPLER);
         a.plugins.create(row,index).unwrap();a.state.hosted_rows.push(row);a.plugins.load_sample(row,"C:/original.wav");
@@ -67,7 +67,7 @@ pub fn edit(app:&mut App,row:usize,child:usize,action:u8)->Option<String>{
         crate::rack::solo(&mut a.state,row);assert!(a.state.project.channels[row].enabled&&a.state.project.channels[child].enabled);assert!(a.state.rack.soloed.contains(&row));crate::rack::solo(&mut a.state,row);assert!(a.state.rack.soloed.is_empty());
         let mut p=a.state.project.clone();crate::project_plugins::WRAP_BUILTINS.with(|w|w.set(true));crate::project_plugins::store_hosted(&mut p,&a.plugins).unwrap();crate::project_plugins::WRAP_BUILTINS.with(|w|w.set(false));
         let file=os_flp::project::create(&p).unwrap();let loaded=os_flp::project::load(&file).unwrap();assert_eq!(os_model::instrument_stack(&loaded,row),vec![row,child]);
-        let mut b=App::new(None);b.plugins.available=crate::plugins::builtin();b.state.project=loaded;b.sync_wrapped();assert_eq!(b.plugins.sampler_path(row).as_deref(),Some("C:/original.wav"));assert_eq!(b.plugins.sampler_path(child).as_deref(),Some("C:/added-edited.wav"));
+        let mut b=App::new(None);b.plugins.available=crate::plugins::builtin();b.state.session.project=crate::locked::Locked::new(loaded);b.sync_wrapped();assert_eq!(b.plugins.sampler_path(row).as_deref(),Some("C:/original.wav"));assert_eq!(b.plugins.sampler_path(child).as_deref(),Some("C:/added-edited.wav"));
         edit(&mut a,row,child,3);assert!(a.state.project.channels[row].layer_children.is_empty());assert_eq!(a.plugins.state(child).unwrap(),saved);history::undo(&mut a.state);assert_eq!(os_model::instrument_stack(&a.state.project,row),vec![row,child]);
         let before=a.state.project.clone();assert!(add(&mut a,child,index).unwrap().contains("nested"));assert_eq!(a.state.project,before);
         crate::rack::clone_rows(&mut a,&[row]);let clone=a.state.selected_channel;let children=os_model::instrument_stack(&a.state.project,clone);assert_eq!(children.len(),2);let copy=children[1];assert_ne!(copy,child);assert_eq!(a.plugins.state(copy).unwrap(),saved);assert!(!std::sync::Arc::ptr_eq(&handle,&a.plugins.hosted[&clone].plugin));

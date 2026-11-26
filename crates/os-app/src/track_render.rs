@@ -403,7 +403,7 @@ mod tests {
     }
     fn fixture(tag: &str) -> (App, PathBuf) {
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         app.state.tempo = 120.;
         let dir = std::env::temp_dir().join(format!("lemon-track-render-{tag}-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -522,7 +522,7 @@ mod tests {
         assert_eq!(pl::clips(&app.state), source);
         assert_eq!(app.state.project.channels.len(), count);
         crate::history::redo(&mut app.state);
-        app.state.project = loaded;
+        app.state.session.project = crate::locked::Locked::new(loaded);
         pl::reorder_track(&mut app.state, 0, 3);
         let row = app
             .state

@@ -697,7 +697,7 @@ mod tests {
 
     fn fixture() -> App {
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         app.state.project.play_truncated = true;
         app.state.project.channels[0].name = Some("Low & <keys>".into());
         app.state.project.patterns = vec![Pattern {

@@ -578,18 +578,18 @@ pub fn add_instrument_at(app:&mut App,index:usize,row:u16)->Option<String>{
     let sampler = app.plugins.available[index].desc.name == crate::plugins::LEMON_SAMPLER && crate::project_plugins::is_builtin(&app.plugins.available[index].desc);
     crate::history::add_channel(&mut app.state, (!sampler).then_some(index), None);
     let result=crate::plugin_menu::add_generator_for_playlist(app,index);
-    if app.state.project.channels.len()==count{app.state.history.end_sequence_named(previous,"Insert instrument track");return result;}
+    if app.state.project.channels.len()==count{crate::history::end_sequence(&mut app.state, previous,"Insert instrument track");return result;}
     let s=&mut app.state;let ch=s.selected_channel;
     let n=mixer::add_track(s,None);
     let name=pl::track_info(s,row).and_then(|t|t.name.clone()).unwrap_or_else(||crate::rack::channel_name(s,ch));let color=pl::track_info(s,row).and_then(|t|t.color).or(s.project.channels[ch].color);
     if let Some(m)=mixer::track_mut(s,n){m.name=Some(name.clone());m.color=color;}
     s.project.channels[ch].mixer_track=n;
     bind(s,row,n);let arr=pl::arr_mut(s);let number=arr.number;arr.tracks[row as usize].name=Some(name);arr.tracks[row as usize].color=color;
-    s.project.instrument_lanes.push((s.project.channels[ch].index,number,row,s.pattern.max(1)));
+    let instrument=s.project.channels[ch].index;let pat=s.pattern.max(1);s.project.instrument_lanes.push((instrument,number,row,pat));
     if active(s){pl::arr_mut(s).tracks[row as usize].mode=os_model::PlaylistTrackMode::Instrument;}
     s.playlist.track=row;s.selected_mixer=n;
-    s.history.wrap_attached_instrument(snapshot,n,selected);
-    s.history.end_sequence_named(previous,"Insert instrument track");
+    crate::history::wrap_attached_instrument(s, snapshot,n,selected);
+    crate::history::end_sequence(s, previous,"Insert instrument track");
     clear(s);s.playlist_scroll.1=pl::Rows::new(s).top(row);app.invalidate();result
 }
 
@@ -603,9 +603,9 @@ pub fn insert_on_lane(app:&mut App,index:usize,n:u16,row:u16)->Option<String>{
     let result=crate::plugin_menu::add_generator_for_playlist(app,index);
     let s=&mut app.state;let ch=s.selected_channel;s.project.channels[ch].mixer_track=n;
     bind(s,row,n);let arr=pl::arr_mut(s).number;
-    s.project.instrument_lanes.push((s.project.channels[ch].index,arr,row,s.pattern.max(1)));
+    let instrument=s.project.channels[ch].index;let pat=s.pattern.max(1);s.project.instrument_lanes.push((instrument,arr,row,pat));
     if active(s){pl::arr_mut(s).tracks[row as usize].mode=os_model::PlaylistTrackMode::Instrument;}
-    s.selected_mixer=n;s.history.end_sequence_named(previous,"Insert instrument on mixer track");app.invalidate();result
+    s.selected_mixer=n;crate::history::end_sequence(s, previous,"Insert instrument on mixer track");app.invalidate();result
 }
 pub fn piano(app:&mut App,row:u16,right_click:bool)->Option<String>{
     if !active(&app.state){return crate::playlist_tracks::piano(app,row,right_click);}
@@ -630,7 +630,7 @@ mod tests {
     use crate::app::Action;
     use os_model::{Clip, MixerTrack, PlaylistTrack};
     fn app()->App{
-        let mut a=App::new(None);a.state.project=crate::app::test_project();
+        let mut a=App::new(None);a.state.session.project=crate::locked::Locked::new(crate::app::test_project());
         a.state.project.mixer=(0..8).map(MixerTrack::new).collect();
         let arr=pl::arr_mut(&mut a.state);arr.clips.clear();arr.tracks=(1..=pl::TRACKS).map(|n|PlaylistTrack::new(n.into())).collect();
         a.state.project.instrument_lanes.clear();a.state.project.patterns.iter_mut().for_each(|p|p.notes.clear());
@@ -644,7 +644,7 @@ mod tests {
     }
     #[test]
     fn separator_is_visual_and_existing_lane_insertion_is_one_undo(){
-        let mut a=app();a.plugins=crate::plugins::Plugins::builtins();a.state.plugdb.rebuild(&a.plugins);
+        let mut a=app();a.plugins=crate::plugins::Plugins::builtins();a.state.plugdb.rebuild(&a.state.session.plugins);
         a.state.project.mixer[6].separator=true;toggle(&mut a);
         let row=lane(&a.state,6).expect("separator remains a normal track");
         assert!(!projection(&a.state).buses.contains(&6));assert!(projection(&a.state).buses.contains(&4));
@@ -716,7 +716,7 @@ mod tests {
     }
     #[test]
     fn attached_instrument_is_one_undo_action_and_survives_detach_and_file_roundtrip(){
-        let mut a=app();a.plugins=crate::plugins::Plugins::builtins();a.state.plugdb.rebuild(&a.plugins);toggle(&mut a);
+        let mut a=app();a.plugins=crate::plugins::Plugins::builtins();a.state.plugdb.rebuild(&a.state.session.plugins);toggle(&mut a);
         pl::arr_mut(&mut a.state).tracks[1].folder=true;clear(&a.state);
         let i=a.plugins.available.iter().position(|p|p.desc.name==crate::plugins::LEMON_SAMPLER).unwrap();
         let before=a.state.project.clone();let steps=a.state.history.done();
@@ -728,7 +728,7 @@ mod tests {
         assert_eq!(crate::history::redo(&mut a.state).as_deref(), Some("Insert instrument track"));assert_eq!(a.state.project,after);
         let mut file=os_flp::project::create(&a.state.project).unwrap();crate::layout::write_project_layout(&mut file,crate::layout::project_snapshot(&a.state,&a.plugins));
         let loaded=os_flp::project::load(&file).unwrap();assert_eq!(loaded.arrangement().unwrap().tracks[row as usize].attached_mixer,Some(n));
-        let mut reopened=app();reopened.state.project=loaded;reopened.state.file=Some(file);crate::layout::restore_project_layout(&mut reopened.state);
+        let mut reopened=app();reopened.state.session.project=crate::locked::Locked::new(loaded);reopened.state.file=Some(file);crate::layout::restore_project_layout(&mut reopened.state);
         assert!(active(&reopened.state));assert_eq!(lane(&reopened.state,n),Some(row));
         assert_eq!(full_strip(&reopened.state),full_strip(&a.state));
         toggle(&mut reopened);assert_eq!(pl::track_info(&reopened.state,row).unwrap().attached_mixer,Some(n));
@@ -1016,7 +1016,7 @@ mod tests {
     }
     #[test]
     fn ordinary_playlist_buttons_are_opt_in_and_instrument_insertion_is_undoable(){
-        let mut a=app();a.plugins=crate::plugins::Plugins::builtins();a.state.plugdb.rebuild(&a.plugins);
+        let mut a=app();a.plugins=crate::plugins::Plugins::builtins();a.state.plugdb.rebuild(&a.state.session.plugins);
         a.state.z=vec![Win::Playlist];a.state.wins[Win::Playlist.slot().unwrap()].maxed=true;
         assert!(!crate::playlist_tracks::enabled());let mut c=os_ui::Canvas::new(1440,900,1.).unwrap();a.paint(&mut c,None);
         assert!(!a.hits.iter().any(|h|matches!(h.action,Action::Mix(mixer::MHit::AttachedPiano(_)|mixer::MHit::AttachedRecord(_)))));

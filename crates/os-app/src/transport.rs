@@ -2926,7 +2926,7 @@ mod tests {
     #[test]
     fn playlist_release_checks_pattern_preview_uses_existing_instrument_and_finishes() {
         let mut app = crate::app::App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         app.state.tempo = 120.0;
         let row = 3;
         let channel = &mut app.state.project.channels[row];
@@ -3469,7 +3469,7 @@ mod tests {
     fn a_pattern_switch_counts_bars_on_the_old_patterns_grid() {
         let mut project = switch_project();
         // Pattern 4 in 3/4 from its start: bars of 288 ticks.
-        let marker = os_model::TimeMarker { position: 0, kind: os_model::TimeMarker::SIGNATURE, name: String::new(), numerator: 3, denominator: 4, scale: 0, root: 0, flag: 0, scale_index: -1, color: None, linear_us: None };
+        let marker = os_model::TimeMarker { position: 0, kind: os_model::TimeMarker::SIGNATURE, name: String::new(), numerator: 3, denominator: 4, scale: 0, root: 0, flag: 0, scale_index: -1, color: None, linear_us: None, id: os_model::Id::NONE };
         project.patterns[1].markers.push(marker);
         assert_eq!(bar_start(&project, 4, 4 * 288 + 50), 4 * 288);
         assert_eq!(bar_start(&project, 2, 4 * 288 + 50), 3 * 384);

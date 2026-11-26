@@ -165,7 +165,7 @@ pub fn validate(p: &os_model::Project) -> Result<(), String> {
 fn store(app: &mut App) -> Result<(),String> {
     app.mixer_tick();
     app.store_builtin_states();
-    crate::project_plugins::store_hosted(&mut app.state.project, &app.plugins)
+    crate::project_plugins::store_hosted(&mut app.state.session.project, &app.state.session.plugins)
 }
 fn fork(s: &mut State, l: Location, dst: u16) -> Result<u16, String> {
     let ClipSource::Channel(id) = clip(&s.project, l).ok_or("Clip no longer exists")?.source else {
@@ -655,7 +655,7 @@ mod tests {
         os_engine::wav::write_f32_stereo(&mut std::fs::File::create(&path).unwrap(), 48000, &audio)
             .unwrap();
         let mut a = App::new(None);
-        a.state.project = crate::app::test_project();
+        a.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         a.state.project.tempo = Some(120.);
         a.state.tempo = 120.;
         a.plugins.available = crate::plugins::builtin();

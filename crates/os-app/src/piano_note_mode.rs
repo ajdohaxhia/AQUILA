@@ -56,7 +56,7 @@ pub fn paint(ui:&mut Ui,s:&State,tab:Rect){
 mod tests {
     use super::*;
     use crate::{app::{App,Win},piano_tools};
-    fn app()->App{let mut a=App::new(None);a.state.project=crate::app::test_project();a.state.selected_channel=0;a}
+    fn app()->App{let mut a=App::new(None);a.state.session.project=crate::locked::Locked::new(crate::app::test_project());a.state.selected_channel=0;a}
     #[test]
     fn note_modes_draw_color_slide_portamento_and_round_trip(){
         let mut a=app();

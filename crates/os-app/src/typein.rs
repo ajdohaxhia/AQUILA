@@ -39,6 +39,84 @@ pub enum Target {
     Tempo,
 }
 
+/// `t` as the session's own target (`os_session::typein::Target`): the same box. AQUILA's `SampleTempo` has no
+/// session target (a sample's tempo is the interface's), `None`.
+/// The session's knob for an interface knob: `None` for the ones only the interface has (`Varispeed`, `ChanPitch`, `Strip`).
+fn knob_to_session(k: crate::knobs::KnobId) -> Option<os_session::knob_id::KnobId> {
+    use crate::knobs::KnobId as A;
+    use os_session::knob_id::KnobId as S;
+    Some(match k {
+        A::MasterVol => S::MasterVol,
+        A::MasterPitch => S::MasterPitch,
+        A::MixPan(t) => S::MixPan(t),
+        A::MixSep(t) => S::MixSep(t),
+        A::SlotMix(t, s) => S::SlotMix(t, s),
+        A::Send(a, b) => S::Send(a, b),
+        A::ChanVol(c) => S::ChanVol(c),
+        A::ChanPan(c) => S::ChanPan(c),
+        A::Swing => S::Swing,
+        A::Eq(t, b, s) => S::Eq(t, b, s),
+        A::MidiOut(i, k) => S::MidiOut(i, k),
+        A::Member(t, s, id, w) => S::Member(t, s, id, w),
+        _ => return None,
+    })
+}
+
+/// The interface's knob for a session knob.
+fn knob_from_session(k: os_session::knob_id::KnobId) -> crate::knobs::KnobId {
+    use crate::knobs::KnobId as A;
+    use os_session::knob_id::KnobId as S;
+    match k {
+        S::MasterVol => A::MasterVol,
+        S::MasterPitch => A::MasterPitch,
+        S::MixPan(t) => A::MixPan(t),
+        S::MixSep(t) => A::MixSep(t),
+        S::SlotMix(t, s) => A::SlotMix(t, s),
+        S::Send(a, b) => A::Send(a, b),
+        S::ChanVol(c) => A::ChanVol(c),
+        S::ChanPan(c) => A::ChanPan(c),
+        S::Swing => A::Swing,
+        S::Eq(t, b, s) => A::Eq(t, b, s),
+        S::MidiOut(i, k) => A::MidiOut(i, k),
+        S::Member(t, s, id, w) => A::Member(t, s, id, w),
+        _ => A::MasterVol,
+    }
+}
+
+pub fn to_session(t: Target) -> Option<os_session::typein::Target> {
+    use os_session::typein::Target as S;
+    use os_session::typein::LatUnit as L;
+    Some(match t {
+        Target::SampleTempo(_) => return None,
+        Target::Knob(k) => S::Knob(knob_to_session(k)?),
+        Target::Fader(n) => S::Fader(n),
+        Target::Param(key, i) => S::Param(key, i),
+        Target::Latency(n, out, u) => S::Latency(n, out, match u { LatUnit::Ms => L::Ms, LatUnit::Samples => L::Samples, LatUnit::Beats => L::Beats }),
+        Target::RackTrack(r) => S::RackTrack(r),
+        Target::RackLed(r) => S::RackLed(r),
+        Target::Member(m, k, id, w) => S::Member(m, k, id, w),
+        Target::MemberParam(m, k, id, i) => S::MemberParam(m, k, id, i),
+        Target::Tempo => S::Tempo,
+    })
+}
+
+/// `t` as the interface's own target: every session target is one of AQUILA's.
+pub fn from_session(t: os_session::typein::Target) -> Target {
+    use os_session::typein::Target as S;
+    use os_session::typein::LatUnit as L;
+    match t {
+        S::Knob(k) => Target::Knob(knob_from_session(k)),
+        S::Fader(n) => Target::Fader(n),
+        S::Param(key, i) => Target::Param(key, i),
+        S::Latency(n, out, u) => Target::Latency(n, out, match u { L::Ms => LatUnit::Ms, L::Samples => LatUnit::Samples, L::Beats => LatUnit::Beats }),
+        S::RackTrack(r) => Target::RackTrack(r),
+        S::RackLed(r) => Target::RackLed(r),
+        S::Member(m, k, id, w) => Target::Member(m, k, id, w),
+        S::MemberParam(m, k, id, i) => Target::MemberParam(m, k, id, i),
+        S::Tempo => Target::Tempo,
+    }
+}
+
 /// A member's parameter as the hosted instance's (`Target::Param`), while its effect is loaded.
 fn resolved(s: &State, t: Target) -> Option<Target> {
     match t {

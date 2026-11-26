@@ -460,7 +460,7 @@ mod tests {
         let bytes=os_flp::project::create(&p).unwrap().to_bytes().unwrap();let zip=dir.join("portable.zip");write_zip(&zip,&bytes,&pack,&AtomicU64::new(0),&AtomicU64::new(0)).unwrap();
         let file=unzip(&zip,None,&AtomicU64::new(0),&AtomicU64::new(0)).unwrap();let mut back=os_flp::project::load(&os_flp::FlpFile::parse(&std::fs::read(&file).unwrap()).unwrap()).unwrap();assert_eq!(back.audio_edits,histories);
         let d=&mut back.vocal_edits[0];d.source=file.parent().unwrap().join(&d.source).to_string_lossy().into_owned();d.rendered=file.parent().unwrap().join(&d.rendered).to_string_lossy().into_owned();let playback=d.rendered.clone();back.channels.iter_mut().find(|c|c.index==ch).unwrap().sample_path=Some(playback);
-        app.state.project=back;assert!(crate::audio_edits::pending(&app.state.project));crate::audio_edits::tests::render(&mut app);crate::audio_edits::history(&mut app,ch,true,false);assert_eq!(app.state.project.vocal_edits[0].notes[0].shift,2.);crate::audio_edits::tests::render(&mut app);
+        app.state.session.project=crate::locked::Locked::new(back);assert!(crate::audio_edits::pending(&app.state.project));crate::audio_edits::tests::render(&mut app);crate::audio_edits::history(&mut app,ch,true,false);assert_eq!(app.state.project.vocal_edits[0].notes[0].shift,2.);crate::audio_edits::tests::render(&mut app);
     }
 
     #[test]
@@ -515,7 +515,7 @@ mod tests {
         std::fs::write(d.join("one/Kick.wav"), &wav).unwrap();
         std::fs::write(d.join("two/Kick.wav"), &wav[..wav.len() - 2]).unwrap();
         let mut app = App::new(None);
-        app.state.project = crate::app::default_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::default_project());
         let rows: Vec<usize> = (0..4).map(|_| crate::app::add_channel(&mut app.state.project)).collect();
         let one = d.join("one/Kick.wav").to_string_lossy().into_owned();
         let two = d.join("two/Kick.wav").to_string_lossy().into_owned();

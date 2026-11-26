@@ -744,7 +744,7 @@ mod tests {
     use crate::ai_commands::call;
     fn app() -> App {
         let mut a = App::new(None);
-        a.state.project = crate::app::test_project();
+        a.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         a.state.dialogs.clear();
         a.state.pattern = 1;
         a

@@ -327,6 +327,7 @@ pub fn command(app: &mut App, c: Command) {
         app.invalidate();
         return;
     }
+    let effects = app.state.session.plugins.effects.clone();
     let Some(f) = form_mut(&mut app.state) else {
         return;
     };
@@ -392,7 +393,7 @@ pub fn command(app: &mut App, c: Command) {
             let mut next = old.clone();
             match c {
                 Command::Choose(index) => {
-                    let Some(a) = app.plugins.effects.get(index) else {
+                    let Some(a) = effects.get(index) else {
                         return;
                     };
                     if a.desc.id == core::ID {
@@ -682,17 +683,9 @@ fn open_child(app: &mut App) {
     };
     let pos = crate::plugin_window::first_position(owner, scale, true);
     #[cfg(target_os = "linux")]
-    let w = crate::plugin_window::FrameWindow::with_zoom(
-        owner,
-        info.clone(),
-        (560., 437.),
-        pos,
-        true,
-        1.,
-    );
+    let w = crate::plugin_window::new_frame(owner, info.clone(), (560., 437.), 1., pos, true);
     #[cfg(not(target_os = "linux"))]
-    let w =
-        crate::plugin_window::FrameWindow::new(owner, info.clone(), (560., 437.), scale, pos, true);
+    let w = crate::plugin_window::new_frame(owner, info.clone(), (560., 437.), scale, pos, true);
     match w.and_then(|w| {
         w.set_strip(false);
         let size = plugins::editor_action(
@@ -702,7 +695,7 @@ fn open_child(app: &mut App) {
                 scale: w.scale(),
             },
         )?;
-        let link = plugins::fit_editor(&w, size, w.scale());
+        let link = crate::editor_host::fit_editor(&w, size, w.scale());
         w.raise();
         Ok((w, link))
     }) {

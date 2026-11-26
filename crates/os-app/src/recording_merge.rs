@@ -150,7 +150,7 @@ mod tests {
     fn app()->App {
         crate::settings_file::set_flag("rec_automation",true);crate::settings_file::set_flag("rec_filter_explicit",true);
         crate::settings_file::set_flag("automation_record_latch",false);crate::settings_file::set_flag("automation_record_separate_clips",false);
-        let mut app=App::new(None);app.state.project=crate::app::test_project();
+        let mut app=App::new(None);app.state.session.project=crate::locked::Locked::new(crate::app::test_project());
         app.state.project.patterns[0].notes.push(os_model::Note::step(0,0));
         pl::arr_mut(&mut app.state).clips=vec![Clip::new(0,768,3,ClipSource::Pattern(1))];
         app.state.rec.armed=true;app
@@ -177,7 +177,7 @@ mod tests {
         assert_eq!(app.state.project.automation(ch),Some(&before));assert_eq!(placed(&app.state,t)[0].end(),288);
         crate::history::redo(&mut app.state);assert_eq!(placed(&app.state,t)[0].end(),384);
         let bytes=os_flp::project::create(&app.state.project).unwrap().to_bytes().unwrap();
-        app.state.project=os_flp::project::load(&os_flp::FlpFile::parse(&bytes).unwrap()).unwrap();
+        app.state.session.project=crate::locked::Locked::new(os_flp::project::load(&os_flp::FlpFile::parse(&bytes).unwrap()).unwrap());
         gesture(&mut app,t,480,528,0.6);finish(&mut app);
         assert_eq!(placed(&app.state,t).len(),1);assert_eq!(placed(&app.state,t)[0].end(),528);
     }

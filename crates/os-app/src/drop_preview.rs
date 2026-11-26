@@ -64,7 +64,7 @@ mod tests {
             })
             .collect();
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         app.state.project.arrangements = vec![os_flp::project::default_arrangement()];
         app.state.project.current_arrangement = Some(0);
         app.state.z = vec![Win::Playlist];

@@ -21,7 +21,7 @@ case "${LEMON_MAC_ARCH:-$(uname -m)}" in
  *) echo 'Unsupported Mac architecture'; exit 1 ;;
 esac
 export MACOSX_DEPLOYMENT_TARGET=12.0
-cargo build --locked --release -p os-app --target "$LEMON_APP_TARGET"
+cargo build --locked --release -p lemonstudio --target "$LEMON_APP_TARGET"
 # Guard the macOS 12 deployment target against direct imports of newer tap APIs.
 APP_IMPORTS="$(nm -u "$CARGO_TARGET_DIR/$LEMON_APP_TARGET/release/lemonstudio")"
 if grep -E '(^|[[:space:]])_AudioHardware(Create|Destroy)ProcessTap$' <<< "$APP_IMPORTS"; then
@@ -29,6 +29,6 @@ if grep -E '(^|[[:space:]])_AudioHardware(Create|Destroy)ProcessTap$' <<< "$APP_
     exit 1
 fi
 cargo run --locked --release -p bundle-app
-APP="$CARGO_TARGET_DIR/bundled/ML Studio.app"
+APP="$CARGO_TARGET_DIR/bundled/AQUILA.app"
 codesign --verify --deep --strict "$APP"
 python3 "$ROOT/packaging/mac/package-release.py" "$APP"

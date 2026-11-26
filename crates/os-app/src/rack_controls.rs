@@ -87,7 +87,7 @@ mod tests {
         use crate::{playlist::Mark, rack::{self, RCmd}, views::rack as view};
         for vintage in [false, true] {
             let mut app = App::new(None);
-            app.state.project = crate::app::default_project();
+            app.state.session.project = crate::locked::Locked::new(crate::app::default_project());
             app.state.vintage_2005 = vintage;
             app.state.z = vec![Win::ChannelRack];
             app.state.show_browser = false;
@@ -152,7 +152,7 @@ mod tests {
     fn rack_additions_fit_channels_preserve_manual_sizes_and_cap_to_workspace() {
         use crate::rack::{self,AutoResize,RCmd};
         for vintage in [false,true] {
-            let mut app=App::new(None);app.state.project=crate::app::test_project();app.state.vintage_2005=vintage;
+            let mut app=App::new(None);app.state.session.project=crate::locked::Locked::new(crate::app::test_project());app.state.vintage_2005=vintage;
             app.state.z=vec![Win::ChannelRack];app.state.show_browser=false;
             let mut canvas=os_ui::Canvas::new(1600,1000,1.).unwrap();app.paint(&mut canvas,None);
             app.state.rack_pos=(300.,700.);app.state.rack_size=(900.,200.);
@@ -177,7 +177,7 @@ mod tests {
     }
     #[test]
     fn selected_rack_drag_routes_together_and_escape_cancels() {
-        let mut app=App::new(None);app.state.project=crate::app::test_project();
+        let mut app=App::new(None);app.state.session.project=crate::locked::Locked::new(crate::app::test_project());
         app.state.z=vec![Win::Mixer,Win::ChannelRack];app.state.rack.sel=[0,1].into();
         let original=app.state.project.clone();
         let mut canvas=os_ui::Canvas::new(1920,1080,1.25).unwrap();app.paint(&mut canvas,None);
@@ -197,7 +197,7 @@ mod tests {
     #[test]
     fn selected_rack_routes_picker_wheel_cancel_undo_and_roundtrip() {
         use crate::{dialog::{Body,DHit},playlist::Cmd,rack::RCmd};
-        let mut app=App::new(None);app.state.project=crate::app::test_project();app.state.z=vec![Win::ChannelRack];app.state.show_browser=false;
+        let mut app=App::new(None);app.state.session.project=crate::locked::Locked::new(crate::app::test_project());app.state.z=vec![Win::ChannelRack];app.state.show_browser=false;
         app.state.rack.select_only(0);
         let mut canvas=os_ui::Canvas::new(1600,1000,1.).unwrap();app.paint(&mut canvas,None);
         let selector=app.hits.iter().find(|h|h.action==Action::RackSelect(1)).unwrap().rect;
@@ -244,7 +244,7 @@ mod tests {
     }
     #[test]
     fn picture_batch_group_controls_and_octave_wheel(){
-        let mut a=App::new(None);a.state.project=crate::app::test_project();a.state.rack.sel=[0,1].into();
+        let mut a=App::new(None);a.state.session.project=crate::locked::Locked::new(crate::app::test_project());a.state.rack.sel=[0,1].into();
         a.state.project.channels[0].misc.pitch_range=24;a.state.project.channels[1].misc.pitch_range=12;
         a.state.project.channels[0].pitch_cents=0;a.state.project.channels[1].pitch_cents=-1200;
         a.state.z=vec![Win::ChannelRack];a.state.show_browser=false;
@@ -269,7 +269,7 @@ mod tests {
     }
     #[test]
     fn picture_batch_layout_and_preset_drop(){
-        let mut a=App::new(None);a.state.project=crate::app::test_project();a.plugins.available=crate::plugins::builtin();a.sync_samplers(None);
+        let mut a=App::new(None);a.state.session.project=crate::locked::Locked::new(crate::app::test_project());a.plugins.available=crate::plugins::builtin();a.sync_samplers(None);
         a.state.z=vec![Win::ChannelRack];a.state.show_browser=true;a.state.rack_pos=(340.,120.);
         let mut c=os_ui::Canvas::new(1280,900,1.).unwrap();a.paint(&mut c,None);
         let r=a.hits.iter().find(|h|h.action==Action::ChannelSelect(0)).unwrap().rect;

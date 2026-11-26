@@ -762,7 +762,7 @@ mod tests {
     }
 
     #[test] fn batch2_channel_controls_and_transfer_preserve_notes_and_undo(){
-        let mut a=App::new(None);a.state.project=crate::app::test_project();a.state.selected_channel=0;
+        let mut a=App::new(None);a.state.session.project=crate::locked::Locked::new(crate::app::test_project());a.state.selected_channel=0;
         let mut n=note(37,93,64);n.velocity=81;n.pan=19;n.mod_x=55;n.fine_pitch=123;
         piano::pattern_mut(&mut a.state).notes=vec![n,note(200,24,67)];
         a.state.piano.select(a.state.pattern,0,vec![0]);
@@ -811,7 +811,7 @@ mod tests {
     fn piano_channel_event_clipboard_isolated_undo_and_ppq() {
         use winit::keyboard::{Key,NamedKey};
         use os_model::ControlPoint as C;
-        let mut a=App::new(None);a.state.project=crate::app::test_project();
+        let mut a=App::new(None);a.state.session.project=crate::locked::Locked::new(crate::app::test_project());
         a.state.z=vec![crate::app::Win::PianoRoll];
         a.state.piano.event_focus=true;a.state.piano.lane=piano::Lane::ChanVolume;
         let notes=vec![Note::step(0,0),Note::step(1,0)];

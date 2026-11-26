@@ -241,7 +241,7 @@ fn detach_keeps_the_article_and_main_workspace_independent() {
 #[test]
 fn spotlight_reveals_control_and_returns_to_the_correct_window() {
     let mut app = App::new(None);
-    app.state.project = crate::app::test_project();
+    app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
     app.state.z.clear();
     let index = results("warp audio")[0];
     let mut canvas = Canvas::new(1280, 800, 1.).unwrap();

@@ -623,7 +623,7 @@ mod tests {
         os_engine::wav::write_f32_stereo(&mut std::fs::File::create(&file).unwrap(), rate, &audio)
             .unwrap();
         let mut app = App::new(None);
-        app.state.project = crate::app::default_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::default_project());
         let i = pl::add_audio_clip(&mut app.state, file.to_str().unwrap(), 2, 0).unwrap();
         let mut other = pl::clips(&app.state)[i].clone();
         other.track = 3;

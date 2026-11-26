@@ -18,6 +18,10 @@
 
 use std::sync::{Mutex, OnceLock}; // This code is a part of L e m o n S t u d i o.
 
+/// The session's settings store, for the code (and the suites) that take one.
+#[allow(unused_imports)]
+pub(crate) use os_session::settings_file::SettingsStore;
+
 /// The file's lines as read: lines of keys this version does not know are written back as they were.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct Store {
@@ -36,6 +40,12 @@ impl Store {
     /// The value of `key`: its last line's.
     pub(crate) fn get(&self, key: &str) -> Option<&str> {
         self.lines.iter().rev().filter_map(|l| l.split_once('=')).find(|(k, _)| k.trim() == key).map(|(_, v)| v.trim())
+    }
+
+    /// The pairs held, for the session's view of a test store (`store`).
+    #[cfg(test)]
+    pub(crate) fn pairs(&self) -> Vec<(String, String)> {
+        self.lines.iter().filter_map(|l| l.split_once('=')).map(|(k, v)| (k.trim().to_string(), v.trim().to_string())).collect()
     }
 
     /// Sets `key` to `value`: its first line is replaced (and any later one dropped), or a line is added at the end.
@@ -66,6 +76,18 @@ static STORE: OnceLock<Mutex<Store>> = OnceLock::new();
 thread_local! {
     /// Tests run in parallel threads: each has its own settings, and none reads or writes the user folder.
     static TEST: std::cell::RefCell<Store> = std::cell::RefCell::new(Store::default());
+    /// The session's view of `TEST` (`store`), made on its first ask and kept in step by `write`.
+    static SESSION_STORE: std::cell::RefCell<Option<os_session::settings_file::SettingsStore>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Tests: `key`'s new value reaches the session's store too, when one has been asked for.
+#[cfg(test)]
+fn mirror(key: &str, value: &str) {
+    SESSION_STORE.with(|slot| {
+        if let Some(st) = slot.borrow().as_ref() {
+            st.write(key, value);
+        }
+    });
 }
 
 /// Runs `f` on the settings: read from `settings.txt` the first time.
@@ -80,7 +102,10 @@ pub(crate) fn read<R>(f: impl FnOnce(&Store) -> R) -> R {
 pub(crate) fn write(key: &str, value: &str) {
     let value = value.replace(['\r', '\n'], " ");
     #[cfg(test)]
-    TEST.with(|s| s.borrow_mut().set(key, &value));
+    {
+        TEST.with(|s| s.borrow_mut().set(key, &value));
+        mirror(key, &value);
+    }
     #[cfg(not(test))]
     {
         let mut s = STORE.get_or_init(|| Mutex::new(load())).lock().unwrap_or_else(|e| e.into_inner());
@@ -106,7 +131,12 @@ pub(crate) fn write_all(pairs: &[(String, String)]) {
         changed
     };
     #[cfg(test)]
-    TEST.with(|s| set(&mut s.borrow_mut()));
+    {
+        TEST.with(|s| set(&mut s.borrow_mut()));
+        for (key, value) in pairs {
+            mirror(key, &value.replace(['\r', '\n'], " "));
+        }
+    }
     #[cfg(not(test))]
     {
         let mut s = STORE.get_or_init(|| Mutex::new(load())).lock().unwrap_or_else(|e| e.into_inner());
@@ -114,6 +144,28 @@ pub(crate) fn write_all(pairs: &[(String, String)]) {
             save(&s);
         }
     }
+}
+
+/// The session's view of the same choices (one `settings.txt`), for the code that takes a store.
+pub(crate) fn store() -> os_session::settings_file::SettingsStore {
+    #[cfg(test)]
+    let store = SESSION_STORE.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        slot.get_or_insert_with(|| {
+            let store = os_session::settings_file::SettingsStore::memory();
+            // Choices made before the session asked for its view.
+            TEST.with(|s| {
+                for (key, value) in s.borrow().pairs() {
+                    store.write(&key, &value);
+                }
+            });
+            store
+        })
+        .clone()
+    });
+    #[cfg(not(test))]
+    let store = os_session::settings_file::SettingsStore::user();
+    store
 }
 
 /// `key`'s value as text, `None` when it is not set or empty.

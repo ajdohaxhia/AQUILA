@@ -22,6 +22,7 @@ pub mod tape;
 pub mod hall;
 pub mod balance;
 pub mod chorus;
+#[cfg(feature = "editor")]
 pub mod editor;
 pub mod state_undo;
 pub mod fast_distortion;
@@ -290,6 +291,7 @@ impl<K: Kind> Plugin for SmallFx<K> {
         self.params.clone()
     }
 
+    #[cfg(feature = "editor")]
     fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
         Some(Box::new(editor::FxEditor::new(K::SPEC, self.params.clone(), self.shared.clone())))
     }
@@ -384,7 +386,8 @@ mod tests {
                     assert_eq!((s.text)(k, back), t, "{} {} {v}", s.name, set.id);
                 }
             }
-            assert!(s.name.starts_with("ML "));
+            // AQUILA brands its own plugins "ML ..."; the Lemon ones not yet migrated keep their name.
+            assert!(s.name.starts_with("ML ") || s.name.starts_with("Lemon "), "{}", s.name);
         }
         let ids = [
             <hall::LemonHall as ClapPlugin>::CLAP_ID,
@@ -472,17 +475,22 @@ mod tests {
         assert_eq!(p.settings()[0], 0);
     }
 
-    /// The factory presets (`crates/os-app/factory-presets/<name>/`, one level of category folders) list every
+    /// The factory presets (`crates/os-session/factory-presets/<name>/`, one level of category folders) list every
     /// parameter by its name, as its step count from the minimum, and hold FL's presets (spec
     /// plugins/factory-presets.md).
     #[test]
     fn factory_presets_list_every_parameter_and_hold_fls_states() {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../crates/os-app/factory-presets");
+        // AQUILA keeps the presets of the plugins it reworked in os-app and the others in os-session.
+        let roots = ["../../crates/os-app/factory-presets", "../../crates/os-session/factory-presets"]
+            .map(|r| std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(r));
         let source_name = |spec: &Spec| spec.name.replacen("ML ", "Lemon ", 1);
+        let folder = |spec: &Spec| {
+            roots.iter().map(|r| r.join(source_name(spec))).find(|d| d.is_dir()).expect("a preset folder")
+        };
         // Every preset of a plugin, as `[category/]name`.
         let all = |spec: &Spec| -> Vec<String> {
             let mut names = Vec::new();
-            for e in std::fs::read_dir(root.join(source_name(spec))).unwrap() {
+            for e in std::fs::read_dir(folder(spec)).unwrap() {
                 let e = e.unwrap();
                 let name = e.file_name().into_string().unwrap();
                 if e.file_type().unwrap().is_dir() {
@@ -497,7 +505,7 @@ mod tests {
             names
         };
         let read = |spec: &Spec, preset: &str| -> Vec<i32> {
-            let text = std::fs::read_to_string(root.join(source_name(spec)).join(format!("{preset}.ospreset"))).unwrap();
+            let text = std::fs::read_to_string(folder(spec).join(format!("{preset}.ospreset"))).unwrap();
             let mut lines = text.lines();
             assert_eq!(lines.next(), Some("OSPRESET 1"));
             let head = lines.next().unwrap();
@@ -530,7 +538,7 @@ mod tests {
         assert_eq!(read(stereo_enhancer::SPEC, "Subtle"), [0, 256, -40, -24, 1, 0, 0]);
         assert_eq!(read(transient_processor::SPEC, "Overdriven"), [120, 110, 160, 53, 2, 1, 50, 80, 1, 0]);
         assert_eq!(read(transient_processor::SPEC, "Subtle attack"), [132, 0, 80, 80, 0, 1, 0, 80, 1, 0]);
-        assert_eq!(std::fs::read_dir(root.join(source_name(transient_processor::SPEC))).unwrap().count(), 10);
+        assert_eq!(std::fs::read_dir(folder(transient_processor::SPEC)).unwrap().count(), 10);
         assert_eq!(read(chorus::SPEC, "Detune"), [40, 4375, 149, 3229, 0, 781, 587, 0, 1024, 65, 4531, 491, 0, 0]);
         assert_eq!(read(chorus::SPEC, "Ensemble"), [115, 3669, 0, 1458, 0, 0, 0, 0, 0, 0, 1719, 0, 0, 0]);
         assert_eq!(all(chorus::SPEC).len(), 8);

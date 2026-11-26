@@ -712,7 +712,7 @@ impl App {
             self.leave_project();
             let tempo = imp.tempo.unwrap_or(120.0);
             let s = &mut self.state;
-            s.project = crate::app::empty_project();
+            s.project = os_session::locked::Locked::new(crate::app::empty_project());
             s.project.ppq = ppq;
             s.project.tempo = Some(tempo);
             crate::project_info::created(s);
@@ -1144,7 +1144,7 @@ mod tests {
 
     fn test_app() -> App {
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         app.state.song_mode = false;
         app
     }

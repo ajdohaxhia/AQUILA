@@ -1,0 +1,15 @@
+[package]
+name = "lemonstudio"
+description = "AQUILA: the desktop program"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+default = ["master-assistant"]
+master-assistant = ["os-app/master-assistant"]
+private-master-assistant = ["master-assistant"]
+rt-audit = ["os-app/rt-audit"]
+
+[dependencies]
+os-app = { path = "../os-app", default-features = false }

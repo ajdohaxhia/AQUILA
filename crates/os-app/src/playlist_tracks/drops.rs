@@ -87,8 +87,8 @@ pub fn run(app: &mut App, command: Command) -> Option<String> {
             });
             let mut message=None;
             for path in paths {message=run(app,Command::Sample{path,row,tick,mode});}
-            if let Some(n)=output{app.state.history.wrap_attached_instrument(before,n,selected);}
-            app.state.history.end_sequence_named(previous,"Drop samples on track header");
+            if let Some(n)=output{crate::history::wrap_attached_instrument(&mut app.state, before,n,selected);}
+            crate::history::end_sequence(&mut app.state, previous,"Drop samples on track header");
             message
         }
         Command::Preference(mode) => { crate::prefs::set_text(KEY,&mode.min(3).to_string());app.invalidate();None }
@@ -124,8 +124,8 @@ pub fn run(app: &mut App, command: Command) -> Option<String> {
             }
             pl::arr_mut(s).tracks[row as usize].name=Some(name.clone());
             s.playlist.track=row;
-            if creates_output {s.history.wrap_attached_instrument(before,output.unwrap(),selected);}
-            s.history.end_sequence_named(previous,"Drop audio on track header");
+            if creates_output {crate::history::wrap_attached_instrument(s, before,output.unwrap(),selected);}
+            crate::history::end_sequence(s, previous,"Drop audio on track header");
             attached::clear(s);
             app.invalidate();
             Some(format!("Added {name} as {}",if mode==1{"an audio track"}else{"an audio clip"}))
@@ -200,8 +200,8 @@ pub fn instrument(app:&mut App,index:usize,row:u16,tick:u32,sample:Option<String
     s.playlist.sel=vec![clip];
     s.playlist.track=row;
     s.selected_mixer=n;
-    if creates_output {s.history.wrap_attached_instrument(before,n,selected);}
-    s.history.end_sequence_named(previous,"Drop instrument on track header");
+    if creates_output {crate::history::wrap_attached_instrument(s, before,n,selected);}
+    crate::history::end_sequence(s, previous,"Drop instrument on track header");
     s.piano.dirty=true;
     attached::clear(s);
     app.invalidate();
@@ -213,7 +213,7 @@ mod tests {
     use super::*;
     fn app() -> App {
         let mut a=App::new(None);
-        a.state.project=crate::app::default_project();
+        a.state.session.project=crate::locked::Locked::new(crate::app::default_project());
         a.state.project.arrangements.clear();
         pl::arr_mut(&mut a.state);
         a.plugins=crate::plugins::Plugins::builtins();
@@ -260,7 +260,7 @@ mod tests {
             crate::history::redo(&mut a.state).unwrap();assert_eq!(a.state.project,selected);
             let reopened=os_flp::project::load(&os_flp::project::create(&selected).unwrap()).unwrap();
             assert_eq!(reopened.instrument_lanes,selected.instrument_lanes);
-            a.state.project=reopened;assert_eq!(super::super::header_instrument(&a.state,2),Some(choices[0]));
+            a.state.session.project=crate::locked::Locked::new(reopened);assert_eq!(super::super::header_instrument(&a.state,2),Some(choices[0]));
             a.state.hosted_rows.push(choices[0]);
             a.act(Action::Mix(mixer::MHit::PlaylistInstrument(2)));assert_eq!(a.state.pending_open,Some(choices[0]));
             a.state.pending_open=None;

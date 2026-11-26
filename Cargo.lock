@@ -2485,6 +2485,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "lemonstudio"
+version = "0.0.1"
+dependencies = [
+ "os-app",
+]
+
+[[package]]
 name = "libc"
 version = "0.2.190"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3617,6 +3624,7 @@ dependencies = [
  "os-model",
  "os-native",
  "os-paths",
+ "os-session",
  "os-smf",
  "os-theme",
  "os-ui",
@@ -3744,6 +3752,7 @@ dependencies = [
  "os-dsp",
  "os-engine",
  "os-host",
+ "os-paths",
  "thiserror 2.0.21",
  "windows-sys 0.61.2",
 ]
@@ -3802,6 +3811,91 @@ dependencies = [
  "os-engine",
  "os-flp",
  "os-model",
+]
+
+[[package]]
+name = "os-session"
+version = "0.0.1"
+dependencies = [
+ "asio-sys",
+ "chrono",
+ "citrus",
+ "cpal",
+ "crossbeam-queue",
+ "ebur128",
+ "flacenc",
+ "lemon-3x-osc",
+ "lemon-balance",
+ "lemon-chop",
+ "lemon-chorus",
+ "lemon-delay",
+ "lemon-drop",
+ "lemon-drum-sampler",
+ "lemon-fast-distortion",
+ "lemon-filter",
+ "lemon-flanger",
+ "lemon-formula-controller",
+ "lemon-hall",
+ "lemon-limiter",
+ "lemon-parametric-eq-2",
+ "lemon-peak-controller",
+ "lemon-phaser",
+ "lemon-reverb",
+ "lemon-sampler",
+ "lemon-slicer",
+ "lemon-small-fx",
+ "lemon-soft-clipper",
+ "lemon-soundfont",
+ "lemon-stereo-enhancer",
+ "lemon-stereo-shaper",
+ "lemon-tape",
+ "lemon-transient-processor",
+ "lemon-vocoder",
+ "lemon-wave",
+ "libc",
+ "libloading 0.8.9",
+ "midir",
+ "ml-amp",
+ "ml-convolver",
+ "ml-de-esser",
+ "ml-frequency-shift",
+ "ml-meter",
+ "ml-multiband-delay",
+ "ml-phase",
+ "ml-pitch-shift",
+ "ml-plasma",
+ "ml-reference",
+ "ml-split",
+ "ml-time-shaper",
+ "ml-tuner",
+ "ml-vocal-tune",
+ "ml-vocoder",
+ "ml-waveshaper",
+ "mp3lame-encoder",
+ "os-clap",
+ "os-dsp",
+ "os-engine",
+ "os-flp",
+ "os-host",
+ "os-hostlink",
+ "os-model",
+ "os-native",
+ "os-paths",
+ "os-vst2",
+ "os-vst3",
+ "press",
+ "pulp-filter",
+ "pulseaudio",
+ "serde",
+ "serde_json",
+ "sha2",
+ "smith",
+ "tesla",
+ "vorbis_rs",
+ "windows 0.62.2",
+ "windows-sys 0.61.2",
+ "zbus",
+ "zip",
 ]
 
 [[package]]

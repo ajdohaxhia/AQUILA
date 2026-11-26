@@ -259,7 +259,7 @@ impl App {
                     if hosted.is_some_and(|h| h != to) {
                         self.plugins.load_sample(row, &to);
                     }
-                    if let Some(old)=self.state.project.channels[row].sample_path.as_ref(){for w in &mut self.state.project.audio_warps{if w.rendered==*old{w.rendered=to.clone();}}}
+                    if let Some(old)=self.state.project.channels[row].sample_path.clone(){for w in &mut self.state.project.audio_warps{if w.rendered==old{w.rendered=to.clone();}}}
                     self.state.project.channels[row].sample_path = Some(to);
                     copied += 1;
                 }
@@ -428,13 +428,14 @@ impl App {
         let Some(&label) = CHOICES.get(i as usize) else { return None };
         if i != choice(&s.project) {
             let now = folder(s);
+            let path = s.session.path.clone();
             let df = s.project.data_folder.get_or_insert_with(DataFolder::default);
             df.choice = i;
             match i {
                 DataFolder::NONE => df.folder.clear(),
                 _ => {
                     // Relative: the project file's folder; specified: the folder in use, else the one 202 holds.
-                    let dir = if i == DataFolder::RELATIVE { s.path.as_deref().and_then(Path::parent).map(Path::to_path_buf) } else { now };
+                    let dir = if i == DataFolder::RELATIVE { path.as_deref().and_then(Path::parent).map(Path::to_path_buf) } else { now };
                     if let Some(d) = dir {
                         df.folder = folder_text(&d);
                     }
@@ -513,7 +514,7 @@ mod tests {
         let mut moved = App::new(Some(other.join("song.flp")));
         assert_eq!(folder(&moved.state), Some(other.clone()));
         moved.save_to(other.join("song.flp"));
-        assert_eq!(App::new(Some(other.join("song.flp"))).state.project.data_folder.unwrap().folder, folder_text(&other));
+        assert_eq!(App::new(Some(other.join("song.flp"))).state.project.data_folder.clone().unwrap().folder, folder_text(&other));
         // Specified keeps the folder; none empties 202.
         moved.set_data_folder_choice(DataFolder::SPECIFIED);
         assert_eq!(moved.state.project.data_folder.as_ref().unwrap().folder, folder_text(&other));
@@ -768,7 +769,7 @@ mod tests {
         let moved = new.join(SAMPLES_DIR).join("kick.wav");
         let opened = App::new(Some(new.join("T3.flp")));
         assert_eq!(opened.state.project.channels[0].sample_path.as_deref(), Some(moved.to_string_lossy().as_ref()));
-        assert_eq!(opened.state.project.data_folder.unwrap().folder, folder_text(&new), "the save wrote the folder");
+        assert_eq!(opened.state.project.data_folder.clone().unwrap().folder, folder_text(&new), "the save wrote the folder");
         let backups: Vec<String> = std::fs::read_dir(new.join(BACKUP_DIR)).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
         assert!(backups.iter().any(|n| n.starts_with("T3 (overwritten on ")), "the replaced file went to Backup: {backups:?}");
         // A folder name that is taken: refused, nothing changes.

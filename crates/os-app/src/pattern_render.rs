@@ -123,6 +123,7 @@ pub fn add_channel(s: &mut State, path: &str, pattern: u16) -> u16 {
         layer_children: Vec::new(),
         envelopes: Default::default(), rack: Default::default(), misc: Default::default(),
         sound: os_model::ChannelSound { sampler_flags: Some(os_model::ChannelSound::AUDIO_CLIP_FLAGS), ..Default::default() },
+        lemon_icon: None,
     });
     let row = s.project.channels.len() - 1;
     s.selected_channel = row;
@@ -298,7 +299,7 @@ mod tests {
 
     fn app() -> App {
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         app.state.project.patterns[0].notes.push(Note::step(0, 0));
         app.state.song_mode = false;
         app
@@ -421,7 +422,7 @@ mod tests {
         assert_eq!(path, d.join("Rendered").join("Verse.wav"));
         assert!(std::fs::metadata(&path).unwrap().len() > 44);
         assert!(crate::playlist::clips(&app.state).is_empty(), "nothing placed");
-        assert!(app.state.history.entries().iter().any(|e| e.1 == QUICK));
+        assert!(app.state.history.entries(&app.state.session.settings).iter().any(|e| e.1 == QUICK));
         crate::history::undo(&mut app.state);
         assert_eq!(app.state.project.channels.len(), channels, "one undo step");
         // A pattern with no notes: a warning, no render.
@@ -472,7 +473,7 @@ mod tests {
         let c = crate::playlist::clips(&app.state).to_vec();
         assert_eq!(c.len(), 2);
         assert!(c[0].muted && c[1].source == ClipSource::Channel(ch) && (c[1].position, c[1].track) == (ppq * 4, 1));
-        assert!(app.state.history.entries().iter().any(|e| e.1 == REPLACE));
+        assert!(app.state.history.entries(&app.state.session.settings).iter().any(|e| e.1 == REPLACE));
         crate::history::undo(&mut app.state);
         let c = crate::playlist::clips(&app.state);
         assert!(c.len() == 1 && !c[0].muted && app.state.project.channels.len() == channels, "one undo step");

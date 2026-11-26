@@ -162,7 +162,7 @@ mod tests {
     #[test]
     fn octave_menu_shortcuts_persist_and_release_original_note() {
         use crate::app::{App, Win};
-        let mut app=App::new(None);app.state.project=crate::app::test_project();app.state.z=vec![Win::ChannelRack];
+        let mut app=App::new(None);app.state.session.project=crate::locked::Locked::new(crate::app::test_project());app.state.z=vec![Win::ChannelRack];
         app.toggle_typing();
         assert!(app.typing_key(KeyCode::KeyZ,true,false,false));
         assert_eq!(app.state.piano.typed.last().unwrap().1,48);
@@ -189,7 +189,7 @@ mod tests {
     fn selected_scale_plays_every_letter_position_and_remembers_typing() {
         use crate::app::{App, Win};
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         app.state.z = vec![Win::Playlist];
         assert!(!app.typing_on());
         app.toggle_typing();
@@ -221,7 +221,7 @@ mod tests {
         use crate::app::{Action, App};
         use winit::keyboard::KeyCode;
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         if !app.typing_on() {
             app.toggle_typing();
         }

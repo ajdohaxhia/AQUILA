@@ -380,17 +380,16 @@ pub fn put(s: &mut crate::app::State, d: &Document) -> Result<()> {
             != p.arrangements.get(p.arrangement_index()).map(|a| &a.clips);
         let automation_changed = old.automations != p.automations;
         s.tempo = p.tempo.unwrap_or(s.tempo);
-        s.project = p;
+        s.project = os_session::locked::Locked::new(p);
         s.selected_channel = s
             .selected_channel
             .min(s.project.channels.len().saturating_sub(1));
         s.plugin_channel = s
             .plugin_channel
             .min(s.project.channels.len().saturating_sub(1));
-        s.rack.sel.retain(|r| *r < s.project.channels.len());
-        s.mixer
-            .sel
-            .retain(|id| s.project.mixer.iter().any(|m| m.index == *id));
+        s.rack.sel.retain(|r| *r < s.session.project.channels.len());
+        let tracks: Vec<u16> = s.session.project.mixer.iter().map(|m| m.index).collect();
+        s.mixer.sel.retain(|id| tracks.contains(id));
         if !s.project.mixer.iter().any(|m| m.index == s.selected_mixer) {
             s.selected_mixer = 0;
         }

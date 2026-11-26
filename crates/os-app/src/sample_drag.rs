@@ -22,9 +22,9 @@ fn over(area: *mut std::ffi::c_void) -> bool {
 }
 
 fn editor_at(app: &App, hit: impl Fn(*mut std::ffi::c_void) -> bool) -> Option<usize> {
-    app.plugins.hosted.iter().find_map(|(&row, h)| {
-        let area = h.window.as_ref().map(|w| w.area());
-        let strip = h.rack_editor.as_ref().map(|s| s.area());
+    app.editors.editors.iter().find_map(|(&row, e)| {
+        let area = e.window.as_ref().map(|w| w.area());
+        let strip = e.rack_editor.as_ref().map(|s| s.area());
         area.into_iter().chain(strip).any(&hit).then_some(row)
     })
 }

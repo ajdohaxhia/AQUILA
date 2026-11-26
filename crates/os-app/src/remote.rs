@@ -229,11 +229,14 @@ const KEY: &str = "midi_links";
 
 /// The links kept (spec §5).
 pub fn links() -> Vec<Link> {
-    crate::settings_file::get(KEY).map(|v| v.split(';').filter_map(parse_link).collect()).unwrap_or_default()
+    // Through the session's view of the settings, where a command that moves rows writes them (`remote::follow`).
+    crate::settings_file::store().get(KEY).map(|v| v.split(';').filter_map(parse_link).collect()).unwrap_or_default()
 }
 
 pub fn set_links(l: &[Link]) {
-    crate::settings_file::write(KEY, &l.iter().map(link_text).collect::<Vec<_>>().join(";"));
+    let text = l.iter().map(link_text).collect::<Vec<_>>().join(";");
+    crate::settings_file::write(KEY, &text);
+    crate::settings_file::store().write(KEY, &text);
 }
 
 /// The link of target `t`, if it has one.
@@ -914,7 +917,7 @@ mod tests {
     fn remote_fader_and_container_levels_record_in_smart_mode() {
         use crate::{container, record::Opt};
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         app.state.project.mixer[2].slots[0] = Some(os_model::SlotPlugin {
             id: os_model::Id::NONE, name: container::CONTAINER.into(),
             state: container::encode(&[container::Member {
@@ -1012,7 +1015,7 @@ mod tests {
         use crate::views::browser::{rows, section_key, REMOTE_CONTROL};
         use crate::views::menus::{item_at, works, VIEW};
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         set_links(&[]);
         add(Link::new(0, 7, Target::Knob(KnobId::ChanVol(1))), true);
         add(Link { omni: true, ..Link::new(1, 10, Target::Knob(KnobId::ChanPan(0))) }, true);
@@ -1060,7 +1063,7 @@ mod tests {
     fn the_mixer_links_a_tracks_controls() {
         use crate::playlist::Cmd;
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         set_links(&[]);
         app.state.selected_mixer = 1;
         if let Some(t) = crate::mixer::track_mut(&mut app.state, 1) {

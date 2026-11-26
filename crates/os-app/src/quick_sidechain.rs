@@ -53,7 +53,7 @@ pub fn run(app: &mut App, dst: u16) -> Option<String> {
     };
     // Capture live settings before recording an undo step for the two changed mixer channels.
     app.store_builtin_states();
-    if let Err(e)=crate::project_plugins::store_hosted(&mut app.state.project, &app.plugins){return Some(e);}
+    if let Err(e)=crate::project_plugins::store_hosted(&mut app.state.session.project, &app.state.session.plugins){return Some(e);}
     let before = crate::history::Snap::Several(
         [src, dst]
             .into_iter()
@@ -102,7 +102,7 @@ pub fn run(app: &mut App, dst: u16) -> Option<String> {
     m.slot_on[slot as usize] = true;
     m.slot_mix[slot as usize] = 1.;
     m.slots_enabled = true;
-    app.plugins.added(crate::plugins::fx_key(dst, slot));
+    app.state.session.plugins.added(&app.state.session.settings, crate::plugins::fx_key(dst, slot));
     app.transport.set_effects(app.plugins.effects());
     app.state.piano.dirty = true;
     app.state.mixer.slot_scroll.insert(dst, logical.saturating_sub(8));
@@ -125,7 +125,7 @@ mod tests {
     #[test]
     fn quick_sidechain_appends_configures_and_saves() {
         let mut a = App::new(None);
-        a.state.project = crate::app::test_project();
+        a.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         a.plugins.effects = crate::plugins::builtin_effects();
         a.state.selected_mixer = 3;
         crate::playlist::arr_mut(&mut a.state);
@@ -155,7 +155,7 @@ mod tests {
         );
         assert_eq!((raw[lp::PAGE_BYTE], raw[lp::SIDECHAIN_BYTE]), (1, 2));
         assert_eq!(crate::project_plugins::slot_ports(&a.state.project, 2, 11), (0, 2));
-        assert!(!a.plugins.editor_open());
+        assert!(!a.editors.editor_open());
         assert!(a.plugins.hosted.contains_key(&crate::plugins::fx_key(2, 11)));
         for route in source_routes {
             assert!(a.state.project.mixer[3].routes.contains(&route));

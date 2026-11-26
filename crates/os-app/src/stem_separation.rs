@@ -796,7 +796,7 @@ mod tests {
         os_engine::wav::write_f32_stereo(&mut fs::File::create(&wav).unwrap(), 44100, &audio)
             .unwrap();
         let mut a = App::new(None);
-        a.state.project = crate::app::test_project();
+        a.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         let i = pl::add_audio_clip(&mut a.state, wav.to_str().unwrap(), 8, 384).unwrap();
         (a, dir, i)
     }

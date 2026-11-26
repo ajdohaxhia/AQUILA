@@ -65,7 +65,7 @@ impl App {
         history::record(s,"Assign instrument to mixer and playlist",snap);
         // Routing must not create or name the next pattern, or change the user's selection.
         // Keep the legacy tuple field for project compatibility; recording uses the current pattern.
-        if old.is_none() {s.project.instrument_lanes.push((ch.index,arr,lane,s.pattern.max(1)));}
+        if old.is_none() {let pat=s.pattern.max(1);s.project.instrument_lanes.push((ch.index,arr,lane,pat));}
         let name=crate::mixer::name(s,mixer);let color=crate::mixer::track(s,mixer).and_then(|m|m.color);
         if let Some(t)=pl::arr_mut(s).tracks.get_mut(lane as usize){t.name=Some(name);t.color=color;}
         s.project.channels[row].mixer_track=mixer;s.selected_channel=row;s.selected_mixer=mixer;
@@ -108,7 +108,7 @@ impl App {
     fn smart_close(&mut self,target:u32,tick:u32) {
         if let Some(mut g)=self.state.rec.smart.active.remove(&target) {
             g.end=tick.max(g.start+1);
-            let beat=f64::from(g.end-g.start)/f64::from(self.state.project.ppq.max(1));
+            let beat=f64::from(g.end-g.start)/f64::from(self.state.session.project.ppq.max(1));
             if let Some(last)=g.points.last().copied() {if last.beat<beat {g.points.push(AutoPoint::new(beat,last.value));}}
             self.state.rec.smart.completed.push(g);
         }
@@ -128,7 +128,7 @@ impl App {
         let g=smart.active.entry(target).or_insert_with(||Gesture {
             target,name,start:tick,end:tick+1,points:Vec::new(),last:std::time::Instant::now(),
         });
-        let beat=f64::from(tick.saturating_sub(g.start))/f64::from(self.state.project.ppq.max(1));
+        let beat=f64::from(tick.saturating_sub(g.start))/f64::from(self.state.session.project.ppq.max(1));
         let v=value.clamp(0.,1.);
         g.point(beat,v);
         g.last=std::time::Instant::now();g.end=tick+1;
@@ -160,7 +160,7 @@ impl App {
             }
         }
         if live {
-            let ppq=f64::from(self.state.project.ppq.max(1));
+            let ppq=f64::from(self.state.session.project.ppq.max(1));
             for g in self.state.rec.smart.active.values_mut() {
                 if let Some(last)=g.points.last().copied(){g.point(f64::from(tick.saturating_sub(g.start))/ppq,last.value);}
             }
@@ -218,7 +218,7 @@ impl App {
             cuts.sort_unstable();cuts.dedup();
             for span in cuts.windows(2) {
                 let Some(ch)=crate::playlist::recorded_automation(&mut self.state,g.target,&g.name,span[0],span[1],smart.initial.get(&g.target).copied().unwrap_or(g.points[0].value)) else {continue;};
-                let ppq=f64::from(self.state.project.ppq.max(1));
+                let ppq=f64::from(self.state.session.project.ppq.max(1));
                 let from=f64::from(span[0]-g.start)/ppq;let to=f64::from(span[1]-g.start)/ppq;
                 let value=|at:f64| {
                     let next=g.points.partition_point(|p|p.beat<=at);
@@ -233,7 +233,7 @@ impl App {
                 count+=1;
             }
         }
-        self.state.history.end_sequence_named(history,"Record automation");
+        crate::history::end_sequence(&mut self.state, history,"Record automation");
         self.state.project.current_arrangement=selection;
         self.state.piano.dirty=true;
         let missed=pending.len();
@@ -277,7 +277,7 @@ mod tests {
             assert_eq!(pl::clips(&app.state),&[music.clone()]);
             crate::history::redo(&mut app.state);
             assert_eq!(app.state.playlist.automation_views.get(&3),Some(&ch));
-            app.state.project=back;app.state.playlist.automation_owners.clear();
+            app.state.session.project=crate::locked::Locked::new(back);app.state.playlist.automation_owners.clear();
             app.state.playlist.automation_views.clear();app.state.playlist.automation_last.clear();
             pl::run(&mut app,pl::Cmd::TrackAutomationToggle(3));
             assert_eq!(app.state.playlist.automation_views.get(&3),Some(&ch));
@@ -293,7 +293,7 @@ mod tests {
         crate::settings_file::set_flag("automation_record_latch",latching);
         crate::settings_file::set_flag("rec_automation",true);
         crate::settings_file::set_flag("rec_filter_explicit",true);
-        let mut app=App::new(None);app.state.project=crate::app::test_project();
+        let mut app=App::new(None);app.state.session.project=crate::locked::Locked::new(crate::app::test_project());
         crate::playlist::arr_mut(&mut app.state).clips.clear();
         app.state.rec.armed=true;app.transport.pretend_at(96.,true);app
     }
@@ -398,7 +398,7 @@ mod tests {
     }
     #[test]
     fn routing_instruments_preserves_selected_pattern_and_names() {
-        let mut app=App::new(None);app.state.project=crate::app::test_project();
+        let mut app=App::new(None);app.state.session.project=crate::locked::Locked::new(crate::app::test_project());
         let mut second=app.state.project.channels[0].clone();second.index=1;
         app.state.project.channels=vec![app.state.project.channels[0].clone(),second];
         app.state.project.patterns=vec![os_model::Pattern{number:1,..Default::default()},os_model::Pattern{number:2,..Default::default()}];
@@ -426,7 +426,7 @@ mod tests {
     fn assigning_mixer_reuses_the_recorded_playlist_row() {
         use crate::playlist as pl;
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         app.state.project.channels[0].kind = os_model::ChannelKind::Plugin;
         app.state.project.patterns[0].notes.push(os_model::Note::step(0, 0));
         let clip = os_model::Clip::new(384, 384, 3, ClipSource::Pattern(1));
@@ -442,7 +442,7 @@ mod tests {
     #[test]
     fn instrument_lane_records_midi_and_roundtrips() {
         use crate::{playlist as pl,record::{Opt,Extra},step_edit::Src};
-        let mut app=App::new(None);app.state.project=crate::app::test_project();
+        let mut app=App::new(None);app.state.session.project=crate::locked::Locked::new(crate::app::test_project());
         app.state.project.channels[0].kind=os_model::ChannelKind::Plugin;
         app.state.project.channels[0].name=Some("ML Citrus".into());
         app.state.project.channels[0].plugin=Some("Sytrus".into());
@@ -493,7 +493,7 @@ mod tests {
 
     #[test]
     fn smart_mode_arms_without_a_question_and_writes_automation_clips() {
-        let mut app=App::new(None);app.state.project=crate::app::test_project();
+        let mut app=App::new(None);app.state.session.project=crate::locked::Locked::new(crate::app::test_project());
         crate::mixer_recording::flag(Opt::Smart,true);
         app.transport.pretend_at(0.,true);
         // Opening ML Studio's filter menu initializes the notes-only automatic filter.
@@ -525,7 +525,7 @@ mod tests {
     }
     #[test]
     fn smart_mode_records_midi_notes_without_an_audio_input() {
-        let mut app=App::new(None);app.state.project=crate::app::test_project();app.state.song_mode=false;
+        let mut app=App::new(None);app.state.session.project=crate::locked::Locked::new(crate::app::test_project());app.state.song_mode=false;
         crate::mixer_recording::flag(Opt::Smart,true);app.transport.pretend_at(0.,false);app.toggle_record();
         app.transport.pretend_at(0.,false);
         app.record_down_with(crate::step_edit::Src::Midi(60),60,100,crate::record::Extra::default());

@@ -165,12 +165,13 @@ fn editable(s: &State, row: u16) -> bool {
 }
 fn set_instrument(s: &mut State, row: u16, id: u16) {
     let arr = pl::arr_mut(s).number;
+    let pat = s.pattern.max(1);
     s.project
         .instrument_lanes
         .retain(|v| v.1 != arr || v.2 != row);
     s.project
         .instrument_lanes
-        .push((id, arr, row, s.pattern.max(1)));
+        .push((id, arr, row, pat));
     let n = s.project.channel(id).unwrap().mixer_track;
     let t = &mut pl::arr_mut(s).tracks[row as usize];
     t.mode = Mode::Instrument;
@@ -488,7 +489,7 @@ mod tests {
     fn app() -> App {
         let mut app = App::new(None);
         let s = &mut app.state;
-        s.project = crate::app::test_project();
+        s.session.project = crate::locked::Locked::new(crate::app::test_project());
         s.project.channels.truncate(2);
         s.project.instrument_lanes.clear();
         s.project.automations.clear();

@@ -231,7 +231,7 @@ mod tests {
 
     fn app() -> App {
         let mut app = App::new(None);
-        app.state.project = test_project();
+        app.state.session.project = crate::locked::Locked::new(test_project());
         app
     }
 

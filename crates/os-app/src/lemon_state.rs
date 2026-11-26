@@ -113,7 +113,7 @@ pub fn saved_form(s: &State, plugins: &Plugins) -> Vec<u8> {
 
 /// Puts the state a `.lemon` file holds into `s` and `plugins` (a project just opened, its ids given). An FLP has
 /// none; its channels and mixer tracks show the icons their numbers stand for instead ([`from_flp`]).
-pub fn apply(s: &mut State, plugins: &mut Plugins, file: &FlpFile) {
+pub fn apply(s: &mut State, file: &FlpFile) {
     if !lemon::is_lemon(file) {
         from_flp(s);
         return;
@@ -134,7 +134,7 @@ pub fn apply(s: &mut State, plugins: &mut Plugins, file: &FlpFile) {
                 _ => continue,
             };
             if pct > 0 {
-                plugins.editor_scales.insert(key, f32::from(pct) / 100.0);
+                s.session.plugins.editor_scales.insert(key, f32::from(pct) / 100.0);
             }
         }
     }
@@ -174,7 +174,7 @@ pub fn apply(s: &mut State, plugins: &mut Plugins, file: &FlpFile) {
         for _ in 0..r.u32().unwrap_or(0) {
             let (Some(src), Some(row)) = (r.u8(), r.u16()) else { break };
             let row = usize::from(row);
-            if let Some(lock) = s.rack.note_lock.get_mut(usize::from(src)).filter(|_| row < s.project.channels.len()) {
+            if let Some(lock) = s.rack.note_lock.get_mut(usize::from(src)).filter(|_| row < s.session.project.channels.len()) {
                 *lock = Some(row);
             }
         }
@@ -465,8 +465,8 @@ mod tests {
     /// and slot 0's colour on track 2; Performance settings other than the defaults.
     fn with_state() -> App {
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
-        app.state.control.settle(&mut app.state.project);
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
+        { let s = &mut app.state.session; s.control.settle(&mut s.project); }
         let ch = app.state.project.channels[1].id.0;
         let s = &mut app.state;
         s.playlist.icons.insert(IconOwner::Channel(ch), Icon::Mic);
@@ -623,7 +623,7 @@ mod tests {
         let mut f = file.clone();
         lemon::to_lemon(&mut f, &[Event::new(lemon::NOTE_LOCKS, Value::var([LAYOUT, 1, 0, 0, 0, 0, 99, 0]))]).unwrap();
         let mut s = with_state();
-        apply(&mut s.state, &mut s.plugins, &f);
+        apply(&mut s.state, &f);
         assert_eq!(s.state.rack.note_lock, [None, None]);
         again.open(flp_path);
         assert_eq!(again.state.rack.note_lock, [None, None], "an FLP has no locks");
@@ -638,8 +638,8 @@ mod tests {
         let d = dir("flp_icons");
         let path = d.join("Icons.flp");
         let mut made = App::new(None);
-        made.state.project = crate::app::test_project();
-        made.state.control.settle(&mut made.state.project);
+        made.state.session.project = crate::locked::Locked::new(crate::app::test_project());
+        { let s = &mut made.state.session; s.control.settle(&mut s.project); }
         let m = &mut made.state.project.mixer;
         m[2].icon = Some(75);
         m[3].icon = Some(74); // the automation clip's nodes: no picture of Lemon Studio's
@@ -759,7 +759,7 @@ mod tests {
         s.state.mixer.slot_colors.clear();
         let mut f = file.clone();
         lemon::to_lemon(&mut f, &[Event::new(lemon::SLOT_COLORS, Value::var(b))]).unwrap();
-        apply(&mut s.state, &mut s.plugins, &f);
+        apply(&mut s.state, &f);
         assert_eq!(s.state.mixer.slot_colors.len(), 1);
         assert_eq!(s.state.mixer.slot_colors.get(&(2, 0)), Some(&os_model::Rgb::new(10, 200, 30)));
         let _ = std::fs::remove_dir_all(&d);

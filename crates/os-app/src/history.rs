@@ -29,6 +29,9 @@ use os_model::{ControlPoint, Note};
 use crate::app::State;
 use crate::knobs::KnobId;
 use crate::prefs;
+use os_session::history as session_history;
+pub use session_history::{ChannelControl, History, Run};
+pub use session_history::undo_in;
 
 /// The history's first entry: the project as opened or reset.
 pub const LAST_RESET: &str = "Last reset";
@@ -57,6 +60,7 @@ pub const MIXER_TRACK_IO: &str = "Mixer track audio input / output";
 /// What a step changes, as it is on the other side of the step.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Snap {
+    Session(Box<session_history::Snap>),
     MixerDelete(Box<crate::mixer::DeleteSnapshot>),
     AttachedInstrument { generator:Box<Snap>, playlist:Box<crate::playlist::Snapshot>, mixer:Option<Box<crate::mixer::ChannelCopy>>, n:u16, selected:u16 },
     ChannelEnabled(usize,bool),
@@ -83,7 +87,7 @@ pub enum Snap {
     SampleRoute { sample: Box<Snap>, route: u16, name: Option<String>, insert: Option<bool> },
     InstrumentLanes(Vec<(u16,u16,u16,u16)>),
     /// Pattern `number`'s notes, control points and length (the piano roll, the step sequencer).
-    Pattern { number: u16, notes: Vec<Note>, controls: Vec<ControlPoint>, length: Option<u32> },
+    Pattern { number: u16, notes: Vec<Note>, controls: Vec<ControlPoint>, length: Option<u32>, loops: (Vec<(u16, u32)>, Option<u32>) },
     /// The playlist (`playlist::capture`).
     Playlist(Box<crate::playlist::Snapshot>),
     ClipPickerOrder(Vec<os_model::ClipSource>),
@@ -202,7 +206,7 @@ pub struct RackSide {
 impl Rows {
     /// The rack as it is now, `full` or not.
     pub fn now(s: &State, full: bool, gone: Vec<usize>, back: Vec<(usize, usize, Vec<u8>)>) -> Rows {
-        let (p, r) = (&s.project, &s.rack);
+        let (p, r) = (&s.session.project, &s.rack);
         Rows {
             ara_links: p.mixer.iter().flat_map(|track| {
                 track.slots.iter().enumerate().filter_map(|(index, slot)| {
@@ -250,7 +254,7 @@ impl Rows {
                 .collect()
         };
         let m = |r: usize| map.get(r).copied().flatten();
-        let p = &mut s.project;
+        let p = &mut s.session.project;
         for track in &mut p.mixer {
             for slot in &mut track.slots {
                 if slot.as_ref().and_then(crate::ara::link_source).is_some() {
@@ -359,6 +363,8 @@ impl Snap {
             notes: p.map(|p| p.notes.clone()).unwrap_or_default(),
             controls: p.map(|p| p.controls.clone()).unwrap_or_default(),
             length: p.and_then(|p| p.length),
+            // Its loops and loop mode (FL's loop edits are steps of this kind).
+            loops: p.map_or((Vec::new(), None), |p| (p.loops.clone(), p.loop_mode)),
         }
     }
 
@@ -372,6 +378,7 @@ impl Snap {
     /// What this covers, as the project has it now.
     fn now(&self, s: &State) -> Snap {
         match self {
+            Snap::Session(snapshot) => Snap::Session(Box::new(snapshot.now(&s.session))),
             Snap::MixerDelete(_)=>Snap::MixerDelete(Box::new(crate::mixer::DeleteSnapshot::now(s))),
             Snap::AttachedInstrument{generator,mixer,n,..}=>Snap::AttachedInstrument{generator:Box::new(generator.now(s)),playlist:Box::new(crate::playlist::capture(s)),mixer:if mixer.is_none(){crate::mixer::channel_copy(s,*n).map(Box::new)}else{None},n:*n,selected:s.selected_mixer},
             Snap::ClipFxTargets(..)=>Snap::ClipFxTargets(s.project.automations.clone(),s.project.init_controls.clone(),s.project.peak_links.clone()),
@@ -466,6 +473,7 @@ impl Snap {
     /// Whether this holds the playlist (`forget_playlist`).
     fn has_playlist(&self) -> bool {
         match self {
+            Snap::Session(s) => s.has_playlist(),
             Snap::Playlist(_) | Snap::AttachedInstrument{..} | Snap::MixerDelete(_) => true,
             Snap::Several(v) => v.iter().any(Snap::has_playlist),
             Snap::WithMixerInsert{edit,..}=>edit.has_playlist(),
@@ -477,6 +485,7 @@ impl Snap {
     /// `rescale` for this.
     fn rescale(&mut self, from: u16, to: u16) {
         match self {
+            Snap::Session(s) => s.rescale(from, to),
             Snap::MixerDelete(v)=>v.rescale(from,to),
             Snap::Pattern { notes, controls, length, .. } => {
                 notes.iter_mut().for_each(|n| n.rescale(from, to));
@@ -598,6 +607,7 @@ impl Snap {
     /// step sequencer and a piano roll edit in one pattern, undone and redone while another was shown, kept that one).
     fn put(self, s: &mut State) {
         match self {
+            Snap::Session(snapshot) => snapshot.put(&mut s.session),
             Snap::Fader(t, v) => {
                 if let Some(m) = crate::mixer::track_mut(s, t) {
                     m.volume = v;
@@ -644,11 +654,12 @@ impl Snap {
             Snap::AudioWarps(v)=>s.project.audio_warps=v,
             Snap::Tempo(v) => s.tempo=v,
             Snap::Scoring(i, timeline) => { if let Some(a) = s.project.arrangements.get_mut(i) { a.timeline = timeline; } }
-            Snap::Pattern { number, notes, controls, length } => {
+            Snap::Pattern { number, notes, controls, length, loops } => {
                 let old=s.project.pattern_length(number);
                 s.piano.edit_length=None;
                 let p = crate::patterns::pat_mut(s, number);
                 (p.notes, p.controls, p.length) = (notes, controls, length);
+                (p.loops, p.loop_mode) = loops;
                 crate::playlist::refit_pattern_clips(s,number,old);
                 s.piano.clear_selection();
             }
@@ -737,9 +748,14 @@ impl Snap {
                     s.sample_loads.push((row, path.unwrap_or_default()));
                 }
             }
-            // The channel goes or comes back only as the last row: rows below it would move.
+            // The channel goes or comes back only as the last row: rows below it would move. A row that is still
+            // there is put back as it was (a colour, a name), which is what a step over one channel holds.
             Snap::Channel { row, ch } => match ch {
                 None if row + 1 == s.project.channels.len() => crate::rack::remove_last(s),
+                Some(c) if row < s.project.channels.len() => {
+                    s.project.channels[row] = (*c).clone();
+                    s.piano.dirty = true;
+                }
                 Some(c) if row == s.project.channels.len() => crate::rack::push_channel(s, *c),
                 _ => {}
             },
@@ -780,7 +796,7 @@ impl Snap {
                 s.settings.info_edit = None;
             }
             Snap::Settings(v) => {
-                let p = &mut s.project;
+                let p = &mut s.session.project;
                 let crossfades = p.auto_crossfades != v.auto_crossfades;
                 (p.bar, p.bar_as_signature, p.panning_law) = (v.bar, v.bar_as_signature, v.panning_law);
                 (p.play_truncated, p.auto_crossfades) = (v.play_truncated, v.auto_crossfades);
@@ -844,23 +860,37 @@ pub(crate) fn knob_value(s: &State, id: KnobId) -> Option<f64> {
         KnobId::Member(t, k, id, wet) => crate::container::level(s, t, k, id, wet).map_or(0.0, f64::from),
         // A route with no level record: the knob shows unity, and the record is what the step must put back.
         KnobId::Send(a, b) => return crate::mixer::track(s, a).map_or(Some(0.8), |m| m.send_levels.iter().find(|(d, _)| *d == b).map(|&(_, l)| l)),
+        // The stored level, not the knob's reading of it (that over 16000, rounded): the step puts back exactly what it
+        // found, a project without one included. The same for the main pitch in cents and the swing.
+        KnobId::MasterVol => return s.project.main_volume.map(f64::from),
+        KnobId::MasterPitch => return s.project.main_pitch.map(f64::from),
+        KnobId::Swing => return s.project.swing.map(f64::from),
         _ => f64::from(s.knob(id)),
     })
 }
 
 fn set_knob_value(s: &mut State, id: KnobId, v: Option<f64>) {
     let Some(v) = v else {
-        if let KnobId::Send(a, b) = id {
-            if let Some(m) = crate::mixer::track_mut(s, a) {
-                m.send_levels.retain(|&(d, _)| d != b);
-                s.piano.dirty = true;
+        match id {
+            KnobId::Send(a, b) => {
+                if let Some(m) = crate::mixer::track_mut(s, a) {
+                    m.send_levels.retain(|&(d, _)| d != b);
+                    s.piano.dirty = true;
+                }
             }
+            KnobId::MasterVol => s.project.main_volume = None,
+            KnobId::MasterPitch => s.project.main_pitch = None,
+            KnobId::Swing => s.project.swing = None,
+            _ => {}
         }
         return;
     };
     match id {
         KnobId::ChanVol(i) => s.project.channels.get_mut(i).into_iter().for_each(|c| c.volume = v),
         KnobId::ChanPan(i) => s.project.channels.get_mut(i).into_iter().for_each(|c| c.pan = v),
+        KnobId::MasterVol => s.project.main_volume = Some(v.round().clamp(0.0, 16000.0) as u16),
+        KnobId::MasterPitch => s.project.main_pitch = Some(v.round().clamp(-32768.0, 32767.0) as i16),
+        KnobId::Swing => s.project.swing = Some(v.round().clamp(0.0, 255.0) as u8),
         _ => s.set_knob(id, v as f32),
     }
 }
@@ -890,181 +920,52 @@ fn knob_name(id: KnobId) -> &'static str {
     }
 }
 
-#[derive(Debug, Clone)]
-struct Step {
-    name: Cow<'static, str>,
-    snap: Snap,
-    expected: Option<Box<Snap>>,
-}
-
-/// The project's undo history (`State::history`).
-#[derive(Debug, Default)]
-pub struct History {
-    steps: Vec<Step>,
-    /// Steps `..done` are done; the rest are undone (they can be redone).
-    done: usize,
-    /// The last move was an undo: with Alternate undo mode off, Ctrl+Z redoes it.
-    undid: bool,
-    /// What the newest step's run of changes goes to: a knob's mouse-wheel notches, the tempo tapper's taps (one step
-    /// for the run).
-    run: Option<Run>,
-    /// The newest step was recorded since the last button release (`settle` looks at it then).
-    fresh: bool,
-    /// A synchronous custom sequence collects all its snapshots before applying the undo limit.
-    sequence: bool,
-    /// The knob or fader the newest step's mouse-wheel turns go to (one step for a run of notches).
-    wheel: Option<crate::knobs::Control>,
-    /// Counts steps recorded, joined, undone and redone (`changes`).
-    changes: u64,
-}
-
-/// A run of changes that make one step (`History::run`).
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Run {
-    Wheel(KnobId),
-    /// Mouse-wheel notches on mixer track `.0`'s volume fader.
-    Fader(u16),
-    Tap,
-    /// Mouse-wheel notches on Settings > Project's time boxes.
-    Bar,
-    /// Values plugin `.0` sends outside a gesture (no begin and end of an edit).
-    Param(u32),
-    /// Changes of control `.1` of the channel on row `.0` (`ChannelControl`): a plugin window's strip knob dragged or
-    /// turned, the rack's mixer track box.
-    Channel(usize, ChannelControl),
-    /// A controller moving the wet (`.3`) or dry level of member `.2` of the container in slot `.1` of track `.0`.
-    Member(u16, u8, u32, bool),
-    /// A controller moving the tempo.
-    Tempo,
-}
-
-/// A channel control a run of changes goes to (`Run::Channel`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ChannelControl {
-    Volume,
-    Pan,
-    Pitch,
-    Track,
-}
-
-impl History {
-    /// Collapse successful steps from one synchronous custom action sequence.
-    pub(crate) fn begin_sequence(&mut self) -> Self {
-        let previous = std::mem::take(self);
-        self.sequence = true;
-        previous
-    }
-    pub(crate) fn end_sequence(&mut self, previous: Self) {
-        self.end_sequence_named(previous,"Custom action sequence");
-    }
-    pub(crate) fn end_sequence_named(&mut self, previous: Self,name: &'static str) {
-        let sequence = std::mem::replace(self, previous);
-        let snaps: Vec<_> = sequence.steps.into_iter().take(sequence.done).map(|step|step.snap).collect();
-        if snaps.is_empty() { return; }
-        self.steps.truncate(self.done);
-        self.steps.push(Step { name: name.into(), snap: Snap::Several(snaps), expected:None });
-        self.done = self.steps.len();
-        self.undid = false;
-        self.wheel = None;
-        self.fresh = true;
-        self.trim();
-    }
-
-    /// Whether a change of run `r` joins the newest step: the step is of that run and nothing came after it.
-    pub fn joins(&self, r: Run) -> bool {
-        self.run == Some(r) && self.done == self.steps.len()
-    }
-
-    /// The newest step's run goes on with `r` (`joins`).
-    pub fn set_run(&mut self, r: Run) {
-        self.run = Some(r);
-    }
-
-    /// The run ends: the next change is a step of its own.
-    pub fn end_run(&mut self) {
-        self.run = None;
-    }
-
-    pub(crate) fn wrap_attached_instrument(&mut self,playlist:crate::playlist::Snapshot,n:u16,selected:u16){
-        let snaps=self.steps.drain(..).map(|s|s.snap).collect();
-        self.steps.push(Step{name:"Insert instrument track".into(),snap:Snap::AttachedInstrument{generator:Box::new(Snap::Several(snaps)),playlist:Box::new(playlist),mixer:None,n,selected},expected:None});self.done=1;
-    }
-
-    /// Moves on with every step recorded, joined, undone or redone: what a plugin window last knew of its instance's
-    /// state is read again then (`Plugins::refresh_known`).
-    pub fn changes(&self) -> u64 {
-        self.changes
-    }
-
-    /// How many steps there are ("Last reset" not counted).
-    #[cfg(test)]
-    pub fn len(&self) -> usize {
-        self.steps.len()
-    }
-
-    /// How many steps are done (undone ones not counted).
-    pub fn done(&self) -> usize {
-        self.done
-    }
-
-    /// The name of the newest done step.
-    pub fn newest_done(&self) -> Option<&str> {
-        self.done.checked_sub(1).map(|i| &*self.steps[i].name)
-    }
-
-    /// Forgets every step: the project was opened or made ("Last reset").
-    pub fn reset(&mut self) {
-        *self = History { changes: self.changes.wrapping_add(1), ..History::default() };
-    }
-
-    /// Whether entry `p` of the list (0 = "Last reset", `k` = step `k`) is undone: drawn grey.
-    pub fn undone(&self, p: usize) -> bool {
-        p > self.done
-    }
-
-    /// Whether entry `p` is where the project is now.
-    pub fn current(&self, p: usize) -> bool {
-        p == self.done
-    }
-
-    /// The entry where the project is now (0 = "Last reset").
-    pub fn at(&self) -> usize {
-        self.done
-    }
-
-    /// The list as the browser's History folder shows it: (entry, name), oldest first from "Last reset", or newest
-    /// first with Show recent changes at the top.
-    pub fn entries(&self) -> Vec<(usize, &str)> {
-        let mut v: Vec<(usize, &str)> = std::iter::once(LAST_RESET).chain(self.steps.iter().map(|st| &*st.name)).enumerate().collect();
-        if prefs::check(&prefs::RECENT_CHANGES_TOP) {
-            v.reverse();
-        }
-        v
-    }
-
-    /// Drops the oldest steps past Maximum undo levels (undone steps last).
-    fn trim(&mut self) {
-        if self.sequence { return; }
-        let max = usize::from(prefs::number(&prefs::MAX_UNDO_LEVELS));
-        while self.steps.len() > max && self.done > 0 {
-            self.steps.remove(0);
-            self.done -= 1;
-        }
-        self.steps.truncate(max.max(self.done));
-        // Embedded tables/noise samples must not grow Undo without bound.
-        let cost = |step: &Step| crate::plugin_state_undo::bytes(&step.snap)
-            + step.expected.as_ref().map_or(0, |s| crate::plugin_state_undo::bytes(s));
-        let mut total: usize = self.steps.iter().map(cost).sum();
-        while total > os_hostlink::STATE_EDIT_BUDGET && self.steps.len() > 1 {
-            let index = if self.done > 0 { self.done -= 1; 0 } else { self.steps.len() - 1 };
-            total = total.saturating_sub(cost(&self.steps.remove(index)));
+fn to_session(snap: Snap) -> session_history::Snap {
+    match snap {
+        Snap::Session(s) => *s,
+        Snap::Commands(commands) => session_history::Snap::Commands(commands),
+        // A pattern edit goes in as the session's own kind, so the control plane's `settle` can turn it into
+        // `set_notes` and `set_pattern` commands (`os_session::history::pattern_to_commands`).
+        Snap::Pattern { number, notes, controls, length, loops } => session_history::Snap::Pattern { number, notes, controls, length, loops },
+        snap => {
+            let playlist = snap.has_playlist();
+            let bytes = crate::plugin_state_undo::bytes(&snap);
+            session_history::Snap::App(session_history::AppSnapshot::new(snap, playlist, bytes))
         }
     }
+}
 
-    /// What Ctrl+Z does next: redo (Alternate undo mode off, after an undo) or undo.
-    fn ctrl_z_redoes(&self) -> bool {
-        !prefs::check(&prefs::ALTERNATE_UNDO) && self.undid && self.done < self.steps.len()
+fn for_app(snap: &session_history::Snap) -> Option<&Snap> {
+    match snap {
+        session_history::Snap::App(snapshot) => snapshot.get(),
+        _ => None,
     }
+}
+
+fn from_session(snap: session_history::Snap) -> Snap {
+    match snap {
+        session_history::Snap::App(snapshot) => snapshot.get::<Snap>().expect("AQUILA step").clone(),
+        session_history::Snap::Commands(commands) => Snap::Commands(commands),
+        snap => Snap::Session(Box::new(snap)),
+    }
+}
+
+pub fn end_sequence(s: &mut State, previous: History, name: &'static str) {
+    let snapshots: Vec<_> = s.history.take_sequence(previous).into_iter().map(from_session).collect();
+    if !snapshots.is_empty() {
+        record(s, name, Snap::Several(snapshots));
+    }
+}
+
+pub fn wrap_attached_instrument(s: &mut State, playlist: crate::playlist::Snapshot, n: u16, selected: u16) {
+    let snapshots = s.history.steps.drain(..).map(|step| from_session(step.snap)).collect();
+    record(s, "Insert instrument track", Snap::AttachedInstrument {
+        generator: Box::new(Snap::Several(snapshots)),
+        playlist: Box::new(playlist),
+        mixer: None,
+        n,
+        selected,
+    });
 }
 
 /// Records step `name`: `snap` holds what the edit is about to change. Undone steps are dropped (a new action ends
@@ -1076,51 +977,26 @@ pub fn record(s: &mut State, name: &'static str, snap: Snap) {
 /// `record` with a name made at run time (a client's step: "Assistant: build drum kit").
 pub fn record_named(s: &mut State, name: Cow<'static, str>, snap: Snap) {
     protect_collaboration_step(s);
-    let h = &mut s.history;
-    h.steps.truncate(h.done);
-    h.steps.push(Step { name, snap, expected:None });
-    h.done = h.steps.len();
-    h.undid = false;
-    h.run = None;
-    h.fresh = true;
-    h.changes += 1;
-    h.trim();
+    session_history::record_named(&mut s.session, name, to_session(snap));
+    // A step of its own: a step-sequencer paint right after it opens another (`rack::set_step`).
+    s.rack.paint_at = Some(s.session.history.changes());
 }
 
 /// Adds to the newest step's commands (a plugin's values joining its step, `control::param_edit`), when it is done
 /// and holds commands.
 pub fn extend_newest(s: &mut State, f: impl FnOnce(&mut Vec<crate::control::Command>)) {
-    let h = &mut s.history;
-    h.changes += 1;
-    if h.done > 0 && h.done == h.steps.len() {
-        if let Snap::Commands(c) = &mut h.steps[h.done - 1].snap {
-            f(c);
-        }
-    }
+    session_history::extend_newest(&mut s.session, f);
 }
 
 /// The plugin state side numbered `fill` (`PluginSide::fill`), in whichever step holds it, takes the state and preset
 /// the app found in the plugin as it put the other side in (`App::host_commands`).
 pub fn fill_plugin_side(s: &mut State, fill: u64, state: &[u8], preset: Option<&std::path::Path>) {
-    use crate::control::command::Taken;
-    for st in &mut s.history.steps {
-        let Snap::Commands(v) = &mut st.snap else { continue };
-        for c in v {
-            if let crate::control::Command::Put(t) = c {
-                if let Taken::Plugin(_, side) = &mut **t {
-                    if side.fill == fill {
-                        (side.state, side.preset, side.fill) = (state.to_vec(), preset.map(Into::into), 0);
-                        return;
-                    }
-                }
-            }
-        }
-    }
+    session_history::fill_plugin_side(&mut s.session, fill, state, preset);
 }
 
 /// The newest step is done with: no button release drops it (`settle`), a client's change, made without a press.
 pub fn done_with(s: &mut State) {
-    s.history.fresh = false;
+    session_history::done_with(&mut s.session);
 }
 
 pub fn native_state(s: &mut State, snapshot: crate::plugin_state_undo::Snapshot) {
@@ -1131,31 +1007,26 @@ pub fn native_state(s: &mut State, snapshot: crate::plugin_state_undo::Snapshot)
 /// Names the newest step `name` while its press is held (recorded since the last release): a gesture that turned into
 /// another edit, as a held click's clone (`crate::hold`). The step keeps what it holds.
 pub fn rename(s: &mut State, name: &'static str) {
-    let h = &mut s.history;
-    if h.fresh && h.done > 0 && h.done == h.steps.len() {
-        h.steps[h.done - 1].name = Cow::Borrowed(name);
-    }
+    session_history::rename(&mut s.session, name);
 }
 
 /// Drops the newest step: its edit changed nothing after all.
 pub fn unrecord(s: &mut State) {
-    let h = &mut s.history;
-    if h.done > 0 && h.done == h.steps.len() {
-        h.steps.pop();
-        h.done -= 1;
-    }
-    (h.run, h.fresh) = (None, false);
+    session_history::unrecord(&mut s.session);
 }
 
 /// A button was released: the step recorded since the last release goes when its edit changed nothing (a click on a
 /// note that did not move it, a knob clicked without a turn).
 pub fn settle(s: &mut State) {
     let h = &s.history;
-    if h.fresh && h.done > 0 && h.done == h.steps.len()
-        && !matches!(h.steps[h.done - 1].snap, Snap::RackOrder(..))
-        && h.steps[h.done - 1].snap.now(s) == h.steps[h.done - 1].snap
-    {
-        unrecord(s);
+    if h.fresh && h.done > 0 && h.done == h.steps.len() {
+        if let Some(snap) = for_app(&h.steps[h.done - 1].snap) {
+            if !matches!(snap, Snap::RackOrder(..)) && &snap.now(s) == snap {
+                unrecord(s);
+            }
+        } else if !s.collaborating {
+            session_history::settle(&mut s.session);
+        }
     }
     protect_collaboration_step(s);
     s.history.fresh = false;
@@ -1233,15 +1104,15 @@ pub fn fader(s: &mut State, track: u16, wheel: bool) {
     if !prefs::check(&prefs::UNDO_KNOB_TWEAKS) {
         return;
     }
-    let me = Some(crate::knobs::Control::Fader(track));
-    if wheel && s.history.wheel == me && s.history.done == s.history.steps.len() {
+    let run = Run::Fader(track);
+    if wheel && s.history.joins(run) {
         return;
     }
     let Some(m) = crate::mixer::track(s, track) else { return };
     let snap = Snap::Fader(track, m.volume);
     record(s, MIXER_VOLUME, snap);
     if wheel {
-        s.history.wheel = me;
+        s.history.set_run(run);
     }
 }
 
@@ -1262,85 +1133,99 @@ pub fn knob(s: &mut State, id: KnobId, wheel: bool) {
     if !prefs::check(&prefs::UNDO_KNOB_TWEAKS) || matches!(id, KnobId::Strum(_) | KnobId::Arp(_) | KnobId::PianoDlg(_)) {
         return;
     }
+    // A knob naming a row or track that is not there turns nothing: no step.
+    let missing = match id {
+        KnobId::MixPan(t) | KnobId::MixSep(t) | KnobId::Eq(t, ..) | KnobId::SlotMix(t, ..) => crate::mixer::track(s, t).is_none(),
+        KnobId::ChanVol(r) | KnobId::ChanPan(r) => s.project.channels.get(r).is_none(),
+        _ => false,
+    };
+    if missing {
+        return;
+    }
     let h = &s.history;
-    if wheel && h.joins(Run::Wheel(id)) {
+    if wheel && h.joins(Run::AppWheel(crate::motion::key(id))) {
         return;
     }
     let snap = Snap::Knob(id, knob_value(s, id));
     record(s, knob_name(id), snap);
     if wheel {
-        s.history.run = Some(Run::Wheel(id));
+        s.history.set_run(Run::AppWheel(crate::motion::key(id)));
     }
 }
 
 /// Seal a completed local edit before applying remote data. A later undo must still match it.
-pub(crate) fn protect_collaboration_step(s:&mut State){
-    if !s.collaborating || s.history.done==0{return;}
-    let i=s.history.done-1;
-    if s.history.fresh || s.history.steps[i].expected.is_none(){s.history.steps[i].expected=Some(Box::new(s.history.steps[i].snap.now(s)));}
+pub(crate) fn protect_collaboration_step(s: &mut State) {
+    let h = &s.history;
+    let Some(i) = h.done.checked_sub(1).filter(|_| s.collaborating) else { return };
+    let step = &h.steps[i];
+    if h.fresh || step.expected.is_none() {
+        let expected = if let Some(snap) = for_app(&step.snap) {
+            to_session(snap.now(s))
+        } else {
+            step.snap.now(&s.session)
+        };
+        s.history.steps[i].expected = Some(Box::new(expected));
+    }
 }
 pub(crate) fn collaboration_received(s:&mut State){
     protect_collaboration_step(s);
     // A remote commit ends local coalescing. Later mouse releases or keyboard
     // actions must not re-seal the old step against someone else's new values.
     s.history.fresh=false;
-    s.history.wheel=None;
+    s.history.end_run();
 }
-fn permitted(s:&State,i:usize)->bool {
-    !s.collaborating || s.history.steps[i].expected.as_ref().is_none_or(|v|**v==s.history.steps[i].snap.now(s))
-}
-fn swap(s: &mut State, i: usize) {
-    s.motion.borrow_mut().ripples_over();
-    if let Snap::Commands(v) = &mut s.history.steps[i].snap {
-        let v = std::mem::take(v);
-        let other = crate::control::take_back(s, v);
-        s.history.steps[i].snap = Snap::Commands(other);
-        s.piano.dirty = true;
-        return;
+fn permitted(s: &State, i: usize) -> bool {
+    let step = &s.history.steps[i];
+    if !s.collaborating { return true; }
+    let Some(expected) = &step.expected else { return true };
+    if let Some(snap) = for_app(&step.snap) {
+        for_app(expected).is_some_and(|expected| *expected == snap.now(s))
+    } else {
+        **expected == step.snap.now(&s.session)
     }
-    let now = s.history.steps[i].snap.now(s);
-    let old = std::mem::replace(&mut s.history.steps[i].snap, now);
-    let expected=s.collaborating.then(||Box::new(old.clone()));
-    old.put(s);
-    if s.collaborating{s.history.steps[i].expected=expected;}
+}
+fn swap_app(s: &mut State, i: usize, snap: Snap, redo: bool) {
+    let opposite = to_session(snap.now(s));
+    let expected = s.collaborating.then(|| Box::new(to_session(snap.clone())));
+    snap.put(s);
+    let h = &mut s.history;
+    h.steps[i].snap = opposite;
+    h.steps[i].expected = expected;
+    h.after_app_swap(redo);
 }
 
 /// Undoes the newest done step; its name, or `None` when nothing is done.
 pub fn undo(s: &mut State) -> Option<String> {
     protect_collaboration_step(s);
-    if s.history.done>0 && !permitted(s,s.history.done-1){return None;}
-    crate::vocal::history_changed(s);
-    let h = &mut s.history;
-    if h.done == 0 {
-        return None;
-    }
-    h.done -= 1;
-    (h.undid, h.run, h.fresh) = (true, None, false);
-    h.changes += 1;
-    let i = h.done;
-    swap(s, i);
-    let name = s.history.steps[i].name.to_string();
-    s.history.trim();
-    Some(name)
+    let i = s.history.done.checked_sub(1)?;
+    swap(s, i, false)
 }
 
 /// Redoes the oldest undone step; its name, or `None` when nothing is undone.
 pub fn redo(s: &mut State) -> Option<String> {
-    if s.history.done<s.history.steps.len() && !permitted(s,s.history.done){return None;}
+    let i = s.history.done;
+    (i < s.history.steps.len()).then_some(i).and_then(|i| swap(s, i, true))
+}
+
+fn swap(s: &mut State, i: usize, redo: bool) -> Option<String> {
+    if !permitted(s, i) { return None; }
     crate::vocal::history_changed(s);
-    let h = &mut s.history;
-    if h.done == h.steps.len() {
-        return None;
+    s.motion.borrow_mut().ripples_over();
+    if let Some(snap) = for_app(&s.history.steps[i].snap).cloned() {
+        let name = s.history.steps[i].name.to_string();
+        swap_app(s, i, snap, redo);
+        trim(s);
+        Some(name)
+    } else {
+        let expected = s.collaborating.then(|| Box::new(s.history.steps[i].snap.clone()));
+        let result = crate::follow::around(s, |s| {
+            if redo { session_history::redo_in(&mut s.session) }
+            else { session_history::undo_in(&mut s.session) }
+        });
+        if result.is_some() { s.history.steps[i].expected = expected; }
+        s.piano.dirty = true;
+        result
     }
-    let i = h.done;
-    swap(s, i);
-    let h = &mut s.history;
-    h.done += 1;
-    (h.undid, h.run, h.fresh) = (false, None, false);
-    h.changes += 1;
-    let name = h.steps[i].name.to_string();
-    h.trim();
-    Some(name)
 }
 
 /// "Step seq edit" as a menu entry writes it after Undo / Redo: "step seq edit".
@@ -1362,7 +1247,7 @@ fn did(s: &mut State, redo_it: bool) -> String {
 /// (undo, redo, undo). With Show undo history in the browser when undoing changes on, the browser shows the history.
 /// Returns the hint bar's message.
 pub fn ctrl_z(s: &mut State) -> Option<String> {
-    let m = did(s, s.history.ctrl_z_redoes());
+    let m = did(s, s.history.ctrl_z_redoes(&s.session.settings));
     shown_in_browser(s);
     Some(m)
 }
@@ -1406,7 +1291,7 @@ pub fn go_to(s: &mut State, p: usize) -> Option<String> {
 /// undo mode only). Without a step to act on, plain "Undo" / "Redo".
 pub fn edit_label(s: &State, redo_entry: bool) -> String {
     let h = &s.history;
-    let redo_it = redo_entry || h.ctrl_z_redoes();
+    let redo_it = redo_entry || h.ctrl_z_redoes(&s.session.settings);
     let (verb, step) = if redo_it { ("Redo", h.steps.get(h.done)) } else { ("Undo", h.done.checked_sub(1).and_then(|i| h.steps.get(i))) };
     match step {
         Some(st) => format!("{verb} {}", lower(&st.name)),
@@ -1417,7 +1302,7 @@ pub fn edit_label(s: &State, redo_entry: bool) -> String {
 /// Whether EDIT's entry has a step to act on.
 pub fn edit_enabled(s: &State, redo_entry: bool) -> bool {
     let h = &s.history;
-    if redo_entry || h.ctrl_z_redoes() { h.done < h.steps.len() } else { h.done > 0 }
+    if redo_entry || h.ctrl_z_redoes(&s.session.settings) { h.done < h.steps.len() } else { h.done > 0 }
 }
 
 /// Whether EDIT shows its Redo entry: Alternate undo mode on and a history to act on (only Undo while it is empty).
@@ -1427,28 +1312,28 @@ pub fn redo_shown(s: &State) -> bool {
 
 /// Maximum undo levels changed: the history keeps that many.
 pub fn trim(s: &mut State) {
-    s.history.trim();
+    session_history::trim(&mut s.session);
 }
 
 /// Another arrangement is shown: the playlist's steps belong to the one left (spec: ui/playlist.md §10).
 pub fn forget_playlist(s: &mut State) {
-    let h = &mut s.history;
-    let mut done = 0;
-    let mut kept = Vec::with_capacity(h.steps.len());
-    for (i, st) in std::mem::take(&mut h.steps).into_iter().enumerate() {
-        if !st.snap.has_playlist() {
-            done += usize::from(i < h.done);
-            kept.push(st);
-        }
-    }
-    (h.steps, h.done, h.run) = (kept, done, None);
+    session_history::forget_playlist(&mut s.session);
 }
 
 /// The timebase changed from `from` to `to` ticks per quarter: the steps' notes, control points, lengths, clips and
 /// markers follow, so no undo brings back ticks of the old timebase (a timebase step keeps its own, `Timebase`).
 pub fn rescale(s: &mut State, from: u16, to: u16) {
+    fn step(snap: &mut session_history::Snap, from: u16, to: u16) {
+        if let Some(mut original) = for_app(snap).cloned() {
+            original.rescale(from, to);
+            *snap = to_session(original);
+        } else {
+            snap.rescale(from, to);
+        }
+    }
     for st in &mut s.history.steps {
-        st.snap.rescale(from, to);
+        step(&mut st.snap, from, to);
+        if let Some(expected) = &mut st.expected { step(expected, from, to); }
     }
 }
 
@@ -1483,7 +1368,7 @@ mod tests {
         let snap = Snap::pattern(s, s.pattern);
         record(s, "Piano roll add note", snap);
         crate::rack::set_step(s, 0, 14, true);
-        assert_eq!(s.history.entries().iter().map(|e| e.1).collect::<Vec<_>>(), [LAST_RESET, STEP_SEQ_EDIT, "Piano roll add note"]);
+        assert_eq!(s.history.entries(&s.session.settings).iter().map(|e| e.1).collect::<Vec<_>>(), [LAST_RESET, STEP_SEQ_EDIT, "Piano roll add note"]);
         assert_eq!(redo(s), None);
         // Three levels kept: the oldest go.
         prefs::set_number(&prefs::MAX_UNDO_LEVELS, 3);
@@ -1493,7 +1378,7 @@ mod tests {
             crate::rack::set_step(s, 0, 20 + k, true);
         }
         assert_eq!(s.history.len(), 3);
-        assert!(s.history.entries().iter().skip(1).all(|e| e.1 == "Piano roll edit"), "{:?}", s.history.entries());
+        assert!(s.history.entries(&s.session.settings).iter().skip(1).all(|e| e.1 == "Piano roll edit"), "{:?}", s.history.entries(&s.session.settings));
         prefs::set_number(&prefs::MAX_UNDO_LEVELS, 2);
         trim(s);
         assert_eq!((s.history.len(), s.history.done), (2, 2));
@@ -1866,7 +1751,7 @@ mod tests {
     }
 
     fn names(s: &State) -> Vec<&str> {
-        s.history.entries().into_iter().map(|e| e.1).collect()
+        s.history.entries(&s.session.settings).into_iter().map(|e| e.1).collect()
     }
 
     /// A mixer fader drag is one step, "Mixer track volume", as EDIT names it; Ctrl+Z puts the fader back exactly and

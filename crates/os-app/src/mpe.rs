@@ -597,7 +597,7 @@ mod tests {
     use super::*;
     fn app() -> App {
         let mut a = App::new(None);
-        a.state.project = crate::app::test_project();
+        a.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         a.state.selected_channel = 0;
         a.state.pattern = 1;
         a.state.project.mpe.set_config(

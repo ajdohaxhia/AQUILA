@@ -91,7 +91,7 @@ pub fn menu(s:&State,n:u16)->Vec<PItem>{
 pub fn slot(s:&State,n:u16)->Option<u8>{Some(mixer::track(s,n)?.rack_strip.as_ref()?.slot)}
 pub fn detach(s:&mut State,n:u16,k:u8){if slot(s,n)!=Some(k){return;}if s.mixer.strip_edit.as_ref().is_some_and(|edit|edit.track==n){crate::strip_layout::cancel(s);}s.mixer.rack_pages.remove(&n);s.mixer.rack_min_height.remove(&n);if let Some(m)=mixer::track_mut(s,n){if let Some(h)=m.rack_strip.take(){m.strip_bypassed=h.native_bypassed;m.slot_on[10]=h.eq_on;m.slot_on[k as usize]=false;}}s.piano.dirty=true;}
 fn bind(s:&mut State,n:u16,k:u8){s.mixer.rack_auto_width.remove(&n);s.mixer.rack_min_height.remove(&n);s.mixer.rack_pages.remove(&n);if let Some(old)=slot(s,n){detach(s,n,old);}if let Some(m)=mixer::track_mut(s,n){m.rack_strip=Some(RackStrip{slot:k,native_bypassed:m.strip_bypassed,eq_on:m.slot_on[10]});m.strip_bypassed=true;m.slot_on[10]=false;m.slot_on[k as usize]=true;m.slot_mix[k as usize]=1.;}s.piano.dirty=true;}
-fn save(app:&mut App,tracks:&[u16])->Result<Vec<mixer::ChannelCopy>,String>{app.store_builtin_states();crate::project_plugins::store_hosted(&mut app.state.project,&app.plugins)?;Ok(tracks.iter().filter_map(|n|mixer::channel_copy(&app.state,*n)).collect())}
+fn save(app:&mut App,tracks:&[u16])->Result<Vec<mixer::ChannelCopy>,String>{app.store_builtin_states();crate::project_plugins::store_hosted(&mut app.state.session.project,&app.state.session.plugins)?;Ok(tracks.iter().filter_map(|n|mixer::channel_copy(&app.state,*n)).collect())}
 fn record(app:&mut App,old:Vec<mixer::ChannelCopy>){crate::history::record(&mut app.state,"Channel strip mixer",crate::history::Snap::RackStrips(old));}
 #[cfg(any(windows,target_os="macos"))]
 fn validate(app:&mut App,t:u16,k:u8)->Result<(),String>{
@@ -100,7 +100,7 @@ fn validate(app:&mut App,t:u16,k:u8)->Result<(),String>{
     let r=app.state.win_rect(Win::Mixer);let scale=app.state.ui_scale;
     let height=crate::views::mixer::vertical_pane_height(r);
     let area=[0,0,((app.state.mixer.rack_width-6.)*scale).round() as i32,(height*scale).round() as i32];
-    app.plugins.validate_vertical_rack(crate::plugins::fx_key(t,k),owner,scale,area)
+    app.editors.validate_vertical_rack(&mut app.state.session.plugins,crate::plugins::fx_key(t,k),owner,scale,area)
 }
 fn choose(app:&mut App,n:u16,index:usize,all:bool,state:Option<Vec<u8>>)->Result<String,String>{
     if !app.plugins.effect_ready(index){return Err("Plugin is still being checked. Try again shortly.".into());}
@@ -156,7 +156,7 @@ pub fn run(app:&mut App,c:Command)->Option<String>{
     if c==Command::LinkHelp{crate::help::open_topic(app,LINK_GUIDE);return None;}
     if let Command::Open(n)=c{if let Some(k)=slot(&app.state,n){app.open_fx(n,k);}app.invalidate();return None;}
     if let Command::Menu(n)=c {app.state.playlist.popup=Some(Popup{x:app.mouse.0,y:app.mouse.1,items:menu(&app.state,n),sub:None,scroll:[0;2],cascade:vec![]});app.invalidate();return None;}
-    if let Command::Page(n,d)=c{#[cfg(any(windows,target_os="macos"))] if let Some(k)=slot(&app.state,n){if let Some(e)=app.plugins.hosted.get_mut(&crate::plugins::fx_key(n,k)).and_then(|h|h.rack_editor.as_mut()){e.page_by(d);}}app.invalidate();return None;}
+    if let Command::Page(n,d)=c{#[cfg(any(windows,target_os="macos"))] if let Some(k)=slot(&app.state,n){if let Some(e)=app.editors.editors.get_mut(&crate::plugins::fx_key(n,k)).and_then(|h|h.rack_editor.as_mut()){e.page_by(d);}}app.invalidate();return None;}
     if matches!(c, Command::EditPages(_) | Command::AddPage | Command::RemoveDivider | Command::Divider(..)
         | Command::PreviewPages | Command::ResetPages | Command::SavePages | Command::CancelPages) {
         return edit_pages(app, c);
@@ -167,9 +167,9 @@ pub fn run(app:&mut App,c:Command)->Option<String>{
         Command::Comfortable(on)=>{app.state.mixer.rack_comfortable=on;crate::prefs::set_text("mixer_channel_strip_comfortable",if on {"1"}else{"0"});None},
         Command::Choose(n,i,all)=>{let result=choose(app,n,i,all,None);report(app,n,result)},
         Command::CopyAll(n)=>{let result=copy_all(app,n);report(app,n,result)},
-        Command::Existing(n,k)=>{if n==0||!eligible_slot(&app.state,n,k){return None;}app.sync_effects();app.sync_wrapped();if !app.plugins.hosted.contains_key(&crate::plugins::fx_key(n,k)){return Some("Wait for that effect to load first.".into());}let old=match save(app,&[n]){Ok(v)=>v,Err(e)=>return Some(e)};#[cfg(any(windows,target_os="macos"))] if let Err(e)=validate(app,n,k){return Some(e);}record(app,old);#[cfg(plugin_windows)] app.plugins.close_window(crate::plugins::fx_key(n,k));bind(&mut app.state,n,k);mixer::set_layout(&mut app.state,VIEW);None},
+        Command::Existing(n,k)=>{if n==0||!eligible_slot(&app.state,n,k){return None;}app.sync_effects();app.sync_wrapped();if !app.plugins.hosted.contains_key(&crate::plugins::fx_key(n,k)){return Some("Wait for that effect to load first.".into());}let old=match save(app,&[n]){Ok(v)=>v,Err(e)=>return Some(e)};#[cfg(any(windows,target_os="macos"))] if let Err(e)=validate(app,n,k){return Some(e);}record(app,old);#[cfg(plugin_windows)] app.editors.close_if_open(&mut app.state.session.plugins, crate::plugins::fx_key(n,k));bind(&mut app.state,n,k);mixer::set_layout(&mut app.state,VIEW);None},
         Command::Remove(n)=>{let k=slot(&app.state,n)?;let old=match save(app,&[n]){Ok(v)=>v,Err(e)=>return Some(e)};record(app,old);detach(&mut app.state,n,k);None},
-        Command::Retry(n)=>{#[cfg(any(windows,target_os="macos"))]if let Some(k)=slot(&app.state,n){app.plugins.close_window(crate::plugins::fx_key(n,k));}None},
+        Command::Retry(n)=>{#[cfg(any(windows,target_os="macos"))]if let Some(k)=slot(&app.state,n){app.editors.close_if_open(&mut app.state.session.plugins, crate::plugins::fx_key(n,k));}None},
         Command::Width(w)=>{let width=f32::from(w.clamp(96,320));app.state.mixer_scroll*=width/app.state.mixer.rack_width;app.state.mixer.rack_width=width;crate::prefs::set_text("mixer_channel_strip_width", &w.to_string());None},
         Command::Menu(_)|Command::Open(_)|Command::LinkHelp=>None,
         _ => unreachable!("page editing commands were handled above"),
@@ -187,8 +187,8 @@ fn edit_pages(app: &mut App, command: Command) -> Option<String> {
                     return Some("Save or cancel the current page layout first.".into());
                 }
                 let slot = slot(&app.state, track)?;
-                let edit = app.plugins.hosted.get(&crate::plugins::fx_key(track, slot))
-                    .and_then(|host| host.rack_editor.as_ref()).and_then(|editor| editor.edit(track, slot));
+                let edit = app.editors.editors.get(&crate::plugins::fx_key(track, slot))
+                    .and_then(|editor| editor.rack_editor.as_ref()).and_then(|editor| editor.edit(track, slot));
                 let Some(edit) = edit else { return Some("Open the docked editor before editing its pages.".into()); };
                 app.state.mixer.strip_edit = Some(edit);
             }
@@ -298,11 +298,11 @@ mod tests {
         crate::settings_file::set_flag(LINK_VISIBILITY,true);
         assert!(present(&menu(&app.state,1),false));
     }
-    fn setup()->(App,usize){let mut app=App::new(None);app.state.project=crate::app::test_project();app.state.project.mixer.truncate(4);app.state.project.arrangements.push(os_flp::project::default_arrangement());app.reset_hosted();app.plugins.effects=crate::plugins::builtin_effects();let index=app.plugins.effects.iter().position(|a|a.desc.name==crate::plugins::LEMON_EQ).unwrap();app.plugins.effects[index].desc.name="Magma Channel Strip Mono".into();app.plugins.effects[index].desc.vendor="Waves".into();(app,index)}
+    fn setup()->(App,usize){let mut app=App::new(None);app.state.session.project=crate::locked::Locked::new(crate::app::test_project());app.state.session.project.mixer.truncate(4);app.state.project.arrangements.push(os_flp::project::default_arrangement());app.reset_hosted();app.plugins.effects=crate::plugins::builtin_effects();let index=app.plugins.effects.iter().position(|a|a.desc.name==crate::plugins::LEMON_EQ).unwrap();app.plugins.effects[index].desc.name="Magma Channel Strip Mono".into();app.plugins.effects[index].desc.vendor="Waves".into();(app,index)}
     #[test]fn rack_mixer_picker_groups_all_effects_and_recommends_known_strips(){
-        let (mut app,index)=setup();let d=&app.plugins.effects[index].desc;
+        let (mut app,index)=setup();let (d_uid,d_format)=(app.plugins.effects[index].desc.uid(),app.plugins.effects[index].desc.format);
         for (name,vendor) in [("Magma Channel Strip Mono","Waves"),("RChannel Stereo","Waves"),("SSLChannel Stereo","Waves"),("SSLGChannel Mono","Waves"),("SSL EV2 Channel Stereo","Waves"),("GOLD5","Acqua"),("Pro-Q 4","FabFilter"),("NLS Channel Stereo","Waves"),("AudioTrack Mono","Waves"),("Virtual Mix Rack","Slate Digital"),("Scheps Omni Channel 2 Stereo","Waves")] {
-            app.state.plugdb.lists.fx.push(crate::plugin_db::Entry{builtin:false,index,name:name.into(),label:name.into(),uid:d.uid(),vendor:vendor.into(),format:d.format,category:"Effect",favorite:false});
+            app.state.plugdb.lists.fx.push(crate::plugin_db::Entry{builtin:false,index,name:name.into(),label:name.into(),uid:d_uid.clone(),vendor:vendor.into(),format:d_format,category:"Effect",favorite:false});
         }
         let items=menu(&app.state,1);let picker=items.iter().find(|v|v.label=="Choose channel strip").unwrap();
         let labels:Vec<_>=picker.children.iter().flat_map(|v|v.children.iter()).map(|v|v.label.as_ref()).collect();
@@ -511,8 +511,8 @@ mod tests {
         let key=crate::plugins::fx_key(1,0);let id={let p=app.plugins.hosted[&key].plugin.lock().unwrap();(0..p.param_count()).filter_map(|i|p.param_info(i)).find(|p|p.name=="Main level").unwrap().id};
         {let mut p=app.plugins.hosted[&key].plugin.lock().unwrap();p.set_param(id,0.7);p.idle();}
         let message=run(&mut app,Command::CopyAll(1)).unwrap();assert!(message.contains("1 independent"),"{message}");let k2=crate::plugins::fx_key(2,slot(&app.state,2).unwrap());assert!(!std::sync::Arc::ptr_eq(&app.plugins.hosted[&key].plugin,&app.plugins.hosted[&k2].plugin));assert!((app.plugins.hosted[&k2].plugin.lock().unwrap().param_value(id).unwrap()-0.7).abs()<1e-5);assert!(slot(&app.state,0).is_none());
-        crate::project_plugins::store_hosted(&mut app.state.project,&app.plugins).unwrap();let file=os_flp::project::create(&app.state.project).unwrap();let back=os_flp::project::load(&file).unwrap();assert_eq!(back.mixer[1].rack_strip,app.state.project.mixer[1].rack_strip);
-        let (mut reopened,_)=setup();reopened.plugins.effects=crate::plugins::builtin_effects();reopened.state.project=back;reopened.sync_wrapped();assert!((reopened.plugins.hosted[&key].plugin.lock().unwrap().param_value(id).unwrap()-0.7).abs()<1e-5);
+        crate::project_plugins::store_hosted(&mut app.state.session.project,&app.state.session.plugins).unwrap();let file=os_flp::project::create(&app.state.project).unwrap();let back=os_flp::project::load(&file).unwrap();assert_eq!(back.mixer[1].rack_strip,app.state.project.mixer[1].rack_strip);
+        let (mut reopened,_)=setup();reopened.plugins.effects=crate::plugins::builtin_effects();reopened.state.session.project=crate::locked::Locked::new(back);reopened.sync_wrapped();assert!((reopened.plugins.hosted[&key].plugin.lock().unwrap().param_value(id).unwrap()-0.7).abs()<1e-5);
         run(&mut app,Command::Remove(1));assert!(slot(&app.state,1).is_none());assert_eq!(app.state.project.mixer[1].strip_bypassed,native.strip_bypassed);assert_eq!(app.state.project.mixer[1].slot_on[10],native.slot_on[10]);crate::history::undo(&mut app.state);assert_eq!(slot(&app.state,1),Some(0));
     }
     #[test]fn rack_mixer_batch_capacity_extra_slots_and_legacy_retirement(){

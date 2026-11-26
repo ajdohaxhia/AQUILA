@@ -1097,7 +1097,7 @@ pub fn zoom_time(s: &mut State, g: &Geom, x: f32, from: f32, notches: f32) {
     let tick = g.tick_at(x);
     let p = &mut s.piano;
     p.px_per_beat = (from * 1.25f32.powf(notches)).clamp(6.0, 1600.0);
-    let ppt = p.px_per_beat / f32::from(s.project.ppq.max(4));
+    let ppt = p.px_per_beat / f32::from(s.session.project.ppq.max(4));
     p.scroll_x = (tick - (x - g.grid.x) / ppt).max(0.0);
 }
 
@@ -1108,7 +1108,7 @@ mod tests {
         use super::*;
         use crate::{app::App,playlist as pl,piano_tools::{self,NCmd}};
         use os_model::{Clip,ClipSource};
-        let mut app=App::new(None);app.state.project=crate::app::test_project();
+        let mut app=App::new(None);app.state.session.project=crate::locked::Locked::new(crate::app::test_project());
         let note=Note{position:120,length:48,..Note::step(0,0)};
         app.state.project.patterns[0].notes.push(note);
         app.state.project.patterns.push(Pattern{number:2,notes:vec![Note{channel:1,..note}],..Default::default()});
@@ -1506,7 +1506,7 @@ mod tests {
         for on in [false, true] {
             set_check(&AUTO_ZOOM_PIANO, on);
             let mut app = App::new(None);
-            app.state.project = crate::app::test_project();
+            app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
             app.state.selected_channel = 0;
             // A floating window: a grid about 300 px tall.
             let ws = &mut app.state.wins[Win::PianoRoll.slot().expect("a window")];

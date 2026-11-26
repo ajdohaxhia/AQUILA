@@ -427,7 +427,7 @@ impl App {
             self.params_tick();
             self.state.params.capture_pending.clear();
             // Discard queued edits from before the click. Busy instances drain next tick.
-            for (&key,h) in &self.plugins.hosted {
+            for (&key,h) in &self.state.session.plugins.hosted {
                 if let Ok(mut p)=h.plugin.try_lock() {p.take_param_events();}
                 else {self.state.params.capture_pending.insert(key);}
             }
@@ -462,7 +462,7 @@ impl App {
     }
     pub(crate) fn params_tick(&mut self) {
         let ui = &mut self.state.params;
-        ui.lists.retain(|k, _| self.plugins.hosted.contains_key(k));
+        ui.lists.retain(|k, _| self.state.session.plugins.hosted.contains_key(k));
         let mut moved = None;
         let mut edited = Vec::new();
         let mut ara_changes=Vec::new();
@@ -477,10 +477,10 @@ impl App {
         // Value snapshots a plugin's controller can take without the audio lock (ML Studio's `param_values_job`): run
         // once the instance is unlocked, so a large bank never holds the audio thread up.
         let mut snapshots: Vec<(usize, os_host::ParamValuesJob)> = Vec::new();
-        for (&key, h) in &self.plugins.hosted {
+        for (&key, h) in &self.state.session.plugins.hosted {
             // Only an instance with something new is locked, and never waited for: one the audio thread is rendering
             // is read again next tick (its events stay queued).
-            let Some(look) = h.due(ui.lists.get(&key).map_or(crate::plugins::Look::never(), |l| l.seen)) else { continue };
+            let Some(look) = h.due(ui.lists.get(&key).map_or(crate::plugins::Look::never(), |l| l.seen), false) else { continue };
             // A plugin's parameters can take a few ms to read (`lock_for_tick`).
             let Some(mut p) = crate::plugins::lock_for_tick(&h.plugin, h.meter.as_deref()) else { continue };
             // The dropout log is Linux only; elsewhere the hold is only timed.
@@ -560,7 +560,7 @@ impl App {
                 }
             }
             let sampler = key < crate::plugins::FX_KEY && p.desc().name == crate::plugins::LEMON_SAMPLER;
-            if p.take_state_changed(){edited.push(key);if self.state.project.channels.get(key).is_some_and(crate::ara::is){ara_changes.push((key,p.save_state()));}}
+            if p.take_state_changed(){edited.push(key);if self.state.session.project.channels.get(key).is_some_and(crate::ara::is){ara_changes.push((key,p.save_state()));}}
             let state_undo = p.state_undo_supported();
             native_edits.extend(p.take_state_edits().into_iter().map(|edit| (key, edit)));
             let pending=ui.capture_pending.remove(&key);
@@ -930,7 +930,7 @@ mod tests {
         assert!(!view::tabs(&a.state).iter().any(|t| t.0 == view::PARAMETERS_TAB));
         a.browser_cmd(BCmd::Toggle(view::OPT_PARAMETERS));
         assert!(view::tabs(&App::new(None).state).iter().any(|t| t.0 == view::PARAMETERS_TAB));
-        a.state.project = crate::app::test_project();
+        a.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         a.reset_hosted();
         a.plugins.effects = crate::plugins::builtin_effects();
         for slot in [1, 2] {
@@ -969,7 +969,7 @@ mod tests {
     fn slot_plugin_parameters_browse_and_automate() {
         use crate::views::browser::{rows, Item};
         let mut a = App::new(None);
-        a.state.project = crate::app::test_project();
+        a.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         a.reset_hosted();
         a.plugins.effects = crate::plugins::builtin_effects();
         let eq = os_model::SlotPlugin { id: os_model::Id::NONE, name: crate::plugins::EQ_FILE_NAME.into(), state: lemon_parametric_eq_2::params::default_state() };
@@ -1038,7 +1038,7 @@ mod tests {
     /// The app with the built-in EQ hosted in mixer track 2's slot 2, its parameters listed in the browser.
     fn eq_app() -> (App, usize) {
         let mut a = App::new(None);
-        a.state.project = crate::app::test_project();
+        a.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         a.reset_hosted();
         a.plugins.effects = crate::plugins::builtin_effects();
         let eq = os_model::SlotPlugin { id: os_model::Id::NONE, name: crate::plugins::EQ_FILE_NAME.into(), state: lemon_parametric_eq_2::params::default_state() };
@@ -1094,7 +1094,7 @@ mod tests {
         crate::playlist::run(&mut a, Cmd::Param(PCmd::Set(key, 35, 1.0)));
         idle(&a);
         assert!((value_of(&a.state, key, 35).unwrap() - 1.0).abs() < 1e-6);
-        assert_eq!(a.state.history.entries().last().map(|e| e.1), Some(crate::control::command::PLUGIN_PARAMETER));
+        assert_eq!(a.state.history.entries(&a.state.session.settings).last().map(|e| e.1), Some(crate::control::command::PLUGIN_PARAMETER));
         assert_eq!(crate::history::undo(&mut a.state).as_deref(), Some(crate::control::command::PLUGIN_PARAMETER));
         a.host_commands();
         idle(&a);
@@ -1228,7 +1228,7 @@ mod tests {
                 continue;
             }
             let mut a = App::new(None);
-            a.state.project = project;
+            a.state.session.project = crate::locked::Locked::new(project);
             a.reset_hosted();
             a.plugins.effects = crate::plugins::builtin_effects();
             a.sync_effects();

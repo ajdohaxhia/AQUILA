@@ -273,14 +273,14 @@ fn insert(app: &mut App, chains: &[Chain], track: u16, requested: Option<u8>) ->
     }
 
     app.store_builtin_states();
-    crate::project_plugins::store_hosted(&mut app.state.project, &app.plugins)?;
+    crate::project_plugins::store_hosted(&mut app.state.session.project, &app.state.session.plugins)?;
     let before = mixer::channel_copy(&app.state, track).ok_or("Mixer insert is unavailable")?;
     let action = if chains.len() == 1 { "Insert effect chain" } else { "Insert effect chains" };
     crate::history::record(&mut app.state, action, crate::history::Snap::MixerChannel(Box::new(before)));
     for ((&slot, (hosted, effect)), stage) in slots.iter().zip(prepared).zip(stages) {
         let key = plugins::fx_key(track, slot);
         app.plugins.hosted.insert(key, hosted);
-        app.plugins.added(key);
+        app.state.session.plugins.added(&app.state.session.settings, key);
         let target = mixer::track_mut(&mut app.state, track).unwrap();
         target.slots[usize::from(slot)] = Some(effect);
         target.slot_on[usize::from(slot)] = stage.on;
@@ -683,9 +683,9 @@ mod tests {
         use crate::views::browser::Item;
 
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         app.plugins = Plugins::builtins();
-        app.state.plugdb.rebuild(&app.plugins);
+        app.state.plugdb.rebuild(&app.state.session.plugins);
         app.state.z = vec![Win::Mixer];
         app.state.mixer.layout = mixer::WIDE;
         app.state.selected_mixer = 2;
@@ -753,9 +753,9 @@ mod tests {
     #[test]
     fn effect_chains_picker_inserts_factory_recipes_and_undoes_the_whole_chain() {
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         app.plugins = Plugins::builtins();
-        app.state.plugdb.rebuild(&app.plugins);
+        app.state.plugdb.rebuild(&app.state.session.plugins);
         app.state.selected_mixer = 2;
         let existing = plugins::new_slot("Keep this effect");
         app.state.project.mixer[2].slots[1] = Some(existing.clone());
@@ -791,9 +791,9 @@ mod tests {
     fn effect_chains_picker_captures_mixer_state_and_floats() {
         use super::super as picker;
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         app.plugins = Plugins::builtins();
-        app.state.plugdb.rebuild(&app.plugins);
+        app.state.plugdb.rebuild(&app.state.session.plugins);
         app.state.selected_mixer = 2;
         let factory = View::load();
         insert(&mut app, &factory.chains[..1], 2, None).unwrap();

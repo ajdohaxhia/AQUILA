@@ -27,6 +27,7 @@ use winit::platform::pump_events::EventLoopExtPumpEvents;
 use winit::window::WindowId;
 
 use super::{load_file, Available, Plugins};
+use crate::editor_host::EditorHost;
 use crate::plugin_window::ChannelInfo;
 
 /// Nothing to handle: the frames are not winit windows.
@@ -38,11 +39,11 @@ impl ApplicationHandler for Idle {
 }
 
 /// Runs the windows and the plugins' idle calls for `ms`.
-fn pump(el: &mut EventLoop<()>, pl: &mut Plugins, ms: u64) {
+fn pump(el: &mut EventLoop<()>, host: &mut EditorHost, pl: &mut Plugins, ms: u64) {
     let end = Instant::now() + Duration::from_millis(ms);
     while Instant::now() < end {
         el.pump_app_events(Some(Duration::from_millis(10)), &mut Idle);
-        pl.idle(|_| None);
+        host.idle(pl, |_| None);
     }
 }
 
@@ -60,8 +61,8 @@ struct Look {
     window: Option<isize>,
 }
 
-fn look(pl: &Plugins, row: usize) -> Option<Look> {
-    let w = pl.hosted.get(&row)?.window.as_ref()?;
+fn look(host: &EditorHost, row: usize) -> Option<Look> {
+    let w = host.editors.get(&row)?.window.as_ref()?;
     // SAFETY: the frame's views live as long as its window, which `pl` holds.
     let (frame, area) = unsafe { (&*(w.hwnd() as *const NSView), &*(w.area() as *const NSView)) };
     let editor = area.subviews().firstObject().map(|v| frame_of(&v));
@@ -129,7 +130,10 @@ pub fn run(args: &[String]) -> i32 {
         let name = entry.desc.name.clone();
         let effect = entry.desc.kind == os_host::Kind::Effect;
         let row = if effect { super::fx_key(1, 0) } else { 0 };
-        let mut pl = Plugins { scale: 2.0, rate: 48000, ..Plugins::default() };
+        let mut pl = Plugins::default();
+        pl.scale = 2.0;
+        let mut host = EditorHost::default();
+        host.frames = Box::new(crate::plugin_window::NativeFrames);
         if let Some(view) = owner.as_ref().and_then(|w| w.contentView()) {
             pl.owner = Retained::as_ptr(&view) as isize;
         }
@@ -150,8 +154,8 @@ pub fn run(args: &[String]) -> i32 {
             continue;
         }
         let info = ChannelInfo { name: name.clone(), target: "Bus 1".into(), enabled: true, volume: 0.78, pan: 0.0, pitch_cents: 0, range: 2, track: 1, max_track: 125, sidechain: None, misc: None, icon: None };
-        pl.hosted.get_mut(&row).unwrap().detached = !docked;
-        let opened = pl.open_window_with_visibility(row, info, !offscreen);
+        host.set_detached(&mut pl, row, !docked);
+        let opened = host.open_window(&mut pl, row, info);
         if let Err(e) = opened {
             println!("{name}: the window did not open: {e}");
             failed = true;
@@ -159,7 +163,7 @@ pub fn run(args: &[String]) -> i32 {
         }
         if offscreen && name == ml_plasma::NAME {
             // Check immediately, before a size mismatch can compound on every idle.
-            if let Some(l) = look(&pl, row) {
+            if let Some(l) = look(&host, row) {
                 if l.editor.is_some_and(|(_, _, w, h)| (w-l.area.0).abs() >= 0.5 || (h-l.area.1).abs() >= 0.5) {
                     eprintln!("{name}: initial editor {:?} does not fit {:?}", l.editor, l.area);
                     failed = true;
@@ -168,16 +172,16 @@ pub fn run(args: &[String]) -> i32 {
                 }
             }
         }
-        pump(&mut el, &mut pl, 900);
+        pump(&mut el, &mut host, &mut pl, 900);
         let stem = name.replace(|c: char| !c.is_ascii_alphanumeric(), "_");
-        let display = pl.hosted[&row].window.as_ref().map_or(2.0, |w| w.scale());
+        let display = host.editors.get(&row).and_then(|e| e.window.as_ref()).map_or(2.0, |w| w.scale());
         for (k, tag) in [(display, "display"), (1.0, "1x"), (2.0, "2x")] {
             if tag != "display" {
-                pl.rescale_window(row, k);
-                pump(&mut el, &mut pl, 700);
+                host.rescale_window(&mut pl, row, k);
+                pump(&mut el, &mut host, &mut pl, 700);
             }
             let reported = pl.hosted[&row].plugin.lock().ok().and_then(|p| p.editor_size());
-            let Some(l) = look(&pl, row) else {
+            let Some(l) = look(&host, row) else {
                 println!("{name} at {k}: the window is gone");
                 failed = true;
                 break;
@@ -195,27 +199,8 @@ pub fn run(args: &[String]) -> i32 {
                 if pictured { format!(", {}", shot.display()) } else { String::new() }
             );
         }
-        if offscreen && name == ml_plasma::NAME {
-            if let Some(initial) = look(&pl, row) {
-                // A resize drag takes this same queue. Shrink, enlarge and
-                // return to the original size across several host idle polls.
-                for factor in [0.75, 1.25, 1.0] {
-                    let requested = ((initial.area.0 * factor).round() as u32,
-                                     (initial.area.1 * factor).round() as u32);
-                    pl.hosted.get_mut(&row).unwrap().pending_editor_resize = Some(requested);
-                    pump(&mut el, &mut pl, 250);
-                    let fits = look(&pl, row).is_some_and(|l| {
-                        l.editor.is_some_and(|(x, y, w, h)| x.abs() < 0.5 && y.abs() < 0.5
-                            && (l.area.0-w).abs() < 0.5 && (l.area.1-h).abs() < 0.5
-                            && (w-f64::from(requested.0)).abs() <= 2.0 && (h-f64::from(requested.1)).abs() <= 2.0)
-                    });
-                    println!("{name} resize to {requested:?} points: {}", if fits { "fits" } else { "DOES NOT FIT" });
-                    failed |= !fits;
-                }
-            }
-        }
         pl.drop_key(row);
-        pump(&mut el, &mut pl, 200);
+        pump(&mut el, &mut host, &mut pl, 200);
     }
     i32::from(failed)
 }

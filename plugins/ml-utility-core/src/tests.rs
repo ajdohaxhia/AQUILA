@@ -381,10 +381,16 @@ fn parameter_text_and_stock_editor_renders() {
             canvas
                 .pixmap
                 .save_png(
-                    std::path::Path::new(&std::env::var("ML_TOOLS_RENDER_DIR").unwrap())
+                    render_dir()
                         .join(format!("{} {scale}.png", spec.name)),
                 )
                 .unwrap();
         }
     }
+}
+
+fn render_dir() -> std::path::PathBuf {
+    let root = std::env::var_os("ML_TOOLS_RENDER_DIR").map(std::path::PathBuf::from).unwrap_or_else(std::env::temp_dir);
+    let _ = std::fs::create_dir_all(&root);
+    root
 }

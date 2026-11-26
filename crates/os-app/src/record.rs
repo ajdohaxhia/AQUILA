@@ -379,7 +379,7 @@ impl App {
     fn dump_score_log(&mut self, minutes: u32, replace: Option<bool>) -> Option<String> {
         use crate::playlist::{Cmd, PItem, Popup};
         let s = &mut self.state;
-        let tps = crate::score_log::ticks_per_second(s);
+        let tps = crate::score_log_ui::ticks_per_second(s);
         let channels: Vec<u16> = s.project.channels.iter().map(|c| c.index).collect();
         let mut new = s.rec.log.notes(minutes, std::time::Instant::now(), tps);
         new.retain(|n| channels.contains(&n.channel));
@@ -613,12 +613,24 @@ impl App {
         s.piano.dirty = true;
     }
 
+    /// The score log's own source for `src` (the session keeps the log; AQUILA's `Src` also names MPE notes).
+    fn log_src(src: Src) -> os_session::step_edit::Src {
+        use os_session::step_edit::Src as L;
+        match src {
+            Src::Mpe(id) => L::Mpe(id),
+            Src::Typing(k) => L::Typing(k as u64),
+            Src::Midi(k) => L::Midi(k),
+            Src::Omni(k) => L::Omni(k),
+            Src::Touch(k) => L::Touch(k),
+        }
+    }
+
     /// A note went down (typing keyboard, MIDI, Touch controller): recorded from the playback position while
     /// recording (spec §2 Taking notes).
     pub(crate) fn record_down_with(&mut self, src: Src, key: u16, velocity: u8, extra: Extra) {
         let target = extra.channel.or_else(|| crate::piano::channel(&self.state));
         if let Some(channel) = target {
-            self.state.rec.log.down(src, key, velocity, channel, std::time::Instant::now());
+            self.state.rec.log.down(Self::log_src(src), key, velocity, channel, std::time::Instant::now());
         }
         self.start_on_input(Opt::Notes);
         if !self.rec_live(Opt::Notes) {
@@ -643,7 +655,7 @@ impl App {
 
     /// A note went up: written when it was being recorded.
     pub(crate) fn record_up_with(&mut self, src: Src, release: Option<u8>) {
-        self.state.rec.log.up(src, std::time::Instant::now());
+        self.state.rec.log.up(Self::log_src(src), std::time::Instant::now());
         let r = &mut self.state.rec;
         let Some(i) = r.held.iter().position(|h| h.src == src) else { return };
         let mut h = r.held.remove(i);
@@ -750,14 +762,14 @@ impl App {
         let start = h.at.max(0.0).round() as u32;
         let end = match now {
             Some(n) if n >= h.start => (h.at + (n - h.start)).round() as u32,
-            Some(_) => s.project.pattern_length(take.pattern).max(start),
+            Some(_) => s.session.project.pattern_length(take.pattern).max(start),
             None => start,
         };
         let pattern = take.pattern;
         let (a, b) = quantized(s, start, end);
         let take = s.rec.take.as_mut().expect("checked");
         let mut note = Note { length: b - a, key: h.key, velocity: h.velocity, ..Note::step(h.channel, a) };
-        if let Some(id)=h.extra.expression{if let Some(mut e)=s.project.mpe.get(id).cloned(){let duration=(end-start).max(1)as f32;for lane in &mut e.lanes{for point in lane.iter_mut(){point.at=(point.at/duration).clamp(0.,1.);}lane.sort_by(|a,b|a.at.total_cmp(&b.at));}note.expression=s.project.mpe.add(e);}}
+        if let Some(id)=h.extra.expression{if let Some(mut e)=s.session.project.mpe.get(id).cloned(){let duration=(end-start).max(1)as f32;for lane in &mut e.lanes{for point in lane.iter_mut(){point.at=(point.at/duration).clamp(0.,1.);}lane.sort_by(|a,b|a.at.total_cmp(&b.at));}note.expression=s.session.project.mpe.add(e);}}
         note.mod_x = h.extra.mod_x.unwrap_or(note.mod_x);
         note.mod_y = h.extra.mod_y.unwrap_or(note.mod_y);
         if let Some(g) = h.extra.group {
@@ -770,14 +782,14 @@ impl App {
         let (lo, hi) = if Opt::Blend.on() { (0, 0) } else { (lo, hi) };
         // The pattern as it is now, so edits made during the take stay: the take's span replaces the other notes on
         // its channels, and the new note joins.
-        let i = match s.project.patterns.iter().position(|p| p.number == pattern) {
+        let i = match s.session.project.patterns.iter().position(|p| p.number == pattern) {
             Some(i) => i,
             None => {
-                s.project.patterns.push(os_model::Pattern { number: pattern, ..os_model::Pattern::default() });
-                s.project.patterns.len() - 1
+                s.session.project.patterns.push(os_model::Pattern { number: pattern, ..os_model::Pattern::default() });
+                s.session.project.patterns.len() - 1
             }
         };
-        let p = &mut s.project.patterns[i];
+        let p = &mut s.session.project.patterns[i];
         p.notes.retain(|n| take.new.contains(n) || !(take.channels.contains(&n.channel) && n.position >= lo && n.position < hi));
         p.notes.push(note);
         take.new.push(note);
@@ -1059,7 +1071,7 @@ mod tests {
     fn app() -> App {
         crate::settings_file::set_flag("rec_ask", false);
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         app.state.selected_channel = 0;
         app.state.pattern = 1;
         app.state.project.patterns.iter_mut().for_each(|p| p.notes.clear());
@@ -1189,7 +1201,7 @@ mod tests {
         stop(&mut app);
         assert_eq!(notes(&app), [(24, 72, 0), (192, 24, 0)]);
         assert!(!app.state.rec.recording() && app.state.rec.armed, "a stop ends the take and keeps Record armed");
-        assert_eq!(app.state.history.entries().last().map(|e| e.1), Some(RECORDED));
+        assert_eq!(app.state.history.entries(&app.state.session.settings).last().map(|e| e.1), Some(RECORDED));
 
         // Another take from 170 to 260: the note starting at 192 goes, the one at 24 (before the take) stays.
         let steps = app.state.history.len();
@@ -1497,18 +1509,18 @@ mod tests {
         let mut app = app();
         let now = Instant::now();
         let t0 = now.checked_sub(Duration::from_secs(10)).expect("a clock");
-        let src = |c| crate::step_edit::Src::Typing(c);
+        let src = |c| os_session::step_edit::Src::Typing(c as u64);
         let log = &mut app.state.rec.log;
         log.down(src(KeyCode::KeyZ), 60, 100, 0, t0);
         log.up(src(KeyCode::KeyZ), t0 + Duration::from_millis(300));
         log.down(src(KeyCode::KeyX), 62, 90, 0, t0 + Duration::from_millis(700));
         log.up(src(KeyCode::KeyX), t0 + Duration::from_millis(1000));
-        let tps = crate::score_log::ticks_per_second(&app.state);
+        let tps = crate::score_log_ui::ticks_per_second(&app.state);
         let msg = crate::playlist::run(&mut app, Cmd::Rec(RecCmd::Dump(2)));
         assert_eq!(msg.as_deref(), Some("Captured 2 notes into the pattern"));
         let t = |s: f64| (s * tps).round() as u32;
         assert_eq!(notes(&app), [(0, t(0.3), 0), (t(0.7), t(0.3), 0)]);
-        assert_eq!(app.state.history.entries().last().map(|e| e.1), Some(crate::score_log::DUMPED));
+        assert_eq!(app.state.history.entries(&app.state.session.settings).last().map(|e| e.1), Some(crate::score_log::DUMPED));
         // A full pattern: asks first.
         crate::playlist::run(&mut app, Cmd::Rec(RecCmd::Dump(2)));
         let Some(Popup { items, .. }) = app.state.playlist.popup.clone() else { panic!("no question") };
@@ -1563,7 +1575,7 @@ mod tests {
         app.state.tempo = 70.0;
         let p = &app.state.project;
         let at_70 = f64::from(p.ppq) * p.tick_tempo(70.0) / 60.0;
-        assert!((crate::score_log::ticks_per_second(&app.state) - at_70).abs() < 1e-9);
+        assert!((crate::score_log_ui::ticks_per_second(&app.state) - at_70).abs() < 1e-9);
     }
 
     #[test]

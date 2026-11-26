@@ -194,7 +194,7 @@ pub fn recorded(s:&mut State,i:usize,mixer:u16,loop_span:Option<(u32,u32)>)->Res
 mod tests {
     use super::*;
     fn app()->crate::app::App {
-        let mut app=crate::app::App::new(None);app.state.project=crate::app::test_project();app.state.tempo=120.;
+        let mut app=crate::app::App::new(None);app.state.session.project=crate::locked::Locked::new(crate::app::test_project());app.state.tempo=120.;
         app.state.project.channels[0].kind=os_model::ChannelKind::AudioClip;
         app.state.project.channels[1].kind=os_model::ChannelKind::AudioClip;
         app.state.project.channels[1].mixer_track=1;

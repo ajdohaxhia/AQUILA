@@ -96,7 +96,7 @@ gaps and nonfinite output at 64, 128 and 256 frames. It opens no audio device.
 ```powershell
 $env:LEMON_STRESS_SECONDS='10'
 $env:LEMON_STRESS_ROUTED_MIXER='1'
-cargo test --locked --release -p os-app --bin lemonstudio sustained_low_buffer_stress -- --ignored --nocapture
+cargo test --locked --release -p os-session --lib sustained_low_buffer_stress -- --ignored --nocapture
 ```
 
 Use the project's normal personal engine-bundle environment when building the

@@ -105,7 +105,7 @@ pub fn act(app:&mut App,hit:Hit){
             let picked=app.state.plugin_picker.multi.clone();if picked.is_empty(){return;}
             let uids:Vec<_>=picked.into_iter().filter_map(|(fx,i)|{let p=if fx{app.plugins.effects.get(i)}else{app.plugins.available.get(i)}?;Some(p.desc.uid())}).collect();
             for uid in uids{let p=&mut app.state.plugdb.prefs;if matches!(hit,Hit::BulkFavorite(_)){if p.is_favorite(&uid)!=on{p.toggle_favorite(&uid);}}else if p.is_hidden(&uid)!=on{p.toggle_hidden(&uid);}}
-            app.state.plugdb.prefs.save();app.state.plugdb.rebuild(&app.plugins);let v=&mut app.state.plugin_picker;v.multi.clear();v.anchor=None;v.last_click=None;v.selected=0;v.first=0;
+            app.state.plugdb.prefs.save();app.state.plugdb.rebuild(&app.state.session.plugins);let v=&mut app.state.plugin_picker;v.multi.clear();v.anchor=None;v.last_click=None;v.selected=0;v.first=0;
         },
         Hit::Generate=>crate::plugin_previews::start(app),
         Hit::CancelGeneration=>crate::plugin_previews::cancel(),
@@ -140,7 +140,7 @@ pub fn act(app:&mut App,hit:Hit){
         Hit::Favorite(fx,i)=>{
             let list=if fx{&app.plugins.effects}else{&app.plugins.available};
             if let Some(uid)=list.get(i).map(|e|e.desc.uid()){
-                app.state.plugdb.prefs.toggle_favorite(&uid);app.state.plugdb.prefs.save();app.state.plugdb.rebuild(&app.plugins);
+                app.state.plugdb.prefs.toggle_favorite(&uid);app.state.plugdb.prefs.save();app.state.plugdb.rebuild(&app.state.session.plugins);
             }
             app.state.plugin_picker.first=app.state.plugin_picker.first.min(max_first(&app.state));
         },
@@ -474,7 +474,7 @@ mod tests{
       a.state.plugin_picker.multi=picked.clone();act(&mut a,Hit::BulkBlacklist(false));act(&mut a,Hit::Filter(0));for p in picked{assert!(choices(&a.state).contains(&p));}
       let bytes=serde_json::to_vec(&a.state.plugdb.prefs).unwrap();let back:crate::plugin_db::Prefs=serde_json::from_slice(&bytes).unwrap();assert_eq!(back,a.state.plugdb.prefs);
     }
-    fn app()->App{let mut a=App::new(None);a.plugins=crate::plugins::Plugins::builtins();a.state.plugdb.rebuild(&a.plugins);a}
+    fn app()->App{let mut a=App::new(None);a.plugins=crate::plugins::Plugins::builtins();a.state.plugdb.rebuild(&a.state.session.plugins);a}
     #[test]
     fn plugin_picker_tabs_use_one_clickable_panel() {
         let mut app = app();

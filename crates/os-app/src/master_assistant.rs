@@ -133,7 +133,7 @@ mod tests {
         open(&mut app,true); assert!(enabled(&app.state));
         let bytes=os_flp::project::create(&app.state.project).unwrap().to_bytes().unwrap();
         let loaded=os_flp::project::load(&os_flp::FlpFile::parse(&bytes).unwrap()).unwrap();
-        app.state.project=loaded;
+        app.state.session.project=crate::locked::Locked::new(loaded);
         assert_eq!(slot(&app.state),Some(11)); assert!(enabled(&app.state));
         assert_eq!(mixer::track(&app.state,0).unwrap().slots[9].as_ref().unwrap().state,vec![42]);
         open(&mut app,false);

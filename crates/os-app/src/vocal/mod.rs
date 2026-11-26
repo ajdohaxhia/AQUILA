@@ -63,10 +63,7 @@ pub(crate) fn key(d: &Edit) -> String {
                 return key.clone();
             }
         }
-        let key = format!("{:x}", Sha256::digest(serde_json::to_vec(&(
-            "clip-edits-v3", d.enabled, &d.source, &d.source_hash, d.rate, d.frames,
-            &d.notes, &d.curve, &d.timing, d.strength, d.formant,
-        )).unwrap_or_default()));
+        let key = os_session::vocal_key::key(d);
         if keys.len() >= 256 && !keys.contains_key(&d.channel) { keys.clear(); }
         keys.insert(d.channel, ((d.enabled, d.source.clone(), d.source_hash.clone(), d.rate,
             d.frames, d.notes.clone(), d.curve.clone(), d.timing.clone(), d.strength, d.formant), key.clone()));
@@ -173,7 +170,8 @@ pub fn tick(app:&mut App){
     if pl::clips(&app.state).iter().any(|c|c.source==ClipSource::Channel(d.channel)&&c.track!=job.row){
      let Some(next)=app.state.project.channels.iter().map(|c|c.index).max().unwrap_or(0).checked_add(1)else{return};
      let mut c=app.state.project.channel(d.channel).unwrap().clone();c.index=next;c.plugin_state=None;c.plugin=None;
-     for a in &mut app.state.project.arrangements{if a.number==app.state.project.current_arrangement.unwrap_or(0){for clip in &mut a.clips{if clip.track==job.row&&clip.source==ClipSource::Channel(d.channel){clip.source=ClipSource::Channel(next);}}}}
+     let current=app.state.session.project.current_arrangement.unwrap_or(0);
+     for a in &mut (*app.state.session.project).arrangements{if a.number==current{for clip in &mut a.clips{if clip.track==job.row&&clip.source==ClipSource::Channel(d.channel){clip.source=ClipSource::Channel(next);}}}}
      crate::rack::push_channel(&mut app.state,c);d.channel=next;
     }
     if !d.notes.is_empty(){let lo=d.notes.iter().map(|n|n.base).fold(128f32,f32::min);let hi=d.notes.iter().map(|n|n.base).fold(0f32,f32::max);app.state.playlist.vocal.span=(hi-lo+8.).clamp(12.,36.);app.state.playlist.vocal.low=(lo-4.).clamp(0.,128.-app.state.playlist.vocal.span);}
@@ -188,7 +186,7 @@ pub fn tick(app:&mut App){
    Ok(Done::Rendered(path,audio))=>{
     if job.expected.as_ref().is_some_and(|d|file_hash(&d.source).as_deref()!=Ok(d.source_hash.as_str())){app.state.playlist.vocal.failed.insert(job.key.clone());message(app,"Vocal tuning: the original recording changed before the render was ready. Previous audio retained.".into());return;}
     os_engine::sample::remember_shared(&path,audio.clone());app.vocal_audio=Some(audio);
-    if let Some(expected)=job.expected.as_ref(){if let Some(i)=app.state.project.vocal_edits.iter().position(|d|d==expected&&owns(&app.state,d)){let d=&mut app.state.project.vocal_edits[i];d.rendered=path.to_string_lossy().into_owned();d.render_key=job.key.clone();let(id,path)=(d.channel,d.rendered.clone());set_source(app,id,&path);message(app,"Ready. Pitch and timing edits remain independently editable.".into());}}
+    if let Some(expected)=job.expected.as_ref(){if let Some(i)=app.state.project.vocal_edits.iter().position(|d|d==expected&&owns(&app.state,d)){let p=&mut *app.state.session.project;let d=&mut p.vocal_edits[i];d.rendered=path.to_string_lossy().into_owned();d.render_key=job.key.clone();let(id,path)=(d.channel,d.rendered.clone());set_source(app,id,&path);message(app,"Ready. Pitch and timing edits remain independently editable.".into());}}
    },
   }
   app.invalidate();
@@ -262,13 +260,13 @@ fn command_inner(app:&mut App,c:Command){
  if ids.is_empty(){return;}
  snapshot(&mut app.state,"Edit vocal tuning");
  let selected=app.state.playlist.vocal.selected.clone();let(root,scale)=(app.state.playlist.vocal.key,app.state.playlist.vocal.scale);
- for i in ids{let d=&mut app.state.project.vocal_edits[i];let chosen:Vec<usize>=selected.iter().filter(|(ch,_)|*ch==d.channel).map(|(_,n)|*n).collect();
+ for i in ids{let p=&mut *app.state.session.project;let d=&mut p.vocal_edits[i];let chosen:Vec<usize>=selected.iter().filter(|(ch,_)|*ch==d.channel).map(|(_,n)|*n).collect();
   match c{
    Command::Bypass=>d.enabled=!d.enabled,
    Command::Strength(n)=>d.strength=(d.strength+n as f32*0.1).clamp(0.,1.),
    Command::Formant(n)=>d.formant=(d.formant+n as f32*0.5).clamp(-12.,12.),
    Command::Reset=>crate::audio_edits::reset_pitch(d),
-   Command::ResetTiming=>{let duration=d.frames as f64/d.rate as f64;d.timing=vec![(0.,0.),(duration,duration)];if let Some(h)=app.state.project.audio_edits.iter().find(|h|h.channel==d.channel){let (a,b)=h.source_range;let(x,y)=h.output_range;if a>0.{d.timing.push((a,x));}if b<duration{d.timing.push((b,y));}d.timing.sort_by(|a,b|a.0.total_cmp(&b.0));}},
+   Command::ResetTiming=>{let duration=d.frames as f64/d.rate as f64;d.timing=vec![(0.,0.),(duration,duration)];if let Some(h)=p.audio_edits.iter().find(|h|h.channel==d.channel){let (a,b)=h.source_range;let(x,y)=h.output_range;if a>0.{d.timing.push((a,x));}if b<duration{d.timing.push((b,y));}d.timing.sort_by(|a,b|a.0.total_cmp(&b.0));}},
    Command::Join=>{if chosen.len()>=2{let a=*chosen.iter().min().unwrap();let b=*chosen.iter().max().unwrap();if b<d.notes.len(){let end=d.notes[b].end;d.notes[a].end=end;d.notes.drain(a+1..=b);}}},
    _=>{for(n,note)in d.notes.iter_mut().enumerate(){if !chosen.is_empty()&&!chosen.contains(&n){continue;}match c{
     Command::Correct=>{let target=nearest(note.base,root,scale);note.shift=target-note.base;},
@@ -308,7 +306,7 @@ pub fn key_input(app:&mut App,key:&winit::keyboard::Key,ctrl:bool,alt:bool)->boo
   let dir=std::env::temp_dir().join(format!("lemon-vocal-ui-{}-{}",std::process::id(),NEXT.fetch_add(1,std::sync::atomic::Ordering::Relaxed)));std::fs::create_dir_all(&dir).unwrap();let source=dir.join("Vocal.wav");let rate=24000u32;
   let audio:Vec<f32>=(0..rate*2).flat_map(|i|{let t=i as f32/rate as f32;let hz=if t<0.25{220.}else if (0.4..0.8).contains(&t){261.626}else if (1.05..1.5).contains(&t){329.628}else{0.};let x=if hz>0.{(t*hz*std::f32::consts::TAU).sin()*0.2}else{0.};[x,x]}).collect();
   os_engine::wav::write_f32_stereo(&mut std::fs::File::create(&source).unwrap(),rate,&audio).unwrap();
-  let mut app=App::new(None);app.state.project=crate::app::test_project();app.state.tempo=120.;app.state.project.data_folder=Some(os_model::DataFolder{choice:2,folder:dir.to_string_lossy().into_owned()});
+  let mut app=App::new(None);app.state.session.project=crate::locked::Locked::new(crate::app::test_project());app.state.tempo=120.;app.state.session.project.data_folder=Some(os_model::DataFolder{choice:2,folder:dir.to_string_lossy().into_owned()});
   app.state.playlist_bar_w=480.;let ci=pl::add_audio_clip(&mut app.state,&source.to_string_lossy(),2,0).unwrap();
   let ClipSource::Channel(id)=pl::clips(&app.state)[ci].source else{panic!()};
   let mut f0=vec![0.;401];for(i,hz)in f0.iter_mut().enumerate(){*hz=if i<50{220.}else if (80..160).contains(&i){261.626}else if (210..300).contains(&i){329.628}else{0.};}
@@ -512,6 +510,6 @@ pub(crate) fn render_edit(sample:Arc<os_engine::Sample>,d:&Edit,stop:&AtomicBool
 pub(crate) fn cancel_drag(app:&mut App)->bool{
  let Some(Drag::Vocal(g))=app.drag.take()else{return false};
  if let Some(i)=doc_index(&app.state,g.clip){app.state.project.vocal_edits[i]=(*g.before).clone();}
- for h in &app.state.project.audio_edits{if let Some(d)=app.state.project.vocal_edits.iter_mut().find(|d|d.channel==h.channel){h.restore(d);}}
+ let p=&mut *app.state.session.project;for h in &p.audio_edits{if let Some(d)=p.vocal_edits.iter_mut().find(|d|d.channel==h.channel){h.restore(d);}}
  crate::history::settle(&mut app.state);audition::stop(app);app.invalidate();true
 }

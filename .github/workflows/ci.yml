@@ -53,6 +53,19 @@ jobs:
       - name: Build
         run: cargo build --workspace --lib --bins --tests --locked
 
+      # The session (the project, playing, recording, loading, saving) builds without the interface.
+      - name: Build the session alone
+        run: cargo check --locked -p os-session --all-targets
+
+      # Verify the headless session's optional dependencies in isolation.
+      - name: Build the session with features off
+        shell: bash
+        run: |
+          cargo check --locked -p os-session --no-default-features
+          for feature in vst3 vst2 export-flac export-mp3 export-ogg midi-io device fl-native rpc; do
+            cargo check --locked -p os-session --no-default-features --features "$feature"
+          done
+
       # Build the same 32-bit helper as releases, then exercise it from the 64-bit host.
       - name: Build the 32-bit bridge
         if: runner.os == 'Windows'
@@ -87,13 +100,13 @@ jobs:
 
       # What only the release workflow builds: a nightly's and a tagged release's settings still compile.
       - name: Check a nightly
-        run: cargo check --locked -p os-app --bin lemonstudio
+        run: cargo check --locked -p lemonstudio
         env:
           LEMON_CHANNEL: nightly
           LEMON_VERSION: 2026.1.1.1
 
       - name: Check a tagged release
-        run: cargo check --locked -p os-app --bin lemonstudio
+        run: cargo check --locked -p lemonstudio
         env:
           LEMON_CHANNEL: stable
           LEMON_VERSION: 0.1.0

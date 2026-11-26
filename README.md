@@ -197,15 +197,17 @@ Every AQUILA install includes these, with no extra downloads.
 
 ### Build and run
 
-Clone into a folder whose path contains **no spaces**. The bundled LAME MP3 encoder and the ML Plasma engine use `make`, which breaks on paths with spaces.
+Clone into a folder whose path contains **no spaces**. The ML Plasma native build requires source and build paths without spaces.
 
 ```bash
 git clone https://github.com/ajdohaxhia/AQUILA.git aquila
 cd aquila
-PYTHON=python3 cargo run --release -p os-app
+PYTHON=python3 cargo run --release -p lemonstudio
 ```
 
 On macOS, if your selected Xcode lives in a folder whose path has spaces (for example on an external drive named `My Drive`), point the build at the Command Line Tools instead: prefix the command with `DEVELOPER_DIR=/Library/Developer/CommandLineTools`.
+
+To install the binary in Cargo’s `bin` directory, run `cargo install --path crates/lemonstudio --locked`.
 
 The first build compiles the ML Plasma engine natively. Before it starts, it checks for **20 GiB of free disk space** on the drive that holds the build folder. To build on another drive, set `CARGO_TARGET_DIR` to a folder there (again with no spaces in its path).
 
@@ -214,7 +216,7 @@ The first build compiles the ML Plasma engine natively. Before it starts, it che
 - **macOS app bundle:** `cargo run -p bundle-app` builds `AQUILA.app` with the AQUILA icon; add `-- --install` to copy it to `~/Applications`.
 - **Windows installer:** `packaging/windows/LemonStudio.nsi` (NSIS).
 - **GitHub release after a green CI:** `packaging/release-when-green.sh [commit] [version]` waits for that commit's CI run and, only if it succeeds, starts the *AQUILA release* workflow (`.github/workflows/aquila-release.yml`). It needs the GitHub CLI (`gh`).
-- **Master Assistant engine** (release builds): compile `plugins/lemon-master-assistant` with CMake and JUCE 8.0.9, package it with `python packaging/bundle-master-engine.py`, then set `LEMON_MASTER_BUNDLE` to the ZIP and `LEMON_RELEASE=1` before building `os-app`.
+- **Master Assistant engine** (release builds): compile `plugins/lemon-master-assistant` with CMake and JUCE 8.0.9, package it with `python packaging/bundle-master-engine.py`, then set `LEMON_MASTER_BUNDLE` to the ZIP and `LEMON_RELEASE=1` before building `lemonstudio`.
 
 ### Icons
 
@@ -250,7 +252,9 @@ Every shortcut can be changed under Options ▸ Controls.
 
 | Path | Contents |
 | --- | --- |
-| `crates/os-app` | The application: windows, editors, browser, mixer, transport and file handling |
+| `crates/lemonstudio` | Application entry point and native windows |
+| `crates/os-app` | Editors, views, menus and dialogs |
+| `crates/os-session` | Project, playback, plugin hosting, saving and editing commands |
 | `crates/os-engine` | The audio engine: scheduling, voices, mixing, multi-core rendering, delay compensation |
 | `crates/os-dsp` | DSP building blocks: channel strip, EQ, stretching, resampling |
 | `crates/os-model` | The project model shared by every part |

@@ -419,9 +419,9 @@ pub fn list_dir(s: &State, dir: &Path) -> Rc<Vec<Entry>> {
             let rd=entries;
             rd.flatten()
                 .filter_map(|e| {
+                    let md = crate::browser_index::listed_metadata(&e)?;
                     let name = e.file_name().to_string_lossy().into_owned();
                     let low = name.to_ascii_lowercase();
-                    let md = e.metadata().ok()?;
                     #[cfg(windows)]
                     {
                         use std::os::windows::fs::MetadataExt;
@@ -503,7 +503,7 @@ fn project_rows(s: &State, root: &str, cat: u8, out: &mut Vec<Row>) {
         match name {
             // Undone steps grey, their arrow mirrored (spec: ui/settings-choices.md "Undo history: the four checks").
             "History" => {
-                for (e, step) in s.history.entries() {
+                for (e, step) in s.history.entries(&crate::settings_file::store()) {
                     let icon = if s.history.undone(e) { Icon::Redo } else { Icon::Undo };
                     let (bright, item) = (s.history.current(e), Item::History(e));
                     out.push(Row { key: format!("{parent}/{e}"), depth: 2, label: step.into(), icon, cat, open: None, bright, item, path: None });

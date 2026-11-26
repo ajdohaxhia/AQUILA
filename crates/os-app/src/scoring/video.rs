@@ -385,10 +385,10 @@ pub fn poll(app: &mut App) {
                     .tempo_map(s.tempo)
                     .seconds(f64::from(s.playlist.pos))
             };
-            let clips = &s.project.arrangement()?.timeline.videos;
+            let clips = &s.session.project.arrangement()?.timeline.videos;
             clips.iter().rev().find_map(|clip| {
                 clip.source_time(seconds)
-                    .map(|source_time| (clip, source_time))
+                    .map(|source_time| (clip.clone(), source_time))
             })
         })
         .flatten();

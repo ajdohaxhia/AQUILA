@@ -8,7 +8,7 @@ fn community_rex_import_save_reopen_and_undo() {
     let root=PathBuf::from(std::env::var_os("ML_REX_FIXTURES").expect("fixture folder"));
     for name in ["120FourBeats.rx2","120RexTest.rex","120RcyTest.rcy"] {
         let path=root.join(name).to_string_lossy().into_owned();
-        let mut app=App::new(None);app.state.project=test_project();
+        let mut app=App::new(None);app.state.session.project=crate::locked::Locked::new(test_project());
         crate::playlist::arr_mut(&mut app.state);
         let before=app.state.project.clone();
         let i=crate::playlist::import_audio_clip(&mut app.state,&path,0,0).unwrap();
@@ -35,7 +35,7 @@ fn community_rex_import_save_reopen_and_undo() {
 #[test]
 fn community_rename_selection_and_escape_preserve_parent() {
     let mut app = App::new(None);
-    app.state.project = test_project();
+    app.state.session.project = crate::locked::Locked::new(test_project());
     app.state.z = vec![Win::Playlist, Win::Mixer];
     crate::patterns::open_name_box(&mut app.state, crate::patterns::BoxTarget::MixerTrack(1), (100.,100.));
     let b=app.state.pat_ui.name_box.as_mut().unwrap(); b.text="Lead synth".into();
@@ -53,7 +53,7 @@ fn community_rename_selection_and_escape_preserve_parent() {
 
 #[test]
 fn community_typing_piano_keeps_c_and_t_in_both_editors() {
-    let mut app=App::new(None);app.state.project=test_project();
+    let mut app=App::new(None);app.state.session.project=crate::locked::Locked::new(test_project());
     if !app.typing_on(){app.state.toggles.push("typing");}
     for win in [Win::Playlist,Win::PianoRoll] {
         app.state.z=vec![win];
@@ -66,7 +66,7 @@ fn community_typing_piano_keeps_c_and_t_in_both_editors() {
 
 #[test]
 fn community_loop_edges_keep_the_opposite_endpoint() {
-    let mut app=App::new(None);app.state.project=test_project();
+    let mut app=App::new(None);app.state.session.project=crate::locked::Locked::new(test_project());
     let grid=Rect::new(200.,100.,800.,500.);
     let g=crate::playlist::PGeom::new(&app.state,grid);
     app.state.playlist.range=Some((96,384));
@@ -82,7 +82,7 @@ fn community_loop_edges_keep_the_opposite_endpoint() {
 #[test]
 fn community_random_color_applies_to_selected_patterns_and_undoes() {
     use os_model::ClipSource;
-    let mut app=App::new(None);app.state.project=test_project();
+    let mut app=App::new(None);app.state.session.project=crate::locked::Locked::new(test_project());
     app.state.project.patterns=vec![os_model::Pattern{number:1,..Default::default()},os_model::Pattern{number:2,..Default::default()},os_model::Pattern{number:3,..Default::default()}];
     app.state.pattern=1;
     app.state.playlist.picker_ui.selected=vec![ClipSource::Pattern(1),ClipSource::Pattern(2)];
@@ -118,7 +118,7 @@ fn community_popup_siblings_and_escape_close_one_level() {
 
 #[test]
 fn community_alt_resize_can_make_one_tick_notes() {
-    let mut app=App::new(None);app.state.project=test_project();app.state.pattern=1;
+    let mut app=App::new(None);app.state.session.project=crate::locked::Locked::new(test_project());app.state.pattern=1;
     app.piano_grid=Some(Rect::new(100.,100.,800.,400.));
     let note=os_model::Note{length:96,..os_model::Note::step(app.state.project.channels[0].index,0)};
     app.state.project.patterns[0].notes=vec![note];
@@ -131,7 +131,7 @@ fn community_alt_resize_can_make_one_tick_notes() {
 
 #[test]
 fn community_inline_rename_supports_selection_and_cancel() {
-    let mut app=App::new(None);app.state.project=test_project();app.state.z=vec![Win::Mixer];
+    let mut app=App::new(None);app.state.session.project=crate::locked::Locked::new(test_project());app.state.z=vec![Win::Mixer];
     let before=app.state.project.mixer[1].name.clone();
     crate::playlist::start_edit(&mut app.state,crate::playlist::EditTarget::MixerName(1),(100.,100.));
     app.state.playlist.edit.as_mut().unwrap().text="Lead synth".into();
@@ -149,7 +149,7 @@ fn community_inline_rename_supports_selection_and_cancel() {
 #[test]
 fn community_mixer_random_color_menu_undoes() {
     use crate::mixer::MCmd;
-    let mut app=App::new(None);app.state.project=test_project();
+    let mut app=App::new(None);app.state.session.project=crate::locked::Locked::new(test_project());
     app.state.selected_mixer=1;app.state.mixer.sel=vec![1,2];
     let before=app.state.project.mixer.clone();
     let menu=crate::mixer::track_menu(&app.state,1,0.,0.);
@@ -161,7 +161,7 @@ fn community_mixer_random_color_menu_undoes() {
 
 #[test]
 fn community_rename_mouse_selection_uses_visible_caret_positions() {
-    let mut app=App::new(None);app.state.project=test_project();app.state.z=vec![Win::Mixer];
+    let mut app=App::new(None);app.state.session.project=crate::locked::Locked::new(test_project());app.state.z=vec![Win::Mixer];
     let mut canvas=Canvas::new(1200,800,1.).unwrap();
     for inline in [true,false] {
         if inline {

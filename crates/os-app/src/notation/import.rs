@@ -924,7 +924,7 @@ mod tests {
     #[test]
     fn import_transfers_midi_marks_and_undo_and_round_trips() {
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        app.state.session.project = crate::locked::Locked::new(crate::app::test_project());
         app.state.project.ppq = 96;
         let before = app.state.project.clone();
         let score = parse(MUSIC, "Test", 96).unwrap();

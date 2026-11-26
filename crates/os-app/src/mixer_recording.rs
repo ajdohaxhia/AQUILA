@@ -177,7 +177,7 @@ mod tests {
     #[test]
     fn loop_audio_records_three_lanes_without_trimming_away_previous_passes() {
         let _lock=crate::capture::TEST_RECORDING.lock().unwrap_or_else(|e|e.into_inner());
-        let mut app=App::new(None);app.state.project=crate::app::test_project();app.state.project.tempo=Some(120.);app.state.tempo=120.;
+        let mut app=App::new(None);app.state.session.project=crate::locked::Locked::new(crate::app::test_project());app.state.session.project.tempo=Some(120.);app.state.tempo=120.;
         app.state.playlist.range=Some((0,192));flag(Opt::Loop,true);
         app.set_mixer_input(1,Some(Input{device:"Test ASIO".into(),asio:true,first:0,stereo:false}));
         app.prepare_mixer_take().unwrap();app.transport.pretend_at(0.,true);app.transport.pretend_seconds(0.);app.one_click_tick();
@@ -219,7 +219,7 @@ mod tests {
     #[test]
     fn simultaneous_inputs_stay_separate_aligned_and_restore_routes() {
         let _lock=crate::capture::TEST_RECORDING.lock().unwrap_or_else(|e|e.into_inner());
-        let mut app=App::new(None); app.state.project=crate::app::test_project();
+        let mut app=App::new(None); app.state.session.project=crate::locked::Locked::new(crate::app::test_project());
         let before=app.state.project.channels.len();
         let mut paths=Vec::new();
         for (t,first,stereo) in [(1,0,false),(2,1,false),(3,0,true)] {
@@ -282,7 +282,7 @@ mod tests {
         use crate::{record::Extra, step_edit::Src};
         let _lock=crate::capture::TEST_RECORDING.lock().unwrap_or_else(|e|e.into_inner());
         for assigned_lane in [false,true] {
-            let mut app=App::new(None);app.state.project=crate::app::test_project();
+            let mut app=App::new(None);app.state.session.project=crate::locked::Locked::new(crate::app::test_project());
             pl::arr_mut(&mut app.state).clips.clear();
             app.state.project.patterns[0].notes.clear();
             app.state.pattern=1;
@@ -333,7 +333,7 @@ mod tests {
     #[test]
     fn selecting_input_arms_audio_and_a_take_keeps_its_mixer_color_and_route() {
         let _lock=crate::capture::TEST_RECORDING.lock().unwrap_or_else(|e|e.into_inner());
-        let mut app=App::new(None);app.state.project=crate::app::test_project();
+        let mut app=App::new(None);app.state.session.project=crate::locked::Locked::new(crate::app::test_project());
         let color=Rgb::new(180,70,120);
         let m=crate::mixer::track_mut(&mut app.state,1).unwrap();m.name=Some("Main Vocals".into());m.color=Some(color);
         pl::place(&mut app.state,0,0);

@@ -609,6 +609,11 @@ impl ChannelState {
 
     /// The channel's volume gain for volume parameter `v`: its level curve times the volume multiplier (spec:
     /// audio/voice-levels.md "Final levels": the channel's two first), 0 when the channel is off.
+    /// The level a new start of playback gives (`init.0`), from the stored switch and volume.
+    fn start_volume(&self) -> f64 {
+        if self.stored.0 { laws::channel_gain(self.init_v) * f64::from(self.init_adjust.mult) } else { 0.0 }
+    }
+
     fn vol_gain(&self, v: f64) -> f64 {
         if self.enabled { laws::channel_gain(v) * f64::from(self.adjust.mult) } else { 0.0 }
     }
@@ -1763,7 +1768,7 @@ impl Engine {
                         slot_mix: m.slot_mix.map(mix_level),
                         slot_smart: m.slot_cpu.map(|c| c.smart_disable),
                         routes,
-                        latency: (m.latency_out, m.latency_in),
+                        latency: m.latency(),
                         input: if m.monitored() { m.audio_in } else { -1 },
                         output: m.audio_out,
                         rec: rec::Arm::of(m),
@@ -2526,8 +2531,9 @@ impl Engine {
             return;
         }
         self.fade_len = ((f64::from(self.rate) * PAUSE_FADE_SECONDS).round() as u32).max(1);
-        // Out from where a fade in has got to.
-        self.fade_out = self.fade_len - self.fade_in.min(self.fade_len);
+        // Out from where a fade in has got to: at least a frame, as a fade in that has not started yet is at silence
+        // and a fade out of none would be no pause at all (fuzz campaign).
+        self.fade_out = (self.fade_len - self.fade_in.min(self.fade_len)).max(1);
         self.fade_in = 0;
     }
 
@@ -2619,6 +2625,13 @@ impl Engine {
     /// `note_on` on MIDI channel `midi` (0..15): an instrument channel's plugin gets the note, and its end, on it (MIDI
     /// channel through, spec: ui/channel-rack.md §18); other channels ignore it. A stacked channel's children play too.
     pub fn note_on_midi(&mut self, channel: usize, key: u16, velocity: u8, midi: u8) {
+        if channel >= self.channels.len() {
+            return;
+        }
+        // A live key is down or not: pressed again while down (two keyboards, or a client), it retriggers, on every
+        // channel. One release then ends it, as the instruments' note rules count one end per start (a mono channel
+        // would keep a second start listed and its voice sounding).
+        self.note_off(channel, key);
         let children=self.channels.get(channel).map(|c|c.stack.clone()).unwrap_or_default();
         self.note_on_one(channel,key,velocity,midi);
         for child in children {self.note_on_one(child,key,velocity,midi);}
@@ -2645,7 +2658,6 @@ impl Engine {
             Some(i) => ((i + 1) as u16, 1.0),
             None => (0, laws::playback_rate(key, 0)),
         };
-        self.note_off_one(channel, key); // retrigger
         self.voices.push(Voice {
             edit_last:(0.,0.),edit_transition:None,
             color:0, drive:0.,clip_origin: None,
@@ -3649,23 +3661,12 @@ impl Engine {
             // swing `v × 128` to the nearest step, the mixer track `v × 500` to the nearest track up to the last insert,
             // the switch on from 0.5.
             Target::MainSwing => self.set_swing(os_model::target::swing_of(v)),
-            Target::MainPitch => self.set_main_pitch(os_model::target::main_pitch_of(v)),
             Target::ChannelMixerTrack(c) => {
                 let last = self.tracks.len().saturating_sub(2).max(1).min(self.tracks.len() - 1);
                 self.route_channel(usize::from(c), usize::from(os_model::target::mixer_track_of(v, last as u16)));
             }
             Target::ChannelOn(c) => self.switch_channel(usize::from(c), os_model::target::channel_on(v)),
             Target::ChannelParam(..) | Target::SlotParam(..) | Target::Other(_) => {}
-        }
-    }
-
-    /// The project's main pitch (cents) from this tick on (spec: audio/voice-levels.md "The main pitch"): every channel
-    /// that follows it has its pitch worked out again and its sounding voices follow, as for a change of the channel's
-    /// own pitch; a channel that does not follow it is not touched.
-    fn set_main_pitch(&mut self, cents: i32) {
-        for ch in self.channels.iter_mut().filter(|c| c.main.is_some_and(|m| m != cents)) {
-            ch.main = Some(cents);
-            ch.retune(ch.knob);
         }
     }
 
@@ -3821,30 +3822,78 @@ impl Engine {
     /// Takes a project edit in place (see [`LiveEdit`]), as a new engine for the edited project would have it.
     pub fn apply_edit(&mut self, edit: LiveEdit) {
         match edit {
+            // What a new start of playback puts back (`ChannelState::reset`, `MixTrack::restore`) changes with each.
             LiveEdit::ChannelVolume(c, v) => {
                 if let Some(ch) = self.channels.get_mut(c) {
                     ch.glide(Some(v), None, 0);
+                    ch.init_v = v;
+                    ch.init.0 = ch.start_volume();
                 }
             }
             LiveEdit::ChannelPan(c, p) => {
                 if let Some(ch) = self.channels.get_mut(c) {
                     ch.glide(None, Some(p), 0);
+                    ch.init.1 = p;
                 }
             }
             LiveEdit::ChannelPitch(c, cents) => {
                 if let Some(ch) = self.channels.get_mut(c) {
                     ch.init_knob = f64::from(cents);
                     ch.retune(f64::from(cents));
+                    ch.init.2 = ch.base_rate;
+                }
+            }
+            LiveEdit::ChannelEnabled(c, on) => {
+                self.switch_channel(c, on);
+                if let Some(ch) = self.channels.get_mut(c) {
+                    ch.stored.0 = on;
+                    ch.init.0 = ch.start_volume();
                 }
             }
             LiveEdit::MixerVolume(t, v) | LiveEdit::MixerPan(t, v) | LiveEdit::MixerSeparation(t, v) => {
                 if let Some(m) = self.tracks.get_mut(t) {
                     match edit {
-                        LiveEdit::MixerVolume(..) => m.vol = (v * 16000.0).round() as i32,
-                        LiveEdit::MixerPan(..) => m.pan = (v * 6400.0).round() as i32,
-                        _ => m.sep = (v * 64.0).round() as i32,
+                        LiveEdit::MixerVolume(..) => (m.vol, m.stored.vol) = ((v * 16000.0).round() as i32, (v * 16000.0).round() as i32),
+                        LiveEdit::MixerPan(..) => (m.pan, m.stored.pan) = ((v * 6400.0).round() as i32, (v * 6400.0).round() as i32),
+                        _ => (m.sep, m.stored.sep) = ((v * 64.0).round() as i32, (v * 64.0).round() as i32),
                     }
                     m.matrix = m.compute_matrix();
+                }
+            }
+            LiveEdit::MixerEnabled(t, on) => {
+                if let Some(m) = self.tracks.get_mut(t) {
+                    m.on = on;
+                    m.matrix = m.compute_matrix();
+                }
+            }
+            LiveEdit::MixerSlots(t, on) => {
+                if let Some(m) = self.tracks.get_mut(t) {
+                    m.slots_enabled = on;
+                    self.pdc.switched = true;
+                }
+            }
+            LiveEdit::SlotOn(t, k, on) => {
+                if let Some(m) = self.tracks.get_mut(t).filter(|m| k < m.stored.slot_on.len()) {
+                    m.set_slot_on(k, on);
+                    m.stored.slot_on[k] = on;
+                    self.pdc.switched = true;
+                }
+            }
+            LiveEdit::SlotMix(t, k, v) => {
+                if let Some(m) = self.tracks.get_mut(t).filter(|m| k < m.stored.slot_mix.len()) {
+                    m.set_slot_mix(k, mix_level(v));
+                    m.stored.slot_mix[k] = mix_level(v);
+                }
+            }
+            LiveEdit::Send(t, d, v) => {
+                if let Some(m) = self.tracks.get_mut(t) {
+                    let gain = os_dsp::mixer::send_gain((v * 16000.0).round() as i32);
+                    if let Some(i) = m.routes.iter().position(|r| r.dest == usize::from(d)) {
+                        m.routes[i].gain = gain;
+                        if let Some(s) = m.stored.sends.get_mut(i) {
+                            *s = gain;
+                        }
+                    }
                 }
             }
         }
@@ -3997,12 +4046,17 @@ impl Engine {
                 self.held = self.fade_out == 0;
                 if self.held {
                     self.marker_paused = self.pause_at.take().or(self.marker_paused);
-                    // Held from here: the hosted instruments are let go of what they hold and ring on.
-                    self.release_instruments();
                 }
             } else {
                 self.fade_in = self.fade_in.saturating_sub(len as u32);
             }
+        }
+        // Held from here: the hosted instruments are let go of what they hold and ring on. After the tick's
+        // instruments have rendered, which files the notes an instrument busy elsewhere missed: a note on among them
+        // is dropped with the others it missed, or it would reach the instrument after its note off and sound on
+        // through the pause.
+        if self.held {
+            self.release_instruments();
         }
         for ch in &mut self.channels {
             ch.advance(len as u32);
@@ -5747,17 +5801,28 @@ fn lock_busy<'a, T: ?Sized>(m: &'a Mutex<T>, until: &mut Option<Instant>, wait: 
     }
 }
 
-/// A project edit a playing engine can take in place ([`Engine::apply_edit`]), so that moving a knob does not build a new
-/// engine: the channels' volume, pan and pitch knobs and the mixer tracks' volume, pan and separation, by index, as
-/// `Channel` and `MixerTrack` hold them.
+/// A project edit a playing engine can take in place ([`Engine::apply_edit`]), so that moving a knob or a switch does
+/// not build a new engine: the channels' volume, pan and pitch knobs and switch, and the mixer tracks' volume, pan,
+/// separation, switch, effects switch, slot switches and mix levels and send levels, by index, as `Channel` and
+/// `MixerTrack` hold them. Each holds when playback starts again elsewhere, as the project's own value would.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LiveEdit {
     ChannelVolume(usize, f64),
     ChannelPan(usize, f64),
     ChannelPitch(usize, i32),
+    ChannelEnabled(usize, bool),
     MixerVolume(usize, f64),
     MixerPan(usize, f64),
     MixerSeparation(usize, f64),
+    MixerEnabled(usize, bool),
+    /// The track's "effect slots enabled" switch.
+    MixerSlots(usize, bool),
+    /// Track, slot, switch.
+    SlotOn(usize, usize, bool),
+    /// Track, slot, mix level 0..1.
+    SlotMix(usize, usize, f64),
+    /// Track, the track number it sends to (a route both projects have), level 0..1.
+    Send(usize, u16, f64),
 }
 
 impl LiveEdit {
@@ -5772,6 +5837,35 @@ impl LiveEdit {
             LiveEdit::ChannelVolume(c, v) => channel(project, c, &mut |ch| ch.volume = v),
             LiveEdit::ChannelPan(c, p) => channel(project, c, &mut |ch| ch.pan = p),
             LiveEdit::ChannelPitch(c, cents) => channel(project, c, &mut |ch| ch.pitch_cents = cents),
+            LiveEdit::ChannelEnabled(c, on) => channel(project, c, &mut |ch| ch.enabled = on),
+            LiveEdit::MixerEnabled(t, on) => {
+                if let Some(m) = project.mixer.get_mut(t) {
+                    m.enabled = on;
+                }
+            }
+            LiveEdit::MixerSlots(t, on) => {
+                if let Some(m) = project.mixer.get_mut(t) {
+                    m.slots_enabled = on;
+                }
+            }
+            LiveEdit::SlotOn(t, k, on) => {
+                if let Some(s) = project.mixer.get_mut(t).and_then(|m| m.slot_on.get_mut(k)) {
+                    *s = on;
+                }
+            }
+            LiveEdit::SlotMix(t, k, v) => {
+                if let Some(s) = project.mixer.get_mut(t).and_then(|m| m.slot_mix.get_mut(k)) {
+                    *s = v;
+                }
+            }
+            LiveEdit::Send(t, d, v) => {
+                if let Some(m) = project.mixer.get_mut(t) {
+                    match m.send_levels.iter_mut().find(|(x, _)| *x == d) {
+                        Some(l) => l.1 = v,
+                        None => m.send_levels.push((d, v)),
+                    }
+                }
+            }
             LiveEdit::MixerVolume(t, v) => {
                 if let Some(m) = project.mixer.get_mut(t) {
                     m.volume = Some(v);
@@ -5809,6 +5903,9 @@ pub fn live_edits(sent: &mut Project, new: &Project) -> Option<Vec<LiveEdit>> {
         if a.pitch_cents != b.pitch_cents {
             edits.push(LiveEdit::ChannelPitch(c, b.pitch_cents));
         }
+        if a.enabled != b.enabled {
+            edits.push(LiveEdit::ChannelEnabled(c, b.enabled));
+        }
     }
     for (t, (a, b)) in sent.mixer.iter().zip(&new.mixer).enumerate() {
         if let (true, Some(v)) = (a.volume != b.volume, b.volume) {
@@ -5819,6 +5916,30 @@ pub fn live_edits(sent: &mut Project, new: &Project) -> Option<Vec<LiveEdit>> {
         }
         if let (true, Some(v)) = (a.stereo_separation != b.stereo_separation, b.stereo_separation) {
             edits.push(LiveEdit::MixerSeparation(t, v));
+        }
+        if a.enabled != b.enabled {
+            edits.push(LiveEdit::MixerEnabled(t, b.enabled));
+        }
+        if a.slots_enabled != b.slots_enabled {
+            edits.push(LiveEdit::MixerSlots(t, b.slots_enabled));
+        }
+        for k in 0..a.slot_on.len().min(b.slot_on.len()) {
+            if a.slot_on[k] != b.slot_on[k] {
+                edits.push(LiveEdit::SlotOn(t, k, b.slot_on[k]));
+            }
+        }
+        for k in 0..a.slot_mix.len().min(b.slot_mix.len()) {
+            if a.slot_mix[k] != b.slot_mix[k] {
+                edits.push(LiveEdit::SlotMix(t, k, b.slot_mix[k]));
+            }
+        }
+        // Levels of the routes both have; a route added or taken away is a new engine.
+        if a.routes == b.routes {
+            for &(d, v) in &b.send_levels {
+                if a.send_levels.iter().find(|(x, _)| *x == d).map(|l| l.1) != Some(v) && b.routes.contains(&d) {
+                    edits.push(LiveEdit::Send(t, d, v));
+                }
+            }
         }
     }
     if edits.is_empty() {
@@ -6398,6 +6519,7 @@ mod tests {
             sample_path: None, // plays the built-in tone
             layer_children: vec![],
             envelopes: Default::default(), rack: Default::default(), misc: Default::default(), sound: Default::default(),
+            lemon_icon: None,
         }
     }
 
@@ -7561,7 +7683,7 @@ mod tests {
     #[test]
     fn points_set_mixer_values_and_the_tempo() {
         use os_model::target;
-        let point = |position: u32, kind: u32, value: i32| ControlPoint { position, kind, value };
+        let point = |position: u32, kind: u32, value: i32| ControlPoint { id: os_model::Id::NONE, position, kind, value };
         let mut p = project(vec![long_note(0, 384, 0)], vec![]);
         p.mixer = (0..3).map(os_model::MixerTrack::new).collect();
         p.patterns[0].controls = vec![
@@ -8334,6 +8456,44 @@ mod tests {
             e.next_tick();
         }
         all_ended(&recs[0], "missed");
+    }
+
+    /// The same for a note due on the very tick the pause's fade ends, where the instrument is let go of its notes: a
+    /// riff of back-to-back notes (a note off and the next note on every tick, as a mono or legato line plays them) on
+    /// an instrument busy through the pause. That tick's note on, missed, must not reach it after the pause's note
+    /// offs: a synth with a full sustain would hold it for as long as the playback stays paused.
+    #[test]
+    fn a_note_missed_on_the_tick_the_pause_holds_does_not_start_after_it() {
+        let riff = (0..24).map(|i| Note { channel: 1, key: 60 + (i % 2) as u16 * 2, ..long_note(i, 1, 0) }).collect();
+        let mut p = project(riff, vec![]);
+        p.channels.push(Channel { index: 1, kind: ChannelKind::Plugin, ..channel() });
+        let (mut e, recs) = recorded(&p);
+        e.busy_wait = Duration::ZERO;
+        for _ in 0..3 {
+            e.next_tick();
+        }
+        // Held elsewhere from the pause through the end of its fade.
+        let rec = recs[0].clone();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let holder = std::thread::spawn(move || {
+            let _g = rec.lock().unwrap();
+            tx.send(()).unwrap();
+            std::thread::sleep(Duration::from_millis(200));
+        });
+        rx.recv().unwrap();
+        e.pause();
+        for _ in 0..10 {
+            if e.held() {
+                break;
+            }
+            e.next_tick();
+        }
+        assert!(e.held(), "held");
+        holder.join().unwrap();
+        for _ in 0..4 {
+            e.next_tick();
+        }
+        all_ended(&recs[0], "missed on the hold");
     }
 
     /// Flag 4: one child per note in turn, from the first; flag 1: one at random, drawn from the project's generator
@@ -9630,36 +9790,54 @@ mod tests {
         }
     }
 
-    /// Knobs moved while a note plays: the engine that takes them in place renders what a new engine takes over with.
+    /// Knobs and switches moved while a note plays: the engine that takes them in place renders what a new engine takes
+    /// over with, and keeps them when playback starts again from the top.
     #[test]
     fn an_edit_in_place_sounds_as_a_new_engine() {
         let wav = Sines::new("live-edit", &[(440.0, 3.0)]);
         let mut p = project(vec![long_note(0, 384 * 4, 0)], vec![]);
         p.channels[0].sample_path = wav.path();
         p.mixer = (0..3).map(os_model::MixerTrack::new).collect();
-        let mut edited = p.clone();
-        let edits = [LiveEdit::ChannelVolume(0, 0.3), LiveEdit::ChannelPan(0, -0.4), LiveEdit::ChannelPitch(0, 700), LiveEdit::MixerVolume(1, 0.5), LiveEdit::MixerPan(1, 0.25), LiveEdit::MixerSeparation(0, 0.5)];
-        for e in edits {
-            e.apply_to(&mut edited);
+        p.mixer[1].routes = vec![0, 2];
+        p.mixer[1].send_levels = vec![(0, 0.8), (2, 0.8)];
+        p.mixer[2].routes = vec![0];
+        p.channels[0].mixer_track = 1;
+        let levels = vec![LiveEdit::ChannelVolume(0, 0.3), LiveEdit::ChannelPan(0, -0.4), LiveEdit::ChannelPitch(0, 700), LiveEdit::MixerSeparation(0, 0.5), LiveEdit::MixerVolume(1, 0.5), LiveEdit::MixerPan(1, 0.25)];
+        let switches = vec![LiveEdit::MixerSlots(1, false), LiveEdit::SlotOn(1, 1, false), LiveEdit::SlotMix(1, 0, 0.4), LiveEdit::Send(1, 0, 0.6), LiveEdit::Send(1, 2, 0.3), LiveEdit::MixerEnabled(2, false)];
+        for edits in [levels, switches, vec![LiveEdit::ChannelEnabled(0, false)]] {
+            let mut edited = p.clone();
+            for e in &edits {
+                e.apply_to(&mut edited);
+            }
+            let mut sent = p.clone();
+            assert_eq!(live_edits(&mut sent, &edited).as_deref(), Some(&edits[..]), "found by comparing the projects");
+            let mut lib = SampleLibrary::new(None);
+            let (mut a, mut b) = (Engine::new(&p, &mut lib, 44100, PlayMode::Pattern(1)), Engine::new(&p, &mut lib, 44100, PlayMode::Pattern(1)));
+            let (mut x, mut y) = (Vec::new(), Vec::new());
+            a.render_ticks(96, &mut x);
+            b.render_ticks(96, &mut y);
+            assert_eq!(x, y);
+            for &e in &edits {
+                a.apply_edit(e);
+            }
+            let mut c = Engine::new(&edited, &mut lib, 44100, PlayMode::Pattern(1));
+            c.continue_from(&mut b);
+            let (mut x, mut y) = (Vec::new(), Vec::new());
+            a.render_ticks(192, &mut x);
+            c.render_ticks(192, &mut y);
+            assert_eq!(x.len(), y.len());
+            let worst = x.iter().zip(&y).map(|(m, n)| (m - n).abs()).fold(0.0f32, f32::max);
+            assert!(worst < 1e-5, "{edits:?}: differ by {worst}");
+            assert!(rms(&x) > 0.001, "{edits:?}: something plays (the tick under way, at least)");
+            // Started again from the top (a seek, as a loop's wrap does), the edits hold.
+            a.seek(0);
+            c.seek(0);
+            let (mut x, mut y) = (Vec::new(), Vec::new());
+            a.render_ticks(192, &mut x);
+            c.render_ticks(192, &mut y);
+            let worst = x.iter().zip(&y).map(|(m, n)| (m - n).abs()).fold(0.0f32, f32::max);
+            assert!(worst < 1e-5, "{edits:?}: after a seek, differ by {worst}");
         }
-        let mut lib = SampleLibrary::new(None);
-        let (mut a, mut b) = (Engine::new(&p, &mut lib, 44100, PlayMode::Pattern(1)), Engine::new(&p, &mut lib, 44100, PlayMode::Pattern(1)));
-        let (mut x, mut y) = (Vec::new(), Vec::new());
-        a.render_ticks(96, &mut x);
-        b.render_ticks(96, &mut y);
-        assert_eq!(x, y);
-        for e in edits {
-            a.apply_edit(e);
-        }
-        let mut c = Engine::new(&edited, &mut lib, 44100, PlayMode::Pattern(1));
-        c.continue_from(&mut b);
-        let (mut x, mut y) = (Vec::new(), Vec::new());
-        a.render_ticks(192, &mut x);
-        c.render_ticks(192, &mut y);
-        assert_eq!(x.len(), y.len());
-        let worst = x.iter().zip(&y).map(|(m, n)| (m - n).abs()).fold(0.0f32, f32::max);
-        assert!(worst < 1e-5, "differ by {worst}");
-        assert!(rms(&x) > 0.001, "something plays");
     }
 
     /// Levels alone are edits in place; anything else, or nothing at all, is a new engine.

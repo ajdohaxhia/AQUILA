@@ -14,6 +14,7 @@ pub mod stretch;
 pub mod cleanup;
 pub mod cleanup_link;
 pub mod doc;
+#[cfg(feature = "editor")]
 pub mod editor;
 pub mod env;
 pub mod peaks;
@@ -525,6 +526,7 @@ impl Plugin for Tesla {
         self.params.clone()
     }
 
+    #[cfg(feature = "editor")]
     fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
         Some(Box::new(editor::TeslaEditor::new(self.params.clone())))
     }
