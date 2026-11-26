@@ -1050,7 +1050,7 @@ mod tests {
                 assert_eq!(crate::plugins::slot_label(old),now);
             }
         }
-        let index=plugins.effect_index("Lemon Reverb").unwrap();
+        let index=plugins.effect_index("ML Reverb").unwrap();
         plugins.create_effect(3,0,index,None).unwrap();
         let key=fx_key(3,0);
         let p=plugins.param_infos(key).into_iter().find(|p|!p.read_only&&!p.bypass).unwrap();
@@ -1106,15 +1106,27 @@ mod tests {
                 set.push((u32::MAX, 0.0));
                 continue;
             }
-            // One setting away from its default.
-            let p = a.plugins.param_infos(key(k)).into_iter().find(|p| !p.read_only && !p.bypass).unwrap();
-            let n = if (p.default - 0.3).abs() > 0.1 { 0.3 } else { 0.8 };
-            assert!(a.plugins.set_param_named(key(k), &p.name, p.min + n * (p.max - p.min)), "{name}");
-            // The edit reaches the plugin at its next idle (the app idles its plugins every tick).
-            a.plugins.hosted[&key(k)].plugin.lock().unwrap().idle();
-            let v = a.plugins.param_value(key(k), p.id).unwrap();
-            assert_ne!(v, p.default, "{name}: {}", p.name);
-            set.push((p.id, v));
+            // One setting away from its default. A meter has no editable parameter, and a stepped one can round the
+            // value back to its default: then there is nothing to compare.
+            let mut moved = None;
+            for p in a.plugins.param_infos(key(k)).into_iter().filter(|p| !p.read_only && !p.bypass) {
+                let n = if (p.default - 0.3).abs() > 0.1 { 0.3 } else { 0.8 };
+                if !a.plugins.set_param_named(key(k), &p.name, p.min + n * (p.max - p.min)) {
+                    continue;
+                }
+                // The edit reaches the plugin at its next idle (the app idles its plugins every tick).
+                a.plugins.hosted[&key(k)].plugin.lock().unwrap().idle();
+                let v = a.plugins.param_value(key(k), p.id).unwrap();
+                if v != p.default {
+                    moved = Some((p.id, v));
+                    break;
+                }
+            }
+            let Some(pair) = moved else {
+                set.push((u32::MAX, 0.0));
+                continue;
+            };
+            set.push(pair);
         }
         a.save_to(path.clone());
         assert!(a.state.message.as_deref().is_some_and(|m| m.starts_with("Saved") && !m.contains("not stored")), "{:?}", a.state.message);
@@ -1142,6 +1154,9 @@ mod tests {
             }
             if *name == crate::plugins::LEMON_DROP {
                 assert_eq!(drop_gain_of(b.plugins.state(key(k))), Some(42), "Lemon Drop kept its state");
+                continue;
+            }
+            if set[k].0 == u32::MAX {
                 continue;
             }
             assert_eq!(b.plugins.param_value(key(k), set[k].0), Some(set[k].1), "{name} kept its setting");

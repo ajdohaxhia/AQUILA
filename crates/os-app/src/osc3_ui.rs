@@ -16,6 +16,10 @@ impl crate::app::App {
     /// instance's state when the channel has none). A row waiting for the picker's own instance is left to it; a row
     /// whose instance failed is not tried again.
     pub fn sync_osc3(&mut self) {
+        // The installed 3x Osc plays these channels instead (`host_native`).
+        if crate::project_plugins::native_first() {
+            return;
+        }
         self.host(sync_osc3);
     }
 

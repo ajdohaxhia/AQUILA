@@ -1028,6 +1028,11 @@ impl Plugins {
 
     /// The saved state of the instance under `key`, in its format's own bytes.
     pub fn state(&self, key: usize) -> Option<Vec<u8>> {
+        // An instance that refuses to say what it holds (`state_fail`: a test's stand-in, and a plugin whose save
+        // failed) has no state to save.
+        if self.state_fail.contains(&key) {
+            return None;
+        }
         self.hosted.get(&key)?.lock_for_state()?.save_state()
     }
 
@@ -1615,13 +1620,16 @@ pub fn fl_from_recreation_state(lemon: &str, blob: &[u8]) -> Option<Vec<u8>> {
 
 /// What the mixer shows for a slot's stored plugin name.
 pub fn slot_label(name: &str) -> &str {
-    match name {
+    let now = match name {
         EQ_FILE_NAME => LEMON_EQ,
         EDISON_FILE_NAME => TESLA,
         LOVE_PHILTER_FILE_NAME => PULP_FILTER,
         MAXIMUS_FILE_NAME => PRESS,
         _ => recreation_of(name).unwrap_or(name),
-    }
+    };
+    // A project or preset saved under a plugin's earlier name shows the name it has now ("Lemon Sampler" >
+    // "ML Sampler").
+    canonical_name(now)
 }
 
 /// A new slot for effect `name`: what the project stores (Lemon Parametric EQ as the file's EQ with its default

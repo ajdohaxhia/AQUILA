@@ -202,7 +202,7 @@ impl Session {
         crate::metronome::switch().set_track(settings.number(&crate::prefs::METRONOME_TRACK));
         Session {
             project: crate::locked::Locked::new(project),
-            settings,
+            settings: settings.clone(),
             history: Default::default(),
             control: Default::default(),
             file: None,
@@ -218,7 +218,12 @@ impl Session {
             fx_requests: Vec::new(),
             link_moves: Vec::new(),
             plugin_members: Default::default(),
-            plugins: crate::plugins::Plugins::default(),
+            plugins: {
+                // The plugin lists read their choices (plugin visibility, and so on) from the session's store.
+                let mut plugins = crate::plugins::Plugins::default();
+                plugins.settings = settings;
+                plugins
+            },
             hosted_rows: Vec::new(),
             pending_plugin: None,
             pending_open: None,

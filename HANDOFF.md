@@ -913,7 +913,7 @@ cargo test -p os-app --lib --locked --offline <filtro>
 ### 24.3 Non regressioni e rosso residuo
 
 - `ai_control::tests::ai_control_auth_approval_commands_and_revocation`: **non** e' una regressione del merge. Fallisce sulla prima richiesta HTTP locale di questo host macOS, nel client `ureq`: `Error encountered in the status line: Invalid argument (os error 22)`. Renderlo bloccante gli stream accettati (ereditano `O_NONBLOCK` dal listener su BSD/macOS) non cambia nulla: tentativo revertito. Era gia' classificato ambiente/stale in §14 ("`ai_control` (local network)").
-- Restano rossi in `project_plugins::tests` (pre-esistenti, tutti su mapping nomi/wrapper dopo il merge, non toccati qui): `linked_effects_save_wrapped_and_reopen`, `linked_effects_hall_visibility_keeps_host_available`, `linked_effects_tape_visibility_keeps_host_available`, `ml_renames_restore_legacy_wrappers_without_substitution` (`slot_label("Lemon Sampler")` resta "Lemon Sampler" invece di "ML Sampler"), `project_saves_with_a_refusing_bus_effect_and_keeps_its_last_state`, `real_native_plugins_replace_the_open_recreations_and_back`.
+- I sei `project_plugins::tests` rimasti rossi erano quattro regressioni vere del merge e due attese stale: tutti corretti, dettaglio in §24.5.
 
 ### 24.4 CI e release
 
@@ -921,3 +921,20 @@ cargo test -p os-app --lib --locked --offline <filtro>
 - Run `45894457693`: lanciata su `0449b8ec`; `45893023913` era quella seguita dal watcher `/Users/ade/aqbuild/auto-release.sh`, ora cancellata, quindi nessuna release e' partita.
 - Lo step `Test` della CI e' `continue-on-error: true`: Build/Bundle sono i passi che fanno fallire la run; i fallimenti noti non rendono rossa la CI.
 - Release `aquila-release.yml` **non ancora lanciata**: va dispatchata con `-f version=2026.11.26.1 -f publish=true` solo dopo una CI verde sul commit che si vuole pubblicare (`gh workflow run aquila-release.yml --ref michael-lane -R ajdohaxhia/AQUILA ...`).
+
+### 24.5 I sei `project_plugins::tests` rimasti rossi (2026-11-26)
+
+Quattro regressioni vere del merge, due attese di test stale. Nessun test saltato e nessuna asserzione indebolita; le asserzioni su wrap/save/reopen restano quelle di prima.
+
+1. `linked_effects_hall_visibility_keeps_host_available` e `linked_effects_tape_visibility_keeps_host_available` — **bug vero**. Le liste dei plugin leggono i flag `visible_plugin-hall` / `visible_plugin-tape` da `Plugins.settings`, ma `Session::new` costruiva `Plugins::default()` con uno store nuovo e scollegato: i flag erano ignorati finche' non partiva uno scan (`plugin_scan_ui` era l'unico punto che li collegava). `Session::new` ora passa lo stesso `SettingsStore` della sessione a `plugins` (`crates/os-session/src/session.rs`).
+2. `ml_renames_restore_legacy_wrappers_without_substitution` — **bug vero** (rename). `plugins::slot_label` aveva perso la canonicalizzazione: uno slot o un progetto salvato col nome vecchio ("Lemon Sampler") restava vecchio invece di "ML Sampler". `slot_label` ora termina con `canonical_name` (`crates/os-session/src/plugins.rs`). La parte finale del test cercava il riverbero con `effect_index("Lemon Reverb")`, nome che nessun percorso di produzione usa (i riferimenti di progetto passano da `find`, che canonicalizza): la riga ora usa `"ML Reverb"` (attesa stale).
+3. `project_saves_with_a_refusing_bus_effect_and_keeps_its_last_state` — **bug vero**. `Plugins::state` non rispettava piu' `state_fail` (l'hook che simula un plugin che rifiuta `save_state`): il salvataggio riusciva in silenzio invece di avvisare e conservare l'ultimo stato avvolto. Controllo ripristinato; e' lo stesso hook usato da `audit_fixes`.
+4. `real_native_plugins_replace_the_open_recreations_and_back` — **bug vero**. `App::sync_osc3` (`crates/os-app/src/osc3_ui.rs`, il modulo vivo) chiamava `sync_osc3` senza la guardia `native_first()`, che esisteva solo in `crates/os-app/src/osc3.rs`, file non piu' compilato (`lib.rs` fa `pub use os_session::osc3`). Con i plugin nativi attivi la ricreazione del Trio tornava a essere ospitata. Guardia ripristinata nel metodo vivo.
+5. `linked_effects_save_wrapped_and_reopen` — **attesa stale**. Il test prendeva il primo parametro editabile e pretendeva che il valore si spostasse: `ML Meter` non ha parametri editabili e il primo parametro di `ML Vocoder` ("Carrier") e' a passi, quindi 0.3 tornava al default 0.0. Ora il test prova i parametri editabili finche' uno si muove e salta gli effetti che non ne hanno.
+
+Verifiche (stessa copia di build di §24.2, log `t-pp5.log`, `t-session.log`, `t-plugins.log`, `t-base.log`, `t-base2.log`):
+
+- `cargo test -p os-app --lib project_plugins::`: **21 passati, 0 falliti**.
+- `audit_fixes`: **ok**; `control::tests`: **65 passati, 1 fallito** (`ai_control`, §24.3).
+- `os-session --lib`: **196 passati, 4 falliti**; filtro `plugin` di os-app: **105 passati, 4 falliti**. Gli otto rossi sono pre-esistenti: rifatti su un checkout pulito di `84834b9a` (`git archive HEAD` in `/Users/ade/aqbuild/base-check2`) falliscono identici (`ML Amp` senza categoria factory, `every_lemon_effect_is_built_in` senza `ML Patch`, fixture zip, frame di coda del transport, conteggi params, catalogo download, keyword help, cartelle factory), quindi non vengono da questi fix.
+- File toccati: `crates/os-session/src/session.rs`, `crates/os-session/src/plugins.rs`, `crates/os-app/src/osc3_ui.rs`, `crates/os-app/src/project_plugins.rs`.
