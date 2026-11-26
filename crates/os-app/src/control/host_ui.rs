@@ -30,6 +30,21 @@ impl App {
     /// The plugins commands added (`HostReq`) are hosted, and the parameter values they set reach their instances.
     /// Unlike the plugin menus, nothing opens a window: the user didn't ask for one.
     pub fn host_commands(&mut self) {
+        let queued = std::mem::take(&mut self.state.session.control.params);
+        let touched: Vec<(usize, u32, f64)> = queued
+            .iter()
+            .filter_map(|&(owner, param, v)| Some((crate::control::command::owner_key(&self.state.session, owner)?, param, v)))
+            .collect();
+        self.state.session.control.params = queued;
         self.host(host_commands);
+        // A value the host set (an undo, a redo, a command) is the one the next gesture starts from: the interface's
+        // copy of the parameter follows the instance's.
+        for (key, param, v) in touched {
+            if self.state.session.plugins.param_value(key, param) == Some(v)
+                && let Some(l) = self.state.params.lists.get_mut(&key)
+            {
+                l.values.insert(param, v);
+            }
+        }
     }
 }
