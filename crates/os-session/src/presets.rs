@@ -789,13 +789,13 @@ mod tests {
         save(&file_for(&root.join("Open 3x Osc"), "Bass"), &Header::default(), b"x").unwrap();
         save(&file_for(&root.join("Lemon 3x Osc"), "Lead"), &Header::default(), b"x").unwrap();
         let dir = dir_in(&root, crate::osc3::LEMON_TRIO);
-        assert_eq!(dir, root.join("Lemon Trio"));
+        assert_eq!(dir, root.join("ML Trio"));
         assert_eq!(list_in(&dir)[0].name, "Lead");
         assert!(root.join("Open 3x Osc").exists());
         save(&file_for(&root.join("Open Sampler"), "Kick"), &Header::default(), b"x").unwrap();
         save(&file_for(&root.join("Open Thing"), "Pad"), &Header::default(), b"x").unwrap();
         let dir = dir_in(&root, crate::plugins::LEMON_SAMPLER);
-        assert_eq!(dir, root.join("Lemon Sampler"));
+        assert_eq!(dir, root.join("ML Sampler"));
         assert_eq!(list_in(&dir).len(), 1);
         assert!(!root.join("Open Sampler").exists());
         assert_eq!(dir_in(&root, "Thing"), root.join("Thing"));

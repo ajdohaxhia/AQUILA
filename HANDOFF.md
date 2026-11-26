@@ -877,3 +877,47 @@ Restano:
 
 Verifica: `rsync -a --delete --exclude .git --exclude target ./ /Users/ade/aqbuild/split-check/`, poi in quella cartella `cargo check -p os-app --offline --message-format=short` con `DEVELOPER_DIR=/Library/Developer/CommandLineTools`, `PYTHON=python3`, `ML_PLASMA_BUNDLE_MACOS_AARCH64=/Users/ade/aqbuild/target/debug/build/ml-plasma-f7022116b0af3b77/out/plasma.zip`, `CARGO_TARGET_DIR=/Users/ade/aqbuild/target`.
 
+
+## 24. Merge Lemon upstream/main 0720e512 in AQUILA: fix dei test e stato CI (2026-11-26)
+
+Branch `michael-lane`, remote `ade` (`github.com/ajdohaxhia/AQUILA`; `origin`/Dorfhaus non esiste piu'). La CI parte solo con `workflow_dispatch` (o su `main`), quindi dopo ogni push va rilanciata a mano.
+
+Commit:
+- `9112c03d`: merge di `0720e512` (genitore `176cedea`), pushato.
+- `021c06d2`: `ml_patch` e `winit_keys`, dichiarati in `lib.rs` ma mai committati (E0583 su un checkout pulito, CI macOS).
+- `0449b8ec`: i due fix dei test control (sotto).
+- Il commit di questo aggiornamento: nome del Trio, attese dei preset e questo file.
+
+### 24.1 Cosa e' stato corretto
+
+1. `control::tests::edits_in_a_plugin_s_window_are_undo_steps`: AQUILA tiene la cache dei parametri nell'app (`State.params`, `params_tick` in `crates/os-app/src/params.rs`), mentre undo/redo li impostavano solo via sessione (`Session.params`, mai letta dall'app). Dopo un undo il plugin tornava a 0.25 ma la cache restava a 0.7, e il gesto successivo registrava 0.7 come valore di partenza. `App::host_commands` (`crates/os-app/src/control/host_ui.rs`) ora riporta nella cache dell'app ogni valore che l'host ha davvero impostato (verificato con `Plugins::param_value(key, param) == v`, cosi' un plugin che rifiuta il valore non sporca la cache).
+2. `control::tests::preset_loads_are_undo_steps`: `presets::auto_name` scriveva ancora la mappa ritirata `State.mixer.slot_names`, mentre il nome dello slot vive nel modello (`edit::mixer::slot_*`). Ora scrive `crate::edit::mixer::set_slot_label`, e `presets::side` legge `slot_label`; l'undo riporta il nome precedente ("Fruity Delay 3"/"ML Delay") e il redo "Bright".
+3. Regressione vera del merge: `os_session::osc3::LEMON_TRIO` era rimasto `"Lemon Trio"` (upstream) mentre il plugin compilato si chiama `"ML Trio"` e `OLD_NAMES` registra gia' il rename (`"Lemon Trio" -> "ML Trio"`). `crates/os-app/src/lib.rs:164` fa `pub use os_session::osc3`, quindi **ogni** lookup del Trio nell'app (menu, `sync_osc3`, `project_plugins`, titoli) usava il nome sbagliato: `control::tests::a_replaced_generator_stays_replaced` non trovava il plugin. Costante portata a `"ML Trio"` (unica eccezione: le altre costanti stock - `ML Sampler`, `ML Citrus`, `Smith`, `Lemon Slicer`, ... - combaciano gia' con i descrittori).
+4. `os-session` `presets::tests::old_built_in_folders_are_taken_over`: attese ferme ai nomi Lemon (`"Lemon Trio"`, `"Lemon Sampler"`) mentre le cartelle dei preset seguono il nome canonico del plugin (`folder_name(LEMON_SAMPLER)` = `"ML Sampler"`). Aggiornate a `"ML Trio"` e `"ML Sampler"`.
+
+### 24.2 Verifiche (copia di build `/Users/ade/aqbuild/split-check`)
+
+```
+rsync -a --delete --exclude .git --exclude target "<progetto>/" /Users/ade/aqbuild/split-check/
+export DEVELOPER_DIR=/Library/Developer/CommandLineTools PYTHON=python3 \
+  ML_PLASMA_BUNDLE_MACOS_AARCH64=/Users/ade/aqbuild/target/debug/build/ml-plasma-f7022116b0af3b77/out/plasma.zip \
+  CARGO_TARGET_DIR=/Users/ade/aqbuild/target
+cargo test -p os-app --lib --locked --offline <filtro>
+```
+
+- `control::tests` (dopo `0449b8ec`): **64 passati, 2 falliti** (`ai_control` e `a_replaced_generator_stays_replaced`); prima dei fix erano 62/4.
+- `control::tests::a_replaced_generator_stays_replaced`: **ok** dopo il fix del nome.
+- `os-session` `osc3::` tests: **ok**; `presets::tests::old_built_in_folders_are_taken_over`: **ok** dopo l'aggiornamento delle attese.
+- Log: `t-ctl13.log` (control), `t-trio.log` (trio/osc3/presets/project_plugins), `t-presets.log`.
+
+### 24.3 Non regressioni e rosso residuo
+
+- `ai_control::tests::ai_control_auth_approval_commands_and_revocation`: **non** e' una regressione del merge. Fallisce sulla prima richiesta HTTP locale di questo host macOS, nel client `ureq`: `Error encountered in the status line: Invalid argument (os error 22)`. Renderlo bloccante gli stream accettati (ereditano `O_NONBLOCK` dal listener su BSD/macOS) non cambia nulla: tentativo revertito. Era gia' classificato ambiente/stale in §14 ("`ai_control` (local network)").
+- Restano rossi in `project_plugins::tests` (pre-esistenti, tutti su mapping nomi/wrapper dopo il merge, non toccati qui): `linked_effects_save_wrapped_and_reopen`, `linked_effects_hall_visibility_keeps_host_available`, `linked_effects_tape_visibility_keeps_host_available`, `ml_renames_restore_legacy_wrappers_without_substitution` (`slot_label("Lemon Sampler")` resta "Lemon Sampler" invece di "ML Sampler"), `project_saves_with_a_refusing_bus_effect_and_keeps_its_last_state`, `real_native_plugins_replace_the_open_recreations_and_back`.
+
+### 24.4 CI e release
+
+- Run `45890018739` e `45893023913`: cancellate (la prima per E0583, la seconda superata dai fix).
+- Run `45894457693`: lanciata su `0449b8ec`; `45893023913` era quella seguita dal watcher `/Users/ade/aqbuild/auto-release.sh`, ora cancellata, quindi nessuna release e' partita.
+- Lo step `Test` della CI e' `continue-on-error: true`: Build/Bundle sono i passi che fanno fallire la run; i fallimenti noti non rendono rossa la CI.
+- Release `aquila-release.yml` **non ancora lanciata**: va dispatchata con `-f version=2026.11.26.1 -f publish=true` solo dopo una CI verde sul commit che si vuole pubblicare (`gh workflow run aquila-release.yml --ref michael-lane -R ajdohaxhia/AQUILA ...`).
