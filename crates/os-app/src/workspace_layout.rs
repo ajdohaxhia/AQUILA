@@ -153,7 +153,7 @@ pub fn save_session(app: &App) {
         layout:Layout::capture(&app.state),
         project:app.state.path.clone(),
         template:crate::prefs::text("default_template"),
-        editors:crate::layout::project_snapshot(&app.state,&app.plugins)["editors"].clone(),
+        editors:crate::layout::project_snapshot(&app.state,&app.plugins,&app.editors)["editors"].clone(),
     };
     if let Ok(value)=serde_json::to_string(&session) {crate::prefs::set_text("last_window_session",&value);}
 }
@@ -205,7 +205,7 @@ mod tests {
         app.state.path=Some(path.clone());
         app.state.z=vec![Win::Playlist,Win::Mixer,Win::PianoRoll,Win::ChannelRack];
         let mut file=os_flp::project::create(&app.state.project).unwrap();
-        crate::layout::write_project_layout(&mut file,crate::layout::project_snapshot(&app.state,&app.plugins));
+        crate::layout::write_project_layout(&mut file,crate::layout::project_snapshot(&app.state,&app.plugins,&app.editors));
         std::fs::write(&path,file.to_bytes().unwrap()).unwrap();
         app.key(&winit::keyboard::Key::Named(winit::keyboard::NamedKey::F12),false,false);
         assert!(app.state.z.is_empty());app.state.show_browser=false;

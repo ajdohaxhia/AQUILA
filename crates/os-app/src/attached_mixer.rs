@@ -726,7 +726,7 @@ mod tests {
         assert_eq!(after.channels.last().unwrap().mixer_track,n);assert_eq!(after.arrangement().unwrap().tracks[row as usize].attached_mixer,Some(n));
         assert_eq!(crate::history::undo(&mut a.state).as_deref(), Some("Insert instrument track"));assert_eq!(a.state.project,before);
         assert_eq!(crate::history::redo(&mut a.state).as_deref(), Some("Insert instrument track"));assert_eq!(a.state.project,after);
-        let mut file=os_flp::project::create(&a.state.project).unwrap();crate::layout::write_project_layout(&mut file,crate::layout::project_snapshot(&a.state,&a.plugins));
+        let mut file=os_flp::project::create(&a.state.project).unwrap();crate::layout::write_project_layout(&mut file,crate::layout::project_snapshot(&a.state,&a.plugins,&a.editors));
         let loaded=os_flp::project::load(&file).unwrap();assert_eq!(loaded.arrangement().unwrap().tracks[row as usize].attached_mixer,Some(n));
         let mut reopened=app();reopened.state.session.project=crate::locked::Locked::new(loaded);reopened.state.file=Some(file);crate::layout::restore_project_layout(&mut reopened.state);
         assert!(active(&reopened.state));assert_eq!(lane(&reopened.state,n),Some(row));

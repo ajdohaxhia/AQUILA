@@ -188,11 +188,11 @@ fn encode(x: f32, format: Format, out: &mut [u8]) {
 }
 
 /// Writes each output to its channel of the interleaved device buffer.
-fn write(out: &mut [u8], mix: super::DeviceBlock<'_>, channels: usize, format: Format) {
+fn write(out: &mut [u8], mix: &[f32], width: usize, channels: usize, format: Format) {
     let n = format.bytes();
     for (i, frame) in out.chunks_exact_mut(n * channels).enumerate() {
         for (c, slot) in frame.chunks_exact_mut(n).enumerate() {
-            encode(mix.sample(i, c), format, slot);
+            encode(mix.get(i * width + c).copied().unwrap_or(0.0), format, slot);
         }
     }
 }
@@ -422,8 +422,7 @@ fn render(name: Option<&str>, mode: Mode, rate: Option<u32>, buffer: Option<u32>
             return;
         }
     };
-    mix.headphones.set_rate(s.info.rate);
-    mix.prepare_outputs(s.channels);
+    mix.set_width(s.channels.div_ceil(2));
     if let Err(e) = unsafe { s.client.Start() } {
         let _ = tx.send(Err(Refused::of(&e)));
         return;
@@ -491,11 +490,8 @@ impl Started {
             let p = self.render.GetBuffer(frames)?;
             // Safety: Windows lends `frames` frames of the stream's format at `p` until `ReleaseBuffer`.
             let out = std::slice::from_raw_parts_mut(p, frames as usize * self.channels * self.format.bytes());
-            // Native WASAPI provides the stream's estimated playback latency rather than a CPAL callback timestamp.
-            let playback_at = self.info.latency.map(|frames| Duration::from_secs_f64(f64::from(frames) / f64::from(self.info.rate)))
-                .filter(|&delay| delay <= Duration::from_secs(1))
-                .and_then(|delay| Instant::now().checked_add(delay));
-            write(out, mix.block_at(frames as usize, self.channels, playback_at), self.channels, self.format);
+            let width = mix.width;
+            write(out, mix.block(frames as usize), width, self.channels, self.format);
             self.render.ReleaseBuffer(frames, 0)
         }
     }
@@ -628,15 +624,14 @@ mod tests {
     /// Primary and additional outputs retain their channel order; a mono device gets the left.
     #[test]
     fn channels_get_their_side() {
-        let mix = || super::super::DeviceBlock {
-            stereo: &[0.5, -0.5, 0.25, 0.75], extra: &[0.125, 0.25, -0.125, -0.25], extra_channels: 2,
-        };
+        // Two frames, four interleaved channels: the stereo pair, then two extra outputs.
+        let mix = [0.5, -0.5, 0.125, 0.25, 0.25, 0.75, -0.125, -0.25];
         let mut out = [0u8; 2 * 4 * 4];
-        write(&mut out, mix(), 4, Format::F32);
+        write(&mut out, &mix, 4, 4, Format::F32);
         let at = |i: usize| f32::from_le_bytes(out[4 * i..4 * i + 4].try_into().unwrap());
         assert_eq!((0..8).map(at).collect::<Vec<_>>(), [0.5, -0.5, 0.125, 0.25, 0.25, 0.75, -0.125, -0.25]);
         let mut mono = [0u8; 2 * 2];
-        write(&mut mono, mix(), 1, Format::I16);
+        write(&mut mono, &mix, 4, 1, Format::I16);
         assert_eq!(mono, [0x00, 0x40, 0x00, 0x20]);
     }
 

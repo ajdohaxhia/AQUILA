@@ -630,7 +630,7 @@ impl EditorHost {
     }
 
     #[cfg(plugin_windows)]
-    fn close_window(&mut self, pl: &mut Plugins, row: usize) {
+    pub(crate) fn close_window(&mut self, pl: &mut Plugins, row: usize) {
         self.sync(pl);
         if let Some(e) = self.editors.get_mut(&row) {
             // The mode and place it reopens in (spec: ui/settings-choices.md "Miscellaneous: naming, detached plugins

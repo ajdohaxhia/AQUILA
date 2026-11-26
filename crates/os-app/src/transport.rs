@@ -3634,7 +3634,7 @@ mod tests {
             else {a.plugins.effects=vec![available];a.plugins.create_effect(0,0,0,None).unwrap();crate::plugins::fx_key(0,0)};
         a.params_tick();
         let info=crate::plugin_window::ChannelInfo{name:"Isolated audio test".into(),target:"Master".into(),enabled:true,volume:0.78,pan:0.,pitch_cents:0,range:2,track:0,max_track:125,sidechain:None,misc:None,icon:None};
-        if !headless {a.plugins.open_window(key,info.clone()).unwrap();}
+        if !headless {a.editors.open_window(&mut a.state.session.plugins,key,info.clone()).unwrap();}
         let initial_state=if lifecycle {a.plugins.state(key)} else {None};
         let plugin=a.plugins.hosted[&key].plugin.clone();
         let mut project=crate::app::test_project();
@@ -3679,7 +3679,7 @@ mod tests {
         for visible in [false,true,false] {
             let sound_before=audible.load(Ordering::Relaxed);
             if !headless {
-                let window=a.plugins.hosted[&key].window.as_ref().unwrap().hwnd() as windows_sys::Win32::Foundation::HWND;
+                let window=a.editors.editors[&key].window.as_ref().unwrap().hwnd() as windows_sys::Win32::Foundation::HWND;
                 unsafe {ShowWindow(window,if visible {SW_SHOWNOACTIVATE}else{SW_HIDE});}
             }
             let before=shared.underruns.load(Ordering::Relaxed);
@@ -3710,7 +3710,7 @@ mod tests {
                             }
                         }
                         7=>{a.state.params.lists.remove(&key);a.params_tick();}
-                        9 if !headless=>{a.plugins.close_window(key);a.plugins.open_window(key,info.clone()).unwrap();}
+                        9 if !headless=>{a.editors.close_window(&mut a.state.session.plugins,key);a.editors.open_window(&mut a.state.session.plugins,key,info.clone()).unwrap();}
                         _=>{}
                     }
                     if [3,5,7,9].contains(&ticks) {eprintln!("LIFECYCLE step={ticks} elapsed_us={}",at.elapsed().as_micros());}
@@ -3749,7 +3749,7 @@ mod tests {
             if dropouts!=0 {failures.push((visible,dropouts));}
         }
         stop.store(true,Ordering::Release);assert!(worker.join().unwrap()>100);
-        a.plugins.close_window(key);
+        a.editors.close_window(&mut a.state.session.plugins,key);
         assert_eq!(plugin.lock().unwrap().stopped(),None);
         assert!(failures.is_empty(),"real app parameter polling starved playback: {failures:?}");
     }

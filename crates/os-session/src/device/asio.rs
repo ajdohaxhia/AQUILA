@@ -104,13 +104,12 @@ pub fn open(name: &str, rate: Option<u32>, buffer: Option<u32>, mut mix: Mix, er
     if now < 1.0 {
         return Err("the driver has no sample rate".into());
     }
-    mix.headphones.set_rate(now.round() as u32);
     let counts = driver.channels().map_err(|e| e.to_string())?;
     let outs = counts.outs;
     if outs < 1 {
         return Err("the driver has no outputs".into());
     }
-    let wanted = (outs as usize).min(super::MAX_OUTPUT_CHANNELS);
+    let wanted = (outs as usize).min((MAX_OUTPUTS as usize) * 2);
     let ty = driver.output_data_type().map_err(|e| e.to_string())?;
     let (format, big) = Format::of(&ty).ok_or_else(|| format!("the driver's sample format ({ty:?}) is not one AQUILA writes"))?;
     let range = driver.buffersize_range().map_err(|e| e.to_string())?;
@@ -152,7 +151,7 @@ pub fn open(name: &str, rate: Option<u32>, buffer: Option<u32>, mut mix: Mix, er
     // Each channel's two halves (the driver plays one while the callback fills the other).
     let halves = Halves(stream.buffer_infos.iter().map(|b| b.buffers.map(|p| p as usize)).collect());
     let channels = halves.0.len();
-    mix.prepare_outputs(channels);
+    mix.set_width(channels.div_ceil(2));
     let callback = driver.add_callback(move |info| {
         let half = (info.buffer_index & 1) as usize;
         // The block's inputs first, so the streams rendering the next one hear them; the capture's too, while One-click
@@ -173,14 +172,15 @@ pub fn open(name: &str, rate: Option<u32>, buffer: Option<u32>, mut mix: Mix, er
                 cap.push(frames, at);
             }
         }
-        let sum = mix.block_at(frames, channels, None);
+        let width = mix.width;
+        let sum = mix.block(frames);
         // One output: both sides (`Side::Both`).
         let mono = halves.0.len() == 1;
         for (ch, b) in halves.0.iter().enumerate() {
             let side = if mono { Side::Both } else { Side::One(ch) };
             // Safety: the driver's buffer holds `frames` samples of `format` until the buffers are disposed of, which
             // only happens after this callback is removed (`AsioOut::drop`).
-            unsafe { write(b[half] as *mut u8, &sum, side, frames, format, big) };
+            unsafe { write(b[half] as *mut u8, sum, width, side, frames, format, big) };
         }
     });
     // Drivers may ask to be reset while they start; that is not a reason to open them anew.
@@ -392,13 +392,13 @@ enum Side {
 /// Writes `side` of `mix` (interleaved, `width` channels) into a driver buffer of `frames` samples.
 ///
 /// Safety: `dst` holds `frames` samples of `format`, and nothing else uses it meanwhile.
-unsafe fn write(dst: *mut u8, mix: &super::DeviceBlock<'_>, side: Side, frames: usize, format: Format, big: bool) {
+unsafe fn write(dst: *mut u8, mix: &[f32], width: usize, side: Side, frames: usize, format: Format, big: bool) {
     let n = format.bytes();
     let out = unsafe { std::slice::from_raw_parts_mut(dst, frames * n) };
     for (i, s) in out.chunks_exact_mut(n).enumerate() {
         let x = match side {
-            Side::One(ch) => mix.sample(i, ch),
-            Side::Both => 0.5 * (mix.sample(i, 0) + mix.sample(i, 1)),
+            Side::One(ch) => mix[i * width + ch],
+            Side::Both => 0.5 * (mix[i * width] + mix[i * width + 1]),
         };
         encode(x, format, big, s);
     }
@@ -452,17 +452,16 @@ mod tests {
     /// A buffer gets its channel of the mix; a driver's only output gets both sides, halved.
     #[test]
     fn a_buffer_gets_its_side() {
-        let mix = super::super::DeviceBlock {
-            stereo: &[0.5, -0.5, 0.25, 0.75], extra: &[0.125, 0.25, -0.125, -0.25], extra_channels: 2,
-        };
+        // Two frames, four interleaved channels: the stereo pair, then two extra outputs.
+        let mix = [0.5, -0.5, 0.125, 0.25, 0.25, 0.75, -0.125, -0.25];
         let mut buf = [0u8; 8];
-        unsafe { write(buf.as_mut_ptr(), &mix, Side::One(1), 2, Format::F32, false) };
+        unsafe { write(buf.as_mut_ptr(), &mix, 4, Side::One(1), 2, Format::F32, false) };
         assert_eq!(buf[..4], (-0.5f32).to_le_bytes());
         assert_eq!(buf[4..], 0.75f32.to_le_bytes());
-        unsafe { write(buf.as_mut_ptr(), &mix, Side::One(3), 2, Format::F32, false) };
+        unsafe { write(buf.as_mut_ptr(), &mix, 4, Side::One(3), 2, Format::F32, false) };
         assert_eq!(buf[..4], 0.25f32.to_le_bytes());
         assert_eq!(buf[4..], (-0.25f32).to_le_bytes());
-        unsafe { write(buf.as_mut_ptr(), &mix, Side::Both, 2, Format::F32, false) };
+        unsafe { write(buf.as_mut_ptr(), &mix, 4, Side::Both, 2, Format::F32, false) };
         assert_eq!(buf[..4], 0.0f32.to_le_bytes());
         assert_eq!(buf[4..], 0.5f32.to_le_bytes());
     }

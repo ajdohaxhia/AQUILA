@@ -2192,7 +2192,8 @@ impl App {
         }
         self.audio_playing = playing;
         let (_, demoted) = crate::rt::counts();
-        let drops = self.transport.drops().into();
+        let d = self.transport.drops();
+        let drops = crate::dropout_log::Drops { empty: d.feeder, plugin: d.plugin, device: d.device };
         if let Some(line) = self.audio_watch.check(drops, demoted, crate::rt::roles(), "") {
             crate::dropout_log::write(&format!("{line}{}", context(self)));
         }
@@ -2493,7 +2494,7 @@ impl App {
         // holds the project as it is.
         let before = self.state.session.project.clone();
         self.store_builtin_states();
-        let project_layout=crate::layout::project_snapshot(&self.state,&self.state.session.plugins);
+        let project_layout=crate::layout::project_snapshot(&self.state,&self.state.session.plugins,&self.editors);
         let s = &mut self.state;
         s.session.project.tempo = Some(s.tempo);
         s.session.project.song_mode = Some(s.song_mode);
@@ -3097,7 +3098,7 @@ impl App {
         {
             let open = self.modal_open();
             if open != self.unpinned.is_some() {
-                self.unpinned = open.then(crate::plugin_window::unpinned);
+                self.unpinned = open.then(|| self.editors.frames.unpinned());
             }
         }
         self.invalidate();
@@ -27688,7 +27689,7 @@ mod tests {
         a.state.native_frames=vec![(Win::Mixer,crate::layout::MainWin{pos:(-1500,80),size:(1100,700),max:false})];
         a.state.wins[1]=WinState{rect:Rect::new(130.,170.,700.,480.),maxed:false,mini:true};
         a.state.hide(Win::PianoRoll);a.state.rack_pos=(240.,200.);a.state.rack_size=(600.,350.);
-        let value=crate::layout::project_snapshot(&a.state,&a.state.session.plugins);
+        let value=crate::layout::project_snapshot(&a.state,&a.state.session.plugins,&a.editors);
         let mut file=os_flp::project::create(&a.state.session.project).unwrap();
         crate::layout::write_project_layout(&mut file,value.clone());
         crate::layout::write_project_layout(&mut file,value);

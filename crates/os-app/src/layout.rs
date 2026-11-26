@@ -376,14 +376,14 @@ mod preview_reset_tests {
 }
 // Project-specific window positions. An optional private chunk leaves legacy projects unchanged.
 const PROJECT_LAYOUT_TAG:os_flp::Tag=os_flp::Tag(*b"LMUI");
-pub fn project_snapshot(s:&State,plugins:&crate::plugins::Plugins)->serde_json::Value {
+pub fn project_snapshot(s:&State,plugins:&crate::plugins::Plugins,host:&crate::editor_host::EditorHost)->serde_json::Value {
     let wins:Vec<_>=WINS.iter().take(4).map(|(w,_)|{let v=s.wins[w.slot().unwrap()];serde_json::json!([v.rect.x,v.rect.y,v.rect.w,v.rect.h,v.maxed,v.mini,s.shown(*w)])}).collect();
     let mut editors:Vec<serde_json::Value>=Vec::new();
-    #[cfg(windows)] for (&key,h) in &plugins.hosted {
-        let pos=h.window.as_ref().and_then(|w|w.position()).or(h.placed);
-        if let (Some(pos),Some(d))=(pos,plugins.descriptor(key)){editors.push(serde_json::json!({"key":key,"uid":d.uid(),"position":[pos.0,pos.1],"detached":h.window.as_ref().map_or(h.detached,|w|w.detached()),"open":h.window.is_some()}));}
+    #[cfg(windows)] for (&key,e) in &host.editors {
+        let pos=e.window.as_ref().and_then(|w|w.position()).or(e.placed);
+        if let (Some(pos),Some(d))=(pos,plugins.descriptor(key)){editors.push(serde_json::json!({"key":key,"uid":d.uid(),"position":[pos.0,pos.1],"detached":e.window.as_ref().map_or(e.detached,|w|w.detached()),"open":e.window.is_some()}));}
     }
-    #[cfg(not(windows))] let _=plugins;
+    #[cfg(not(windows))] let _=(plugins,host);
     let detached:Vec<_>=DETACHABLE.iter().take(5).map(|(w,_)|s.native_detached.contains(w)).collect();
     let frames:Vec<_>=DETACHABLE.iter().take(5).map(|(w,_)|s.native_frames.iter().find(|(k,_)|k==w).map(|(_,f)|serde_json::json!([f.pos.0,f.pos.1,f.size.0,f.size.1,f.max]))).collect();
     serde_json::json!({"version":1,"attached_mixer":s.playlist.attached,"windows":wins,"rack":[s.rack_pos.0,s.rack_pos.1,s.rack_size.0,s.rack_size.1,s.shown(Win::ChannelRack)],"editors":editors,"detached":detached,"frames":frames})
@@ -426,10 +426,10 @@ pub fn restore_project_plugins(app:&mut crate::app::App){
         for e in editors.iter().take(512){
             let (Some(key),Some(x),Some(y),Some(uid))=(e["key"].as_u64().and_then(|n|usize::try_from(n).ok()),e["position"][0].as_i64().and_then(|n|i32::try_from(n).ok()),e["position"][1].as_i64().and_then(|n|i32::try_from(n).ok()),e["uid"].as_str())else{continue};
             if app.plugins.descriptor(key).is_none_or(|d|d.uid()!=uid){continue;}
-            if let Some(h)=app.plugins.hosted.get_mut(&key){h.placed=Some((x,y));h.detached=e["detached"].as_bool().unwrap_or(false);}
+            if let Some(editor)=app.editors.editors.get_mut(&key){editor.placed=Some((x,y));editor.detached=e["detached"].as_bool().unwrap_or(false);}
             if e["open"].as_bool()!=Some(true)||app.plugins.owner==0{continue;}
             let info=if key>=crate::plugins::FX_KEY{crate::mixer::fx_info(&app.state.project,&app.state.mixer,key)}else{crate::app::channel_info(&app.state.project,key)};
-            if let Some(info)=info{if app.plugins.open_window(key,info).is_ok(){if let Some(w)=app.plugins.hosted.get(&key).and_then(|h|h.window.as_ref()).filter(|w|w.detached()){w.move_into_workspace();}app.state.raise(Win::Hosted(key));}}
+            if let Some(info)=info{if app.editors.open_window(&mut app.state.session.plugins,key,info).is_ok(){if let Some(w)=app.editors.editors.get(&key).and_then(|editor|editor.window.as_ref()).filter(|w|w.detached()){w.move_into_workspace();}app.state.raise(Win::Hosted(key));}}
         }
     }
     #[cfg(not(windows))] let _=app;

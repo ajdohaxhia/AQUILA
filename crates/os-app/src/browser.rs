@@ -550,7 +550,7 @@ impl App {
                 _ => &[],
             };
             if !paths.is_empty() {
-                let frames: Vec<_> = self.plugins.hosted.iter().filter_map(|(&r,h)| Some((r,h.window.as_ref()?.hwnd() as u32))).collect();
+                let frames: Vec<_> = self.editors.editors.iter().filter_map(|(&r,e)| Some((r,e.window.as_ref()?.hwnd() as u32))).collect();
                 if !frames.is_empty() && let Some((row,sent)) = crate::plugin_window::drop_browser_files(&frames,paths) {
                     if sent { self.state.message = Some("Sent sample selection to the plugin".into()); }
                     else if paths.len() == 1 { self.file_on_plugin_window(row,paths[0].clone().into()); }

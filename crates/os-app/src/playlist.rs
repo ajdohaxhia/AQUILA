@@ -6492,7 +6492,7 @@ pub fn run(app: &mut App, cmd: Cmd) -> Option<String> {
                 crate::prefs::set_text("wave_editor_percent",&pct.to_string());
                 #[cfg(target_os="linux")]
                 if let Some(info)=crate::app::channel_info(&app.state.project,row){
-                    app.plugins.close_window(row);if let Err(error)=app.plugins.open_window(row,info){return Some(error);}
+                    app.editors.close_window(&mut app.state.session.plugins,row);if let Err(error)=app.editors.open_window(&mut app.state.session.plugins,row,info){return Some(error);}
                 }
                 #[cfg(target_os="macos")]
                 if let Some(w)=app.editors.editors.get(&row).and_then(|h|h.window.as_ref()){w.set_editor_zoom(crate::plugins::wave_zoom());}

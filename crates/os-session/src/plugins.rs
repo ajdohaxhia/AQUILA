@@ -1028,8 +1028,9 @@ impl Plugins {
 
     /// The saved state of the instance under `key`, in its format's own bytes.
     pub fn state(&self, key: usize) -> Option<Vec<u8>> {
-        // An instance that refuses to say what it holds (`state_fail`: a test's stand-in, and a plugin whose save
-        // failed) has no state to save.
+        // An instance that refuses to say what it holds (`state_fail`: a test's stand-in for a plugin whose save
+        // fails) has no state to save.
+        #[cfg(any(test, feature = "test-util"))]
         if self.state_fail.contains(&key) {
             return None;
         }

@@ -938,3 +938,37 @@ Verifiche (stessa copia di build di §24.2, log `t-pp5.log`, `t-session.log`, `t
 - `audit_fixes`: **ok**; `control::tests`: **65 passati, 1 fallito** (`ai_control`, §24.3).
 - `os-session --lib`: **196 passati, 4 falliti**; filtro `plugin` di os-app: **105 passati, 4 falliti**. Gli otto rossi sono pre-esistenti: rifatti su un checkout pulito di `84834b9a` (`git archive HEAD` in `/Users/ade/aqbuild/base-check2`) falliscono identici (`ML Amp` senza categoria factory, `every_lemon_effect_is_built_in` senza `ML Patch`, fixture zip, frame di coda del transport, conteggi params, catalogo download, keyword help, cartelle factory), quindi non vengono da questi fix.
 - File toccati: `crates/os-session/src/session.rs`, `crates/os-session/src/plugins.rs`, `crates/os-app/src/osc3_ui.rs`, `crates/os-app/src/project_plugins.rs`.
+
+### 24.6 CI sui sei fix (commit `2e690c2b`, 2026-11-26)
+
+- Push su `ade/michael-lane`: `2e690c2b` (i sei fix + §24.5).
+- CI dispatchata a mano su `2e690c2b`: run `45903363010` — **rossa**: `Windows: Build`, `Linux: Build`, `macOS: Build the session alone`. (In parallelo il workflow "Check public source for Google API keys" sullo stesso push e' verde.)
+- `macOS: Build the session alone` (`cargo check -p os-session --all-targets`) fallisce con `E0609: no field state_fail on type &Plugins` (`plugins.rs:1033`): la mia correzione del punto 3 usa `self.state_fail`, ma il campo e' `#[cfg(any(test, feature = "test-util"))]`. Fix locale **non committato**: la stessa `cfg` sulla guardia in `Plugins::state`. Con la `cfg`: `cargo check -p os-session --all-targets` ok e `project_plugins::tests::project_saves_with_a_refusing_bus_effect_and_keeps_its_last_state` ok (log `t-cfgfix.log`); il loop `--no-default-features` della CI non e' stato rifatto in locale (lo shadow build ha bisogno di `ML_PLASMA_BUNDLE_MACOS_AARCH64`), quindi va verificato con un nuovo commit + dispatch.
+- `Linux: Build` e `Windows: Build` falliscono per le stesse cinque `E0*` gia' presenti sul commit precedente `84834b9a` (merge, non questi fix): `Hosted.window` (`browser.rs:553`), `Plugins::open_window`/`close_window` (`playlist.rs:6495`), `From<transport::Drops>` per `dropout_log::Drops` (`app.rs:2195`), `Option<Box<dyn Any>>` vs `Option<Unpinned>` (`app.rs:3100`). Sono percorsi di codice solo Linux/Windows (x11/windows) rimasti indietro rispetto a `os-session` dopo il merge: la CI restera' rossa finche' non vengono sistemati.
+- Conseguenza: nessuna release lanciata (`aquila-release.yml` richiede CI verde).
+
+### 24.7 Build Linux/Windows: cause e correzione (2026-11-26)
+
+I due job Build non dipendono dai sei fix: sono API del merge rimaste indietro rispetto ai moduli upstream. Corretti tutti i punti.
+
+**Windows (`Windows: Build`, os-session).** `crates/os-session/src/device.rs` e' quello nuovo di Lemon (`Mix::block(frames)` e `Mix::set_width(pairs)`, nessun `DeviceBlock`, nessun `playback_at`), ma `device/asio.rs` e `device/wasapi.rs` erano ancora le copie ML Studio sulla vecchia API (`prepare_outputs`, `block_at`, `Mix::headphones`, `MAX_OUTPUT_CHANNELS`). Portati alla nuova API:
+
+- ASIO: tolto `headphones.set_rate` (la correzione cuffie vive nel layer di `os-app`, non in `os-session`); cap output `2 * MAX_OUTPUTS`; `mix.set_width(channels.div_ceil(2))`; il callback legge `mix.width` prima di `mix.block(frames)` e scrive i campioni interleaved (`i * width + ch`).
+- WASAPI: tolto `headphones.set_rate` e `playback_at` (la nuova `Mix::block` non lo prende); `mix.set_width(s.channels.div_ceil(2))`; `write` prende la slice interleaved e la larghezza.
+- Test dei due backend aggiornati alla `Mix` interleaved (stessi valori e stesse asserzioni di canale).
+
+**Linux (`Linux: Build`, os-app).** Il merge ha spostato le finestre dei plugin da `Plugins`/`Hosted` a `EditorHost` (os-app), ma i percorsi x11 usavano ancora i campi vecchi:
+
+- `browser.rs`: i frame per il drop di campioni vengono da `self.editors.editors` (non da `Plugins::hosted[].window`).
+- `playlist.rs` (`Cmd::WaveSize`): `app.editors.close_window` + `app.editors.open_window` al posto di `Plugins::close_window`/`open_window`.
+- `app.rs` (dialogo aperto): `self.editors.frames.unpinned()` restituisce il `Box<dyn Any>` atteso dal campo, invece del tipo x11 diretto.
+- `app.rs` (dropout log): conversione esplicita `transport::Drops { feeder, plugin, device, heard }` -> `dropout_log::Drops { empty, plugin, device }`; il `From` implementato e' solo per `os_session::transport::Drops`.
+- `layout.rs`: snapshot/restore delle finestre editor leggono e scrivono `EditorHost::editors` (posizione, detached, open) e passano l'host a `project_snapshot`; aggiornati i cinque chiamanti e il test Windows-only di `transport.rs`.
+
+Verifiche locali (macOS, stessi env di §24.2):
+
+- `cargo check -p os-session --all-targets`: **ok**.
+- `cargo check -p os-app --all-targets`: **ok** (57 s, solo warning pre-esistenti).
+- I file Windows-only `device/asio.rs` e `device/wasapi.rs` sono stati parse-checkati con `rustfmt --edition 2021` (ok); la compilazione vera per Linux/Windows resta affidata alla CI, perche' su macOS quei rami `cfg` non vengono compilati.
+- La `cfg` su `state_fail` in `Plugins::state` e' inclusa in questo commit (fix del job macOS).
+
