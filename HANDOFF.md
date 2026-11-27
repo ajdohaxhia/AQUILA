@@ -983,4 +983,11 @@ Verifiche locali (macOS, stessi env di §24.2):
 - Verifica locale: `cargo check -p os-app --all-targets` verde; `os-session --no-default-features` verde; i file Windows-only passano `rustfmt --edition 2024` (solo parse, non tipi). La compilazione Windows vera sara' la run sul commit successivo.
 - Release ancora non lanciata: serve una CI verde sul commit da pubblicare.
 
+### 24.9 Terzo giro CI (commit `d81f584e`, run `45916885025`)
+
+- **Linux: verde** e **macOS: verde**, tutte le step (`Build`, sessione sola, feature spente). Il fix `os_vst3` e' quello giusto.
+- **Windows: `Build`** arriva a un solo errore, un `E0502` in `align_channel_editors`: `let s = &mut self.state` convive con `self.plugins.scale`, che passa per `Deref<Target = Session>` e quindi prende in prestito tutto `*self`. Ora legge `s.plugins.scale` (stesso prestito di `s`); `self.canvas_off` resta un campo diretto di `App`. Gli altri dieci errori della migrazione sono spariti.
+- Prossimo passo: commit di questa riga, push, nuovo dispatch; il job Windows e' l'unico ancora da confermare.
+
+
 

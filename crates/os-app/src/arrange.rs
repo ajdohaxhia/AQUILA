@@ -136,7 +136,7 @@ impl App {
         #[cfg(all(plugin_windows, windows))]
         {
             let first = usize::from(s.shown(Win::Plugin));
-            let k = self.plugins.scale;
+            let k = s.plugins.scale;
             let (ox, oy) = self.canvas_off;
             let rows: Vec<usize> = s.z.iter().filter_map(|w| if let Win::Hosted(r) = *w { Some(r) } else { None }).filter(|&r| r < crate::plugins::FX_KEY).collect();
             for (i, r) in rows.into_iter().enumerate() {
