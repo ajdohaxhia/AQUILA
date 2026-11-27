@@ -366,7 +366,7 @@ impl App {
             }
         }
         #[cfg(all(plugin_windows, windows))]
-        self.plugins.move_into_workspace();
+        self.editors.move_into_workspace();
         self.invalidate();
     }
 }

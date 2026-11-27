@@ -54,7 +54,7 @@ impl Windows {
                 let f=layout::on_screens(*f,&screens);p.window.set_maximized(false);p.window.set_outer_position(frame_position(f));let _=p.window.request_inner_size(frame_size(f));p.window.set_maximized(f.max);p.frame=f;
             }}
         }
-        self.panes.retain(|p|{let keep=if p.kind==Win::Guide {help::detached_open(&app.state)} else {app.state.native_detached.contains(&p.kind)&&app.state.shown(p.kind)};if !keep {#[cfg(windows)] if p.kind==Win::Mixer {app.plugins.close_racks();}layout::save_native(key(p.kind),p.frame);}keep});
+        self.panes.retain(|p|{let keep=if p.kind==Win::Guide {help::detached_open(&app.state)} else {app.state.native_detached.contains(&p.kind)&&app.state.shown(p.kind)};if !keep {#[cfg(windows)] if p.kind==Win::Mixer {app.editors.close_racks(&mut app.state.session.plugins);}layout::save_native(key(p.kind),p.frame);}keep});
         let mut created=Vec::new();
         let mut kinds = app.state.native_detached.clone();
         if help::detached_open(&app.state) { kinds.push(Win::Guide); }
@@ -191,7 +191,7 @@ impl Windows {
             }
             _=>{}
         }
-        #[cfg(windows)] if p.kind==Win::Mixer && redraw && p.refresh_editors {for h in app.plugins.hosted.values(){if let Some(e)=&h.rack_editor{e.refresh();}}}
+        #[cfg(windows)] if p.kind==Win::Mixer && redraw && p.refresh_editors {for editor in app.editors.editors.values(){if let Some(e)=&editor.rack_editor{e.refresh();}}}
         if matches!(p.kind,Win::PianoRoll|Win::Playlist){
             let key=(app.cursor(),(scale*100.).round().clamp(50.,400.) as u16,app.theme.colors.appearance.icon_pack);
             if p.cursor!=Some(key){crate::apply_window_cursor(&p.window,_el,key.0,key.1,key.2,cache);p.cursor=Some(key);}

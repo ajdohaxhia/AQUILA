@@ -972,3 +972,15 @@ Verifiche locali (macOS, stessi env di §24.2):
 - I file Windows-only `device/asio.rs` e `device/wasapi.rs` sono stati parse-checkati con `rustfmt --edition 2021` (ok); la compilazione vera per Linux/Windows resta affidata alla CI, perche' su macOS quei rami `cfg` non vengono compilati.
 - La `cfg` su `state_fail` in `Plugins::state` e' inclusa in questo commit (fix del job macOS).
 
+### 24.8 Secondo giro CI (commit `9f5639c2`, run `45912022368`)
+
+- **Linux: `Build` verde**, quindi i fix os-app Linux compilano. **macOS: `Build` e `Build the session alone` verdi**, quindi la `cfg` su `state_fail` e' corretta.
+- Tutti e tre i job falliscono in `Build the session with features off`: `Plugins::prepare_preset` usava `os_vst3::ara::State::is(data)` anche senza la feature `vst3`. La clausola ora e' dietro `#[cfg(feature = "vst3")]` (con `false` quando la feature e' spenta). La matrice locale `cargo check --locked -p os-session --no-default-features` piu' ognuna delle dieci feature di `ci.yml` (vst3, vst2, export-flac, export-mp3, export-ogg, midi-io, device, fl-native, rpc) e' verde.
+- **Windows: `Build`**: `os-session` (ASIO/WASAPI) compila; falliva `os-app` con dieci errori della stessa migrazione delle finestre: `Plugins::update_chop_workspace`, `window_of`, `move_docked`, `close_racks`, `wave_size`, `move_into_workspace`, `Hosted::rack_editor`, `plugin_window::new_frame`, `first_position` e `LiftInput`. Correzioni:
+  - `update_chop_workspace` e `wave_size` ora vivono in `EditorHost` (il primo conserva `chop_workspace` e rifitta la finestra di ML Chop via `chop_placement`; il secondo imposta la preferenza e riapre la finestra come fa il ramo Linux, cosi' `open_window` riapplica `wave_zoom`).
+  - `window_of`, `move_docked`, `close_racks`, `move_into_workspace` e `rack_editor` usano `EditorHost`/`Editor`; aggiornati `visualizer_video.rs`, `arrange.rs`, `detached.rs`, `win_clamp.rs`, `app.rs` (`clip_docked`).
+  - `plugin_window::new_frame` non e' piu' `cfg(not(windows))` (il corpo aveva gia' il ramo win32); `first_position` e' quello gated, perche' su Windows arriva da `win32`. `LiftInput` e' definito su tutte le piattaforme (il trait `Frames` lo nomina sempre).
+- Verifica locale: `cargo check -p os-app --all-targets` verde; `os-session --no-default-features` verde; i file Windows-only passano `rustfmt --edition 2024` (solo parse, non tipi). La compilazione Windows vera sara' la run sul commit successivo.
+- Release ancora non lanciata: serve una CI verde sul commit da pubblicare.
+
+

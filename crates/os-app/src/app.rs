@@ -4059,7 +4059,7 @@ impl App {
         let px = |r: Rect| [(r.x * k).floor() as i32 + ox, (r.y * k).floor() as i32 + oy, (r.right() * k).ceil() as i32 + ox, (r.bottom() * k).ceil() as i32 + oy];
         let work = px(self.state.work_rect());
         #[cfg(windows)]
-        self.state.session.plugins.update_chop_workspace(work);
+        self.editors.update_chop_workspace(&mut self.state.session.plugins, work);
         let over: Vec<[i32; 4]> = self.overlays.iter().map(|&r| px(r.outset(2.0))).collect();
         let z = self.state.z.clone();
         let stacked: Vec<usize> = z.iter().filter_map(|w| if let Win::Hosted(r) = w { Some(*r) } else { None }).collect();

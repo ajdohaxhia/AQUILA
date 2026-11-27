@@ -833,7 +833,11 @@ impl Plugins {
     /// (`NO_LIBRARY`), and an ARA document's state goes through its project editor.
     pub fn prepare_preset(&mut self, key: usize, data: &[u8]) -> Result<Hosted, String> {
         let Some(old) = self.hosted.get(&key) else { return Err("Plugin no longer exists".into()) };
-        if old.ara_source.is_some() || os_vst3::ara::State::is(data) {
+        #[cfg(feature = "vst3")]
+        let ara = os_vst3::ara::State::is(data);
+        #[cfg(not(feature = "vst3"))]
+        let ara = false;
+        if old.ara_source.is_some() || ara {
             return Err("ARA document state must be restored through its project editor".into());
         }
         let Some(desc) = self.descriptor(key) else { return Err("Plugin unavailable".into()) };

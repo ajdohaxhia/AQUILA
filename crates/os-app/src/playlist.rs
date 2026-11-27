@@ -6486,7 +6486,13 @@ pub fn run(app: &mut App, cmd: Cmd) -> Option<String> {
         }
         #[cfg(plugin_windows)]
         Cmd::WaveSize(row,pct)=>{
-            #[cfg(windows)] app.plugins.wave_size(row,pct);
+            #[cfg(windows)]
+            if app.plugins.hosted.get(&row).is_some_and(|h|h.name=="ML Wave"){
+                crate::prefs::set_text("wave_editor_percent",&pct.to_string());
+                if let Some(info)=crate::app::channel_info(&app.state.project,row){
+                    app.editors.close_window(&mut app.state.session.plugins,row);if let Err(error)=app.editors.open_window(&mut app.state.session.plugins,row,info){return Some(error);}
+                }
+            }
             #[cfg(any(target_os="linux",target_os="macos"))]
             if app.plugins.hosted.get(&row).is_some_and(|h|h.name=="ML Wave"){
                 crate::prefs::set_text("wave_editor_percent",&pct.to_string());

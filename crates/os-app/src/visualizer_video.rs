@@ -1752,7 +1752,7 @@ pub fn from_plugin_window(app: &mut App, key: usize, x: i32, y: i32) {
     {
         return;
     }
-    let Some((owner, _)) = app.plugins.window_of(key) else {
+    let Some((owner, _)) = app.editors.window_of(key) else {
         return;
     };
     let owner = owner as windows_sys::Win32::Foundation::HWND;

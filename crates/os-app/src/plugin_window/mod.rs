@@ -388,10 +388,6 @@ pub fn set_editor_keys(on: bool) {
     EDITOR_KEYS.store(on, std::sync::atomic::Ordering::Relaxed);
 }
 
-/// Where a detached window opening for the first time goes: where a new window opens. Only Windows places it by
-/// monitor (Settings "Open detached plugins with the main window"; spec: ui/settings-choices.md "Miscellaneous:
-/// naming, detached plugins and startup").
-#[cfg(not(windows))]
 /// A plugin editor's frame in the platform's window system, as the window the editor host drives.
 pub fn new_frame(owner: isize, info: ChannelInfo, editor: (f32, f32), scale: f32, pos: (i32, i32), detached: bool) -> Result<FrameWindow, String> {
     #[cfg(target_os = "macos")]
@@ -404,6 +400,10 @@ pub fn new_frame(owner: isize, info: ChannelInfo, editor: (f32, f32), scale: f32
     { let _ = (owner, info, editor, scale, pos, detached); Err("no plugin windows on this platform".into()) }
 }
 
+/// Where a detached window opening for the first time goes: where a new window opens. Only Windows places it by
+/// monitor (Settings "Open detached plugins with the main window"; spec: ui/settings-choices.md "Miscellaneous:
+/// naming, detached plugins and startup").
+#[cfg(not(windows))]
 pub fn first_position(owner: isize, scale: f32, _with_main: bool) -> (i32, i32) {
     default_position(owner, scale)
 }
@@ -439,7 +439,6 @@ pub enum LinkMsg {
 }
 
 /// Mouse input on the lifted popup (see `lift_show`); positions in the main window (physical px).
-#[cfg(not(windows))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LiftInput {
     Move(i32, i32),

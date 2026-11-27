@@ -294,6 +294,9 @@ pub struct EditorHost {
     opens: u64,
     /// Presets dropped where a new instance is being made: they load once it is hosted (`presets::pending_tick`).
     pub preview_jobs: Vec<crate::presets::PreviewJob>,
+    /// Windows: the workspace the Lemon Chop window was last fitted to (`update_chop_workspace`).
+    #[cfg(windows)]
+    chop_workspace: Option<[i32; 4]>,
 }
 
 impl Default for EditorHost {
@@ -306,6 +309,8 @@ impl Default for EditorHost {
             #[cfg(plugin_windows)]
             opens: 0,
             preview_jobs: Vec::new(),
+            #[cfg(windows)]
+            chop_workspace: None,
         }
     }
 }
@@ -697,6 +702,27 @@ impl EditorHost {
     pub fn move_into_workspace(&self) {
         for w in self.editors.values().filter_map(|e| e.window.as_ref()) {
             w.move_into_workspace();
+        }
+    }
+
+    /// Windows: the workspace moved or resized. The Lemon Chop window is fitted to it again, at the scale its editor
+    /// opens at (`plugin_window::chop_placement`).
+    #[cfg(all(plugin_windows, windows))]
+    pub fn update_chop_workspace(&mut self, pl: &mut Plugins, work: [i32; 4]) {
+        if self.chop_workspace.replace(work) == Some(work) {
+            return;
+        }
+        let rows: Vec<usize> = self.editors.iter().filter(|(_, e)| e.window.as_ref().is_some_and(|w| !w.detached())).map(|(&r, _)| r).collect();
+        for row in rows {
+            let chop = pl.hosted.get(&row).is_some_and(|h| {
+                h.name == "ML Chop" && h.plugin.try_lock().is_ok_and(|p| crate::project_plugins::is_builtin(p.desc()))
+            });
+            if !chop {
+                continue;
+            }
+            let Some((pos, detached)) = self.editors.get(&row).and_then(|e| e.window.as_ref()).map(|w| (w.position().unwrap_or_default(), w.detached())) else { continue };
+            let (scale, _) = crate::plugin_window::chop_placement(pl.owner, pos, pl.scale_for(row, pl.scale), detached, self.chop_workspace);
+            self.rescale_window(pl, row, scale);
         }
     }
 
