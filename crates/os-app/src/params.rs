@@ -881,6 +881,8 @@ impl App {
 
 #[cfg(test)]
 mod tests {
+    /// ML EQ's parameters: Parametric EQ 2's 36 (Main level is the 36th), then its dynamic bands, De-harsh and the rest.
+    const EQ_PARAMS: usize = 83;
     use super::*;
 
     #[test]
@@ -945,7 +947,8 @@ mod tests {
         let keys = [fx_key(2, 1), fx_key(2, 2)];
         for key in keys { a.state.browser_open.insert(view::parameter_node_key(key)); }
         let rows = view::rows(&a.state);
-        for key in keys { assert_eq!(rows.iter().filter(|r| matches!(r.item, view::Item::Param(k, _) if k == key)).count(), 36); }
+        // ML EQ: the 36 parameters of the Parametric EQ 2 it plays, then its dynamics (`EQ_PARAMS`).
+        for key in keys { assert_eq!(rows.iter().filter(|r| matches!(r.item, view::Item::Param(k, _) if k == key)).count(), EQ_PARAMS); }
         assert_ne!(view::parameter_node_key(keys[0]), view::parameter_node_key(keys[1]));
         a.state.browser_search = "main level".into();
         let rows = view::rows(&a.state);
@@ -977,12 +980,12 @@ mod tests {
         a.sync_effects();
         let key = fx_key(2, 1);
         assert_eq!(a.browse_params(key), None);
-        assert_eq!(a.state.params.visible(key).count(), 36);
-        let node = "1:Current project/Effects/Lemon Parametric EQ (Bus 2)";
+        assert_eq!(a.state.params.visible(key).count(), EQ_PARAMS);
+        let node = "1:Current project/Effects/ML EQ (Bus 2)";
         assert_eq!((a.state.show_browser, a.state.browser_tab, a.state.browser_sel.as_deref()), (true, PROJECT_TAB, Some(node)));
         let list = rows(&a.state);
         let names: Vec<&str> = list.iter().filter(|r| matches!(r.item, Item::Param(k, _) if k == key)).map(|r| r.label.as_str()).collect();
-        assert_eq!((names.len(), names[0], names[35]), (36, "Band 1 level", "Main level"));
+        assert_eq!((names.len(), names[0], names[35]), (EQ_PARAMS, "Band 1 level", "Main level"));
         assert_eq!(row_hint(&a.state, key, 0), "Band 1 level: 0.0dB");
 
         // Right-click a parameter row: its automation menu.
@@ -1094,7 +1097,9 @@ mod tests {
         crate::playlist::run(&mut a, Cmd::Param(PCmd::Set(key, 35, 1.0)));
         idle(&a);
         assert!((value_of(&a.state, key, 35).unwrap() - 1.0).abs() < 1e-6);
-        assert_eq!(a.state.history.entries(&a.state.session.settings).last().map(|e| e.1), Some(crate::control::command::PLUGIN_PARAMETER));
+        // The newest step by its number: "Show recent changes at the top" turns the list round.
+        let h = &a.state.history;
+        assert_eq!(h.entries(&a.state.session.settings).into_iter().find(|e| e.0 == h.at()).map(|e| e.1), Some(crate::control::command::PLUGIN_PARAMETER));
         assert_eq!(crate::history::undo(&mut a.state).as_deref(), Some(crate::control::command::PLUGIN_PARAMETER));
         a.host_commands();
         idle(&a);

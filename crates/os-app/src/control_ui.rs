@@ -133,7 +133,8 @@ pub fn edit_app<R>(app: &mut crate::app::App, name: &'static str, region: comman
 /// tweaks is off or the value stays. The step comes from no change the release could judge: a plugin may take the
 /// value on its next idle.
 pub fn param_set(s: &mut State, key: usize, index: usize, before: Option<f64>, to: f64) {
-    let Some(param) = s.session.params.lists.get(&key).and_then(|l| l.params.get(index)).map(|e| e.id) else { return };
+    // The app's parameter lists (`State::params`, which `params_tick` keeps).
+    let Some(param) = s.params.lists.get(&key).and_then(|l| l.params.get(index)).map(|e| e.id) else { return };
     // The owner's id (one hosted since the last settle has none yet).
     if command::key_owner(&s.session, key) == Some(0) {
         crate::control::settle_in(&mut s.session);

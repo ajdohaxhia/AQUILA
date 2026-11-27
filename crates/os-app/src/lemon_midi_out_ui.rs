@@ -54,8 +54,13 @@ impl crate::app::App {
             return "No channels to set up for MIDI export".into();
         }
         use crate::control::command::Command;
+        // The commands name the channels by id: new channels get theirs now, not on the next tick.
+        {
+            let ses = &mut self.state.session;
+            ses.control.settle(ses.project.get_mut());
+        }
         let s = &mut self.state;
-            let groups = cut_groups(&rows.iter().map(|&r| s.session.project.channels[r].misc.cut).collect::<Vec<_>>());
+        let groups = cut_groups(&rows.iter().map(|&r| s.session.project.channels[r].misc.cut).collect::<Vec<_>>());
         let ids: Vec<u32> = rows.iter().map(|&r| s.session.project.channels[r].id.0).collect();
         let first = ids.iter().map(|&channel| Command::ReplaceInstrument { channel, plugin: Some(LEMON_MIDI_OUT.into()) }).collect();
         // The replaced channels' new ids, in order: each a MIDI channel of its own and a cut group of its own.

@@ -1339,6 +1339,7 @@ impl App {
         }
         if want.is_empty() && self.plugins.containers.is_empty() {
             self.state.params.members.clear();
+            self.state.session.plugin_members.clear();
             self.mirror_levels();
             return;
         }
@@ -1466,6 +1467,8 @@ impl App {
                     }
                 }
             }
+            // The session's copy: hosted members' owners (`control::host`) and their undo steps find them by it.
+            self.state.session.plugin_members = self.state.params.members.iter().map(|(&k, &m)| (k, m)).collect();
             self.transport.set_effects(self.plugins.effects());
             self.state.piano.dirty = true;
         }

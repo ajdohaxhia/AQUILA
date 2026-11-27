@@ -288,6 +288,8 @@ pub fn follow(s: &mut State, f: impl Fn(Target) -> Option<Target>) {
     if all != old {
         set_links(&all);
     }
+    // The edit's undo step reads the session's moves (`control::edit`, `record_edit`), in the session's targets.
+    s.session.link_moves = moves.iter().filter_map(|&(a, b)| Some((crate::typein::to_session(a)?, crate::typein::to_session(b)?))).collect();
     s.link_moves = moves;
     // Multilink's controls waiting for their controller move with them, and go with what they drove.
     s.multilink.queue.retain_mut(|t| f(*t).map(|n| *t = n).is_some());
