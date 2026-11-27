@@ -180,6 +180,15 @@ pub fn is_builtin(d: &os_host::Descriptor) -> bool {
 mod tests {
     use super::*;
 
+    /// The native engine keeps process-wide state (its instance list and one-time hosting setup) and CLAP requires
+    /// plugin lifecycle calls on one thread. The test harness runs tests in parallel, so create, use and drop the
+    /// engine one test at a time; concurrent instances corrupt that state and trip the shared crash guard.
+    static NATIVE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn native() -> std::sync::MutexGuard<'static, ()> {
+        NATIVE.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     fn assert_reset_silence(plugin: &mut dyn os_host::Plugin, rate: u32) {
         plugin.reset();
         for block in 0..100 {
@@ -199,6 +208,7 @@ mod tests {
     }
     #[test]
     fn stock_engine_follows_host_note_tuning() {
+        let _native = native();
         use os_host::Library as _;
         let library = library().unwrap();
         let plugin = library.create(ID).unwrap();
@@ -222,6 +232,7 @@ mod tests {
 
     #[test]
     fn stock_engine_slide_volume_and_pan_reach_the_native_voice() {
+        let _native = native();
         use os_host::Library as _;
         let library=library().unwrap();let plugin=library.create(ID).unwrap();let mut plugin=plugin.lock().unwrap();
         assert!(plugin.activate(48000));assert!(plugin.use_note_levels());
@@ -241,6 +252,7 @@ mod tests {
 
     #[test]
     fn bundled_native_undo_extension_available() {
+        let _native = native();
         use os_host::Library as _;
         let library = library().unwrap();
         let plugin = library.create(ID).unwrap();
@@ -270,6 +282,7 @@ mod tests {
 
     #[test]
     fn stock_engine_audio_automation_and_recall() {
+        let _native = native();
         use os_host::Library;
         let library = library().expect("bundled native instrument loads");
         assert_eq!(library.plugins.len(), 1);
@@ -348,6 +361,7 @@ mod tests {
 
     #[test]
     fn stock_reset_clears_held_notes_and_delay_tails() {
+        let _native = native();
         use os_host::Library;
         let library = library().unwrap();
         // SAFETY: this is our checksum-verified payload built from the pinned source.
