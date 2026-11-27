@@ -398,7 +398,14 @@ pub(crate) const TEMPO_DEFAULT: f64 = 130.0;
 /// Sets the project tempo to `bpm`, kept in the display's range and its thousandths, as one undo step named "Tempo" (as
 /// a drag of the display): the tempo menu's typed value, Paste value, Set... and presets (spec: ui/tempo-menu.md).
 pub(crate) fn set_tempo(s: &mut State, bpm: f64) {
-    crate::control::edit(s, crate::control::command::TEMPO, crate::control::command::Region::Settings, |s| set_tempo_now(s, bpm));
+    // AQUILA keeps the tempo in `State` (not the session's settings region), so the step is its own `Snap::Tempo`,
+    // as `App::set_tempo` records it.
+    let old = s.tempo;
+    set_tempo_now(s, bpm);
+    if s.tempo != old {
+        crate::history::record(s, crate::control::command::TEMPO, crate::history::Snap::Tempo(old));
+        crate::history::done_with(s);
+    }
 }
 
 /// `set_tempo` without its undo step.

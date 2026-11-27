@@ -347,7 +347,6 @@ pub const UPDATE_SCRIPTS: &str = "Update MIDI scripts";
 const NO_SCRIPTS: &str = "AQUILA has no MIDI scripts";
 /// MIDI: Performance mode MIDI channel stays greyed with its reason.
 pub const PERFORMANCE_CHANNEL: &str = "Performance mode MIDI channel";
-const NO_PERFORMANCE: &str = "AQUILA has no playlist performance mode";
 
 /// `LIVE`, and the checks declared in `crate::prefs`.
 fn live(key: &str) -> bool {
@@ -887,6 +886,10 @@ pub fn page(tab: usize, s: &State) -> Vec<Group> {
                 g("CPU", vec![
                     Check(crate::prefs::THREADED_GENERATORS.label, true),
                     Check(crate::prefs::THREADED_MIXER.label, true),
+                    // Lemon Studio's multi-core mixing (`crate::mix_threads`).
+                    Check(crate::prefs::MULTITHREADED_GENERATORS.label, true),
+                    Check(crate::prefs::MULTITHREADED_MIXER.label, true),
+                    Check(crate::prefs::MULTITHREADED_AUTO.label, true),
                     Check2("Auto-bypass when silent", true, "Align tick lengths", false),
                     if crate::workspace_visibility::shown("visible_smart-disable") { Check(crate::prefs::SMART_DISABLE.label, true) } else { Gap(0.0) },
                     combo(crate::prefs::choice(&crate::prefs::AUDIO_WORKERS), 190.0, crate::prefs::AUDIO_WORKERS.label),
@@ -1005,7 +1008,7 @@ pub fn page(tab: usize, s: &State) -> Vec<Group> {
                     Value(crate::prefs::number(&crate::prefs::MAX_UNDO_LEVELS).to_string(), "Maximum undo levels"),
                     Check("Undo knob tweaks", true),
                     Check("Alternate undo mode", true),
-                    Check("Put undone recordings in the recycle bin", true),
+                    Check(crate::prefs::UNDONE_RECORDINGS_TO_BIN.label, true),
                     Check("Show undo history in the browser when undoing changes", false),
                     Check("Show recent changes at the top", false),
                 ]),
@@ -1028,7 +1031,7 @@ pub fn page(tab: usize, s: &State) -> Vec<Group> {
                     Check("Auto zoom in piano roll", false),
                     Check("Monophonic painting in piano roll", false),
                     Check("Create automation clips at the playback position", true),
-                    Check("Initialize controls automatically", true),
+                    Check(crate::prefs::INIT_CONTROLS.label, true),
                 ]),
                 gf("Samples and bouncing", true, {
                     let mut rows = vec![
@@ -1048,7 +1051,7 @@ pub fn page(tab: usize, s: &State) -> Vec<Group> {
                     rows
                 }),
                 gf("Plugin windows", true, vec![
-                    Check("Detach all new plugins", false),
+                    Check(crate::prefs::DETACH_NEW.label, false),
                     Check("Open detached plugins with the main window", false),
                     Check("Don't limit windows to screen", false),
                     Check("Limit the number of open plugin editors", true),

@@ -4955,7 +4955,15 @@ impl App {
             self.state.session.history.end_run();
         }
         if let Some(bpm) = bpm.filter(|_| crate::tapper::get().apply) {
-            crate::control::edit_run(self, crate::control::command::TEMPO, crate::control::command::Region::Settings, crate::history::Run::Tap, |app| app.set_tempo(bpm));
+            // The tempo lives in `State` (`Snap::Tempo`): the count's first change records the step, the others join it.
+            let run = crate::history::Run::Tap;
+            if self.state.session.history.joins(run) {
+                self.set_tempo_with(bpm, false);
+            } else if self.set_tempo_with(bpm, true) {
+                crate::history::done_with(&mut self.state);
+                self.state.session.history.set_run(run);
+            }
+            self.state.session.dirty = true;
         }
         self.damage_win(Win::Tapper);
     }
@@ -4975,10 +4983,17 @@ impl App {
     /// Sets the project tempo, kept in the tempo box's range (10-522 BPM): playback follows from the next tick, the
     /// toolbar shows it. Returns the tempo set.
     pub(crate) fn set_tempo(&mut self, bpm: f64) -> f64 {
-        if !bpm.is_finite() {return self.state.tempo;}
+        self.set_tempo_with(bpm, true);
+        self.state.tempo
+    }
+
+    /// `set_tempo`; `step`: an undo step for it (none while dragging the display). Whether the tempo changed.
+    fn set_tempo_with(&mut self, bpm: f64, step: bool) -> bool {
+        if !bpm.is_finite() {return false;}
         let t = bpm.clamp(10.0, 522.0);
-        if self.state.tempo != t {
-            if !matches!(self.drag,Some(Drag::Tempo{..})) {
+        let changed = self.state.tempo != t;
+        if changed {
+            if step && !matches!(self.drag,Some(Drag::Tempo{..})) {
                 let old=self.state.tempo;
                 crate::history::record(&mut self.state,"Tempo",crate::history::Snap::Tempo(old));
             }
@@ -4988,7 +5003,7 @@ impl App {
             self.state.piano.dirty = true;
             self.damage_band(TEMPO_RECT);
         }
-        t
+        changed
     }
 
     /// Repaint what scroll target `t` scrolls.
@@ -5242,6 +5257,8 @@ impl App {
         }
         if self.clip_theme_text != self.state.fl_text {
             self.state.clip_colors = self.clip_colors();
+            // New channels take their colour from the session's rule (`edit::playlist`, `playlist::add_*`).
+            self.state.session.clip_colors = self.state.clip_colors.clone();
             self.clip_theme_text.clone_from(&self.state.fl_text);
         }
     }
@@ -11334,6 +11351,8 @@ impl App {
                     return;
                 }
                 Tool::Select => unreachable!("selection handled before note editing"),
+                // Paint on a note edits it as Draw does: a selected note moves (or stretches) its whole group.
+                Tool::Paint => {}
                 _ => s.piano.clear_selection(),
             }
         }
@@ -20744,11 +20763,10 @@ mod tests {
         // greyed with its reason.
         let r = hit_rect(&app, &Action::Settings(SAct::Check("Soft takeover")));
         click(&mut app, &mut c, r);
-        assert_eq!(app.state.message.as_deref(), Some("Pickup (takeover mode): on"));
+        assert_eq!(app.state.message.as_deref(), Some("Soft takeover: on"));
         app.state.settings.scroll = views::settings::content_h(&app.state);
         frame(&mut app, &mut c, None);
         assert!(app.hits.iter().any(|h| h.action == Action::Settings(SAct::Body) && h.hint == "AQUILA has no MIDI scripts"));
-        assert!(app.hits.iter().any(|h| h.action == Action::Settings(SAct::Body) && h.hint == "AQUILA has no playlist performance mode"));
         let r = hit_rect(&app, &Action::Settings(SAct::Tab(PROJECT)));
         click(&mut app, &mut c, r);
         assert!(app.hits.iter().any(|h| matches!(h.action, Action::Settings(SAct::Combo("Ask for data folder", ..)))), "Ask for data folder works");
@@ -21817,7 +21835,7 @@ mod tests {
         let view = hit_rect(&app, &Action::Menu(VIEW));
         click(&mut app, &mut c, view);
         let index = app.state.playlist.popup.as_ref().unwrap().items.iter()
-            .position(|item| item.label == "Tempo tapper").unwrap();
+            .position(|item| item.label == "Tap tempo").unwrap();
         let item = hit_rect(&app, &Action::PlPopup(index));
         click(&mut app, &mut c, item);
         assert!(app.state.shown(Win::Tapper) && app.state.in_front(Win::Tapper));
@@ -21920,12 +21938,11 @@ mod tests {
         assert!(!app.state.shown(Win::Tapper));
         let row = bar_model(&app.state)[VIEW].rows.iter().find(|r| r.label == "Tap tempo").cloned().unwrap();
         assert_eq!(row.mark, Mark::Check(false));
-        // The toolbar's kick drum button (the 8th window button) opens and closes it too.
-        let b = hit_rect(&app, &Action::ToggleWin(Win::Tapper));
-        assert_eq!((b.x, hint(&app, &Action::ToggleWin(Win::Tapper)).as_str()), (973.0 + 33.0 * 7.0, "Tap tempo (Ctrl+F5)"));
-        click(&mut app, &mut c, b);
+        // The toolbar's kick drum button (the 8th window button, in the Tools panel, which AQUILA's default toolbar
+        // leaves out for the CPU panel) opens and closes it too.
+        app.act(Action::ToggleWin(Win::Tapper));
         assert!(app.state.shown(Win::Tapper) && app.state.in_front(Win::Tapper));
-        click(&mut app, &mut c, b);
+        app.act(Action::ToggleWin(Win::Tapper));
         assert!(!app.state.shown(Win::Tapper));
     }
 

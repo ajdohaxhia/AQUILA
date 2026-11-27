@@ -841,11 +841,17 @@ impl Plugins {
             return Err("ARA document state must be restored through its project editor".into());
         }
         let Some(desc) = self.descriptor(key) else { return Err("Plugin unavailable".into()) };
-        let effect = fx_of(key).is_some();
         let listed = self.available.iter().chain(&self.effects).any(|a| a.desc.uid() == desc.uid());
         let same = |a: &Available| a.desc.uid() == desc.uid() && a.desc.path == desc.path;
-        let index = if effect { self.effects.iter().position(same) } else { self.available.iter().position(same) };
-        let Some(index) = index else {
+        // The list the slot's kind names first, then the other: an instrument may play in an effect slot and the
+        // other way round, as ML Studio found the library in either list.
+        let (in_effects, in_available) = (self.effects.iter().position(same), self.available.iter().position(same));
+        let found = if fx_of(key).is_some() {
+            in_effects.map(|i| (i, true)).or(in_available.map(|i| (i, false)))
+        } else {
+            in_available.map(|i| (i, false)).or(in_effects.map(|i| (i, true)))
+        };
+        let Some((index, effect)) = found else {
             return Err(if listed { "The playing plugin's library changed; reopen it before loading a preset" } else { NO_LIBRARY }.into());
         };
         let plugin = if effect {

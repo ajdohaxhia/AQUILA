@@ -27,8 +27,17 @@ struct LiveEdit {
 }
 
 /// One plugin instance's editor edits the host has not handed back yet.
-#[derive(Default)]
 pub struct LiveEdits(Mutex<Vec<LiveEdit>>);
+
+impl Default for LiveEdits {
+    fn default() -> Self {
+        let edits = Mutex::new(Vec::new());
+        // On pthread platforms (macOS) std allocates the OS mutex on its first lock. Take that first lock here, off the
+        // audio thread, so `norm_at` (called while processing) never allocates.
+        drop(edits.lock());
+        Self(edits)
+    }
+}
 
 impl LiveEdits {
     /// A full patch recall supersedes edits awaiting host confirmation.

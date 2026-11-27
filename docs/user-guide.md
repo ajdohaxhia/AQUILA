@@ -1894,6 +1894,7 @@ Right-click the Mixer number for destination and selected routing options. Right
 Related: Select and edit several channels | Route selected channels to the Mixer | Program steps and patterns
 
 ### Selecting notes and clips with the mouse
+Keywords: select selection mouse ctrl command shift click marquee rectangle notes clips timing points zoom wheel pan
 Hold Ctrl (Command on macOS) to select with an editing tool. Ctrl+Shift-click a selected note, clip or timing point to remove it while keeping the rest. Drag a rectangle to toggle everything it touches against the selection you started with. Moving the rectangle back restores items that leave it. In vocal tuning and audio timing, Ctrl/Cmd+wheel zooms time at the pointer, Shift+wheel scrolls through time, and middle-drag pans the Playlist. Alt+wheel zooms pitch or waveform amplitude.
 
 ### Mixer and effect slot menus
@@ -2545,6 +2546,11 @@ Turning on visibility exposes the control where that feature is supported; it do
 ### Visibility: Advanced DSP controls (Stock plugins)
 Keywords: visibility: advanced dsp controls (stock plugins) reference controls options settings
 To show or hide **Advanced DSP controls**, open **Settings > Visibility > Stock plugins > Advanced DSP controls**. The default visibility is **on**. This choice is saved per profile. Settings > General > Workspace > Workspace Visibility > Choose what to show opens the same controls.
+Turning on visibility exposes the control where that feature is supported; it does not enable a separate preference, load a plugin, or satisfy selection/input requirements. Return to the relevant editor or Settings page to use it. A toolbar layout or customized menu may also hide its entry; check View > Toolbars or Settings > Menus when applicable.
+
+### Visibility: ML Patch in plugin menus (Stock plugins)
+Keywords: visibility: ml patch in plugin menus (stock plugins) reference controls options settings
+To show or hide **ML Patch in plugin menus**, open **Settings > Visibility > Stock plugins > ML Patch in plugin menus**. The default visibility is **on**. This choice is saved per profile. Settings > General > Workspace > Workspace Visibility > Choose what to show opens the same controls.
 Turning on visibility exposes the control where that feature is supported; it does not enable a separate preference, load a plugin, or satisfy selection/input requirements. Return to the relevant editor or Settings page to use it. A toolbar layout or customized menu may also hide its entry; check View > Toolbars or Settings > Menus when applicable.
 
 ### Visibility: MCP activity orb (Editor feedback)

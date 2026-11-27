@@ -457,7 +457,8 @@ pub const THREADED_GENERATORS: Check = Check {
     key: "threaded_generators", label: "Multithreaded generator processing", default: true,
 };
 pub const THREADED_MIXER: Check = Check {
-    key: "threaded_mixer", label: "Multithreaded mixer processing", default: true,
+    // ML Studio's engine switch; Lemon Studio's multi-core mixing (`MULTITHREADED_MIXER`) has the plain label.
+    key: "threaded_mixer", label: "Multithreaded mixer tracks", default: true,
 };
 pub const PLAYBACK_PDC: Check = Check {
     key: "playback_pdc", label: "Plugin delay compensation during playback", default: true,

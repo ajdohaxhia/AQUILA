@@ -31,6 +31,8 @@ pub enum TCmd {
 /// Right click on the tempo display. `auto`: its automation target, clip name and value (`App::automation_target`).
 pub fn menu(s: &State, auto: Option<(u32, String, f64)>, x: f32, y: f32) -> Popup {
     let mut items = crate::rack::value_groups(s, None, Some(Target::Tempo), auto);
+    // ML Studio's own: the BPM typed into the tempo display (`playlist::Cmd::TypeTempo`).
+    items.push(PItem::new("Type in BPM...", Cmd::TypeTempo));
     items.extend([
         PItem::col(),
         PItem::new("Tap tempo", Cmd::Tempo(TCmd::Tapper)).key("Ctrl+F5").mark(Mark::Check(s.shown(Win::Tapper))),
@@ -44,8 +46,9 @@ pub fn menu(s: &State, auto: Option<(u32, String, f64)>, x: f32, y: f32) -> Popu
 /// Runs a command of the menu.
 pub fn run(app: &mut App, c: TCmd) -> Option<String> {
     let msg = match c {
+        // Always open, in front, with a fresh measurement (`App::open_tempo_tapper`), even when it is already shown.
         TCmd::Tapper => {
-            app.toggle_tapper();
+            app.open_tempo_tapper();
             None
         }
         TCmd::Preset(b) => {
@@ -183,8 +186,11 @@ mod tests {
         pl_run(&mut app, Cmd::Tempo(TCmd::Tapper));
         assert!(app.state.shown(Win::Tapper));
         assert_eq!(item(&menu(&app.state, None, 0.0, 0.0), "Tap tempo").mark, Mark::Check(true));
+        // AQUILA keeps ML Studio's behaviour: a second time keeps it open, in front, for a fresh measurement.
+        app.state.tapper.count.tap(1.0);
         pl_run(&mut app, Cmd::Tempo(TCmd::Tapper));
-        assert!(!app.state.shown(Win::Tapper), "a second time closes it");
+        assert!(app.state.shown(Win::Tapper) && app.state.in_front(Win::Tapper), "a second time keeps it open");
+        assert_eq!(app.state.tapper.count.tempo(), None, "a fresh measurement");
         let (tempo, steps) = (app.state.tempo, app.state.history.at());
         pl_run(&mut app, Cmd::Tempo(TCmd::HalfSpeed));
         assert!(half_speed());

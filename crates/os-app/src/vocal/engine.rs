@@ -47,11 +47,33 @@ pub fn install_at(dir:&Path)->Result<()>{
   let pending=dir.join(format!("{}.download",m.file));fs::write(&pending,data).map_err(|e|e.to_string())?;if dir.join(&m.file).exists(){fs::remove_file(dir.join(&m.file)).map_err(|e|e.to_string())?;}fs::rename(pending,dir.join(&m.file)).map_err(|e|e.to_string())?;}
  let temp=dir.join("manifest.pending");fs::write(&temp,signed).map_err(|e|e.to_string())?;if dir.join("manifest.json").exists(){fs::remove_file(dir.join("manifest.json")).map_err(|e|e.to_string())?;}fs::rename(temp,dir.join("manifest.json")).map_err(|e|e.to_string())?;checked(dir,&m)?;Ok(())
 }
+/// The engine tests load: `LEMON_VOCAL_TEST_ENGINE`, else tools/vocal-engine built once with CMake next to the test
+/// binary (WORLD and the bridge are in this repository, so the tests need no download and no signature).
+#[cfg(test)]pub(crate) fn test_engine()->Result<PathBuf>{
+ if let Some(p)=std::env::var_os("LEMON_VOCAL_TEST_ENGINE"){return Ok(PathBuf::from(p));}
+ static BUILT:std::sync::OnceLock<Result<PathBuf>>=std::sync::OnceLock::new();
+ BUILT.get_or_init(||{
+  let source=Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/vocal-engine");
+  let exe=std::env::current_exe().map_err(|e|e.to_string())?;
+  let build=exe.parent().ok_or("No test binary folder")?.join("lemon-vocal-engine");
+  let name=if cfg!(windows){"LemonVocalEngine.dll"}else if cfg!(target_os="macos"){"libLemonVocalEngine.dylib"}else{"libLemonVocalEngine.so"};
+  let find=||[build.join(name),build.join("Release").join(name)].into_iter().find(|p|p.is_file());
+  if let Some(p)=find(){return Ok(p);}
+  let run=|args:&[&std::ffi::OsStr]|->Result<()>{let out=std::process::Command::new("cmake").args(args).output().map_err(|e|format!("Building the test vocal engine needs CMake: {e}"))?;
+   if out.status.success(){Ok(())}else{Err(format!("Building the test vocal engine failed:\n{}{}",String::from_utf8_lossy(&out.stdout),String::from_utf8_lossy(&out.stderr)))}};
+  run(&["-S".as_ref(),source.as_os_str(),"-B".as_ref(),build.as_os_str(),"-DCMAKE_BUILD_TYPE=Release".as_ref()])?;
+  run(&["--build".as_ref(),build.as_os_str(),"--config".as_ref(),"Release".as_ref()])?;
+  find().ok_or_else(||format!("The test vocal engine build made no {name}"))
+ }).clone()
+}
 type Analyze=unsafe extern "C" fn(*const f32,*const f32,i32,i32,*mut f64,i32)->i32;
 type Render=unsafe extern "C" fn(*const f32,*const f32,i32,i32,*const f64,*const f64,i32,f64,*mut f32,*mut f32)->i32;
 pub struct Engine{_library:libloading::Library,analyze:Analyze,render:Render}
 impl Engine{
- pub fn load()->Result<Self>{let dir=root()?;let m=verify(&fs::read(dir.join("manifest.json")).map_err(|e|e.to_string())?)?;Self::open(&checked(&dir,&m)?)}
+ pub fn load()->Result<Self>{
+  // Tests use an unsigned engine built from tools/vocal-engine: the signed packages belong to ML Studio's server.
+  #[cfg(test)]if std::env::var_os("LEMON_VOCAL_TEST_ROOT").is_none(){return Self::open(&test_engine()?);}
+  let dir=root()?;let m=verify(&fs::read(dir.join("manifest.json")).map_err(|e|e.to_string())?)?;Self::open(&checked(&dir,&m)?)}
  #[cfg(test)]pub(super)fn test_open(path:&Path)->Result<Self>{Self::open(path)}
  fn open(path:&Path)->Result<Self>{unsafe{
   let lib=libloading::Library::new(path).map_err(|e|format!("Cannot load the vocal engine: {e}"))?;

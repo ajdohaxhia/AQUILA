@@ -562,7 +562,13 @@ pub fn receives(s: &State, n: u16) -> bool {
 /// The slot's shown name (renamed, else the plugin's name).
 pub fn slot_name(s: &State, t: u16, slot: u8) -> Option<String> {
     let p = track(s, t)?.slots.get(usize::from(slot))?.as_ref()?;
-    Some(s.mixer.slot_names.get(&(t, slot)).cloned().unwrap_or_else(|| crate::project_plugins::slot_title(p)))
+    // The project's label first: presets and renames by hand write it (`edit::mixer::set_slot_label`), so undo carries
+    // it; then a session-only name (plugin chains, the visualizer), then the plugin's own title.
+    Some(
+        crate::edit::mixer::slot_label(&s.session, t, slot)
+            .or_else(|| s.mixer.slot_names.get(&(t, slot)).cloned())
+            .unwrap_or_else(|| crate::project_plugins::slot_title(p)),
+    )
 }
 
 /// The slot's colour, when it holds a plugin and was given one.
@@ -4066,7 +4072,10 @@ pub(crate) fn toggle_slot(s: &mut State, t: u16, k: u8) -> Option<String> {
 pub fn fx_info(p: &os_model::Project, ui: &MixerUi, key: usize) -> Option<crate::plugin_window::ChannelInfo> {
     let (t, k) = crate::plugins::fx_of(key)?;
     let m = p.mixer.iter().find(|m| m.index == t)?;
-    let name = ui.slot_names.get(&(t, k)).cloned().or_else(|| m.slots.get(usize::from(k))?.as_ref().map(crate::project_plugins::slot_title))?;
+    // As `slot_name`: the project's label, a session-only name, then the plugin's title.
+    let name = m.slot_names.get(usize::from(k)).cloned().flatten()
+        .or_else(|| ui.slot_names.get(&(t, k)).cloned())
+        .or_else(|| m.slots.get(usize::from(k))?.as_ref().map(crate::project_plugins::slot_title))?;
     let sidechain = if crate::workspace_visibility::shown(SIDECHAIN_SOURCE_VISIBILITY) {
         crate::project_plugins::slot_ports(p, usize::from(t), usize::from(k)).1.checked_sub(1)
             .and_then(|input| {
