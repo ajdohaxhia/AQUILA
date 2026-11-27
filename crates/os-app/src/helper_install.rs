@@ -173,7 +173,7 @@ pub fn start(remove:bool){
             let archive=root.join(format!("{label}.zip"));let mut zip=zip::ZipWriter::new(fs::File::create(&archive).unwrap());
             let inventory=serde_json::to_vec(&vec![name]).unwrap();let options=zip::write::SimpleFileOptions::default().unix_permissions(0o755);
             zip.start_file("melli-files.json",options).unwrap();zip.write_all(&inventory).unwrap();zip.start_file(name,options).unwrap();zip.write_all(b"test").unwrap();zip.finish().unwrap();
-            let dest=root.join(label);let result=extract(&archive,&dest,inventory.len() as u64+4);assert_eq!(result.is_ok(),valid);
+            let dest=root.join(label);let result=extract(&archive,&dest,inventory.len() as u64+4);assert_eq!(result.is_ok(),valid,"{label}: {result:?}");
             if valid {assert_eq!(fs::read(dest.join(name)).unwrap(),b"test");remove_owned(&dest).unwrap();}else{assert!(!dest.exists());assert!(!root.join("outside").exists());}
             fs::remove_file(archive).unwrap();
         }fs::remove_dir(root).unwrap();

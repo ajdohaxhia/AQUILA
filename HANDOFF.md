@@ -1002,3 +1002,18 @@ Verifiche locali (macOS, stessi env di §24.2):
 
 
 
+
+## 25. Test rossi nascosti dalla CI verde (2026-11-27, in corso)
+
+La CI su `7e4f7ae1` era verde solo perché lo step `Test` è `continue-on-error`: Linux 75, Windows 72 test os-app rossi; macOS si fermava a `ml-mix-core` (il resto non girava). Locale macOS (`/Users/ade/aqbuild/t.sh <pacchetto> <log> [filtri]`, stessi env di §24.2): os-app **74 → ~17**, os-theme verde, ml-mix-core verde.
+
+**Direzione (owner, 2026-11-27):** AQUILA segue Lemon Studio, ML Studio non è più riferimento, ma **tutto ciò che è già arrivato da ML resta**. Nei conflitti si tengono entrambi, oppure il comportamento ML adattando il test Lemon; i test Lemon di UI sostituita vanno `#[ignore = "..."]` come in §5.3.
+
+**Commit locali, NON pushati:** `bfe1fa0d`, `2118330a`, `d6c8d30b` + modifiche non committate (trad meter in os-theme, Add sample folder, test splash/recording_pickup/plugin_downloads/browser, SoundFont nei gruppi factory, messaggio di helper_install). Copia della prima diff: scratchpad `wip-ci-fixes.patch`.
+
+**Causa ricorrente:** campi doppi tra `State` (app, verità di AQUILA) e `Session` (Lemon): `song_mode`/`playlist.pos`/`piano.marker`, `tempo`, `clip_colors`, `link_moves`, `params` vs `session.params`, `params.members` vs `session.plugin_members`, id non assegnati prima di `control::edit`. Copie duplicate di moduli (`ml_patch::core` → ora riesporta `os_session::ml_patch`). Se un test fallisce in modo strano, cercare prima un doppione.
+
+**Ancora rossi (os-app, macOS):** `ghost_note_double_right_click_and_pattern_open`, `playlist_floating_frame_*`, `playlist_scroll_at_clipped_window_edges`, `playlist_scroll_moves_pixels`, `scroll_repaint_matches_full`, `selection_fixes_pattern_clips_follow_note_edits_and_history`, `studio_rack_keeps_pitch_knobs_and_inline_graph_targets`, `tempo_tapper_flash_repaints_the_pad`, `traditional_mixer_layouts_controls_and_persistence`, `transport_clock_digits_share_a_bottom_line` (rosso anche su ML pulito), `window_move_resize_min_max`, `help::guide_menu_browse_search_read_picture_and_visibility`, `mixer::undoing_a_track_delete_puts_back_its_slots_colours_and_icons` (Lemon; le mappe di `State.mixer` non tornano con l'undo di progetto), `win_clamp` ×2, `ai_control` (ambiente macOS, §24.3), `melli_archive` (instabile in parallelo). Da verificare dopo l'ultima modifica: splash, recording_pickup, factory_folders, catalog_browser_search.
+**Fuori da os-app:** os-session 4 (`every_lemon_effect_is_built_in`, `wave_factory_organization` "ML Amp" senza categoria, `audit_updated_zip_equal_lengths`, `the_stopped_playback_keeps_the_stream`), `watermark::every_source_file_has_the_header` (forse solo perché la copia di build non ha `.git`).
+
+**Prossimi passi:** ricompilare e rieseguire os-app, committare, poi `cargo test --workspace --no-fail-fast` locale, push su `ade/michael-lane`, dispatch della CI (`gh workflow run ci.yml --ref michael-lane -R ajdohaxhia/AQUILA`) e controllare i log dello step Test per Linux/Windows (`gh run view <id> --log | grep "test result"`). Solo dopo valutare di togliere `continue-on-error`.

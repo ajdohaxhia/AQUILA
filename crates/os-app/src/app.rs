@@ -32624,10 +32624,9 @@ mod tests {
         assert!(!app.state.browser_search_focus);
         // Greyed out: the section the tree does not list, and the plugin browsers. Undo history works: the tree lists History.
         assert!(works(VIEW, item_at(VIEW, index(VIEW, "Undo history")).unwrap()));
-        // Remote control works now: the tree lists Lemon Studio's Remote control folder.
-        assert!(works(VIEW, item_at(VIEW, index(VIEW, "Remote control")).unwrap()));
-        for (m, label) in [(ADD_MENU, "Browse all installed plugins"), (ADD_MENU, "Browse presets")] {
-            assert!(!works(m, item_at(m, index(m, label)).unwrap()), "{label}");
+        // Lemon Studio's merge made these work: the Remote control folder and the plugin browsers.
+        for (m, label) in [(VIEW, "Remote control"), (ADD_MENU, "Browse all installed plugins"), (ADD_MENU, "Browse presets")] {
+            assert!(works(m, item_at(m, index(m, label)).unwrap()), "{label}");
         }
     }
 

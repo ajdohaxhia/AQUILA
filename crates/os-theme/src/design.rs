@@ -386,7 +386,18 @@ fn overrides(d: Design) -> Vec<(&'static str, Color)> {
 pub fn palette(design: Design, theme: Option<&FlTheme>) -> Palette {
     let mut p = skin_palette(design, theme);
     p.wallpaper = theme.and_then(fl::wallpaper);
-    // Keep the inherited Traditional meter colors identical to its stock painter.
+    trad_meters(&mut p, theme);
+    if let Some(theme) = theme {
+        theme.appearance.apply(&mut p, &theme.color_overrides);
+        crate::regions::apply(&mut p, &theme.area_tones);
+    }
+    p
+}
+
+/// The Traditional meter's colours: its stock painter's, in the palette's accent and surfaces, then the theme's own
+/// meter colours (`FlTheme::meters`). The FL theme palette (`fl::palette`) uses it too, so a skin's palette and the
+/// theme's agree.
+pub(crate) fn trad_meters(p: &mut Palette, theme: Option<&FlTheme>) {
     p.trad_meter_low_bottom = p.a(0xb6db4d);
     p.trad_meter_low_top = p.a(0xa0db40);
     p.trad_meter_hot_bottom = Color::rgb(0xfac050);
@@ -409,11 +420,6 @@ pub fn palette(design: Design, theme: Option<&FlTheme>) -> Palette {
             *slot = color;
         }
     }
-    if let Some(theme) = theme {
-        theme.appearance.apply(&mut p, &theme.color_overrides);
-        crate::regions::apply(&mut p, &theme.area_tones);
-    }
-    p
 }
 
 fn skin_palette(design: Design, theme: Option<&FlTheme>) -> Palette {

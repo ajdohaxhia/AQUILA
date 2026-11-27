@@ -532,7 +532,9 @@ mod tests {
         assert_eq!(app.state.browser_tab,TAB);assert_eq!(rows(&app.state).len(),catalog().iter().filter(|p|download(p).is_some()).map(|p|&p.category).collect::<std::collections::HashSet<_>>().len());
         app.browser_act(&Action::BrowserRow(0));assert_eq!(rows(&app.state).len(),catalog().iter().filter(|p|download(p).is_some()).map(|p|&p.category).collect::<std::collections::HashSet<_>>().len()+catalog().iter().filter(|p|download(p).is_some() && p.category=="Synthesizers").count());
         app.browser_act(&Action::BrowserRow(1));assert!(app.drag.is_none());assert_eq!(selected(&app.state),Some(0));
-        app.state.browser_search="oxygen".into();assert_eq!(rows(&app.state).len(),2);assert_eq!(rows(&app.state)[1].label,"oXygen");
+        // A plugin this platform has a download of (oXygen has none for macOS on Apple silicon): its category and it.
+        let found=catalog().iter().find(|p|download(p).is_some() && catalog().iter().filter(|q|q.name.to_lowercase().contains(&p.name.to_lowercase())).count()==1).unwrap();
+        app.state.browser_search=found.name.to_lowercase();assert_eq!(rows(&app.state).len(),2);assert_eq!(rows(&app.state)[1].label,found.name);
         app.state.browser_search.clear();
         for (width,height) in [(1280,900),(1000,600)]{
             app.state.screen=(width as f32,height as f32);let mut c=os_ui::Canvas::new(width,height,1.).unwrap();app.paint(&mut c,None);

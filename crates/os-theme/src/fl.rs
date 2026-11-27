@@ -445,6 +445,7 @@ pub fn palette(th: &FlTheme) -> Palette {
         *out.get_mut(name).expect("token") = v;
     }
     finish(&mut out, th, base.note_top, !identity);
+    crate::design::trad_meters(&mut out, Some(th));
     out
 }
 

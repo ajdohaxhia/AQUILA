@@ -39,8 +39,11 @@ pub fn internal_input()->crate::capture::Input {crate::capture::Input{device:Str
 #[cfg(test)]
 mod tests {
     use super::*;
-    /// The capture tap `i` (`start` gives the tracks the taps in order).
-    fn source(i: usize) -> &'static os_session::capture::Capture { os_session::capture::extra_capture(i) }
+    /// The capture tap `i` (`start` gives the tracks the taps in order): the first is the main capture, the others
+    /// the extra ones (`os_session::recording_pickup::source`).
+    fn source(i: usize) -> &'static os_session::capture::Capture {
+        if i == 0 { os_session::capture::capture() } else { os_session::capture::extra_capture(i - 1) }
+    }
     #[test]
     fn recording_pickup_preroll_loop_and_multiple_sources() {
         let _lock=crate::capture::TEST_RECORDING.lock().unwrap_or_else(|e|e.into_inner());
