@@ -188,9 +188,10 @@ fn prepare(d:&os_host::Descriptor,scale:f32,r:[i32;4],mut probe:impl FnMut(f32)-
         let key=crate::plugins::fx_key(1,0);
         let shared=plugins.hosted[&key].plugin.clone();
         let held=shared.lock().unwrap();
-        plugins.show_rack(key,0,1.,[0,0,128,400],[0,0,128,400],&[],None);
-        assert!(plugins.hosted[&key].rack_editor.is_none());
-        assert!(plugins.hosted[&key].rack_error.is_none());
+        let mut editors=crate::editor_host::EditorHost::default();
+        editors.show_rack(&mut plugins,key,0,1.,[0,0,128,400],[0,0,128,400],&[],None);
+        assert!(editors.editors[&key].rack_editor.is_none());
+        assert!(editors.editors[&key].rack_error.is_none());
         drop(held);
     }
     #[test]fn ssl_link_accepts_editors_with_their_own_zoom(){

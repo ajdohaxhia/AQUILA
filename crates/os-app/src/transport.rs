@@ -3716,7 +3716,7 @@ mod tests {
                     if [3,5,7,9].contains(&ticks) {eprintln!("LIFECYCLE step={ticks} elapsed_us={}",at.elapsed().as_micros());}
                 }
                 let idle_at = Instant::now();
-                a.plugins.idle(|_|None);
+                a.editors.idle(&mut a.state.session.plugins, |_|None);
                 timings[1].push(idle_at.elapsed().as_micros());
                 let params_at = Instant::now();
                 a.params_tick();

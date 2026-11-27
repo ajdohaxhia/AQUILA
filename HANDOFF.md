@@ -989,5 +989,16 @@ Verifiche locali (macOS, stessi env di §24.2):
 - **Windows: `Build`** arriva a un solo errore, un `E0502` in `align_channel_editors`: `let s = &mut self.state` convive con `self.plugins.scale`, che passa per `Deref<Target = Session>` e quindi prende in prestito tutto `*self`. Ora legge `s.plugins.scale` (stesso prestito di `s`); `self.canvas_off` resta un campo diretto di `App`. Gli altri dieci errori della migrazione sono spariti.
 - Prossimo passo: commit di questa riga, push, nuovo dispatch; il job Windows e' l'unico ancora da confermare.
 
+### 24.10 Quarto giro CI (commit `5b445312`, run `45933477330`)
+
+- **Linux e macOS: verdi** (Build, sessione sola, feature spente, bundle, test non bloccanti).
+- **Windows**: la `lib` compila (il fix `s.plugins.scale` era giusto); falliscono gli **otto errori dei test Windows-only**, rimasti sulle API pre-migrazione:
+  - `visualizer_video.rs` e `legacy_vst.rs`: `app.state.project = ...` assegnava un `Project` a `Locked`; ora `*app.state.project = ...`.
+  - `visualizer_video.rs`: `plugins.added(key)` vuole lo `SettingsStore`; ora `app.state.session.plugins.added(&app.state.session.settings, key)`.
+  - `strip_editor.rs`: il test di creazione rack usa un `EditorHost::default()` e `editors.show_rack(&mut plugins, ...)`, poi legge `editors.editors[&key].rack_editor/rack_error`.
+  - `transport.rs`: `a.plugins.idle(...)` e' diventato `a.editors.idle(&mut a.state.session.plugins, ...)`.
+- Verifica locale: `cargo check -p os-app --all-targets` verde su macOS; i quattro file passano `rustfmt --edition 2024`. I test Windows-only non sono compilabili localmente (serve MSVC), quindi la conferma viene dalla run successiva.
+
+
 
 

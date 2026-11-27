@@ -213,7 +213,7 @@ mod tests {
             std::fs::copy(inputs.join(name), fixtures.join(name)).unwrap();
         }
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        *app.state.project = crate::app::test_project();
         app.state.file = None;
         app.state.path = None;
         app.state.plugdb.prefs.standard_off = plugin_db::search_dirs(&app.state.plugdb.prefs)

@@ -1060,7 +1060,7 @@ mod tests {
         setup_hosted_export(false, &AtomicBool::new(false), |_, _| panic!("encoder was already installed")).unwrap();
         check_file(&tools.join(WORKER), catalog().renderer_size, &catalog().renderer_sha256).unwrap();
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        *app.state.project = crate::app::test_project();
         app.state.tempo = 120.;
         app.state.selected_mixer = 3;
         let entry = crate::visualizer::available().expect("verified installed CLAP");
@@ -1070,7 +1070,7 @@ mod tests {
         let index = app.plugins.effects.len() - 1;
         let hosted = app.plugins.prepare_effect(index, None, true).unwrap();
         app.plugins.hosted.insert(key, hosted);
-        app.plugins.added(key);
+        app.state.session.plugins.added(&app.state.session.settings, key);
         app.transport.set_effects(app.plugins.effects());
         let track = mx::track_mut(&mut app.state, 3).unwrap();
         track.slots[0] = Some(os_model::SlotPlugin {
@@ -1408,7 +1408,7 @@ mod workspace_tests {
         os_engine::wav::write_f32_stereo(&mut File::create(&source).unwrap(), 48_000, &mix)
             .unwrap();
         let mut app = App::new(None);
-        app.state.project = crate::app::test_project();
+        *app.state.project = crate::app::test_project();
         app.state.tempo = 60.;
         let channel = &mut app.state.project.channels[0];
         channel.kind = ChannelKind::AudioClip;
