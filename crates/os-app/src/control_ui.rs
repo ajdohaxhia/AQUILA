@@ -26,6 +26,9 @@ pub fn apply(s: &mut State, by: &By, name: Option<&str>, commands: Vec<Command>)
 /// when nothing changed). The interface's edits thus have the commands' undo: what was taken is put back by
 /// `Command::Put`, as a command's own undo is.
 pub fn edit<R>(s: &mut State, name: &'static str, region: command::Region, f: impl FnOnce(&mut State) -> R) -> R {
+    // The step's undo finds channels, slots and clips again by id: what has none yet (made since the last tick) gets
+    // one first, or every such thing would answer to the same id.
+    crate::control::settle_in(&mut s.session);
     s.session.link_moves.clear();
     // A pressed step that changed nothing goes before this edit, judged on the project as it is now: after the edit
     // its region may name other things (tracks renumbered by a delete).

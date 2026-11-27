@@ -6600,6 +6600,9 @@ pub fn run(app: &mut App, cmd: Cmd) -> Option<String> {
         Cmd::ChooseSource(src) => {
             crate::rack::focus_source(s,src);
             pick_source(s, src);
+            // A source chosen from the menu draws whole: no clicked clip's slice or length carries over (ML Studio).
+            s.playlist.brush = None;
+            s.playlist.brush_whole = false;
             s.playlist.picker = source_kind(s, src);
             crate::playlist_tools::select(s, PlTool::Paint);
             None

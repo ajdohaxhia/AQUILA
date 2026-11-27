@@ -1265,7 +1265,7 @@ pub(crate) fn default_options_menu(s: &crate::app::State) -> Vec<PItem> {
     let searching=!s.browser_search.is_empty();
     let find=|label,key,dir| {let item=b(label,BCmd::Find(dir)).key(key);if searching {item}else{item.off()}};
     vec![
-        #[cfg(windows)]
+        // On every platform, as the empty browser's menu offers it (`empty_menu`): the folder picker is the program's own.
         b("Add sample folder...",BCmd::AddFolder),
         PItem::sub("Content",vec![
             t("Single Folder View",view::OPT_SINGLE_FOLDER),

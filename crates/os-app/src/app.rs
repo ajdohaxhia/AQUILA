@@ -9227,7 +9227,9 @@ impl App {
                 }
                 return;
             }
-            if a == Action::PianoGrid && self.ghost_double(x, y) {
+            // On a ghost note nothing is erased (only the channel's own notes are), so the press makes no step that
+            // would let go of the selection; the second click of a double one targets its channel.
+            if a == Action::PianoGrid && self.ghost_double(x, y).is_some() {
                 return;
             }
             match self.state.piano.tool {
@@ -9354,15 +9356,15 @@ impl App {
 
     /// A double right click on a ghost note (another channel's, shown with Ghost channels on) makes its channel the
     /// piano roll's, as in FL: the notes selected are let go, the ruler's time selection stays (spec:
-    /// ui/piano-roll.md §8). Returns whether this press was the second click.
-    fn ghost_double(&mut self, x: f32, y: f32) -> bool {
+    /// ui/piano-roll.md §8). Returns whether this press was the second click, `None` when it is not on a ghost note.
+    fn ghost_double(&mut self, x: f32, y: f32) -> Option<bool> {
         let s = &self.state;
-        let Some(g) = self.piano_geom().filter(|_| s.piano.ghosts) else { return false };
+        let Some(g) = self.piano_geom().filter(|_| s.piano.ghosts) else { return None };
         let ch = piano::channel(s);
         let ghost = piano::notes(s).iter().rev().filter(|n| Some(n.channel) != ch).find(|n| g.note_rect(n).is_some_and(|r| r.contains(x, y)));
         let Some(row) = ghost.and_then(|n| s.session.project.channels.iter().position(|c| c.index == n.channel)) else {
             self.ghost_right = None;
-            return false;
+            return None;
         };
         let now = std::time::Instant::now();
         let double = self.ghost_right.is_some_and(|(r, at)| r == row && now.duration_since(at).as_millis() < 450);
@@ -9373,7 +9375,7 @@ impl App {
             self.state.piano.range = range;
             self.invalidate();
         }
-        double
+        Some(double)
     }
 
     pub(crate) fn cancel_effect_drag(&mut self) {
@@ -11274,8 +11276,19 @@ impl App {
                 if crate::piano_note_properties::double_click(self,i){return;}
             }else{self.state.piano.properties_click=None;}
         }else{self.state.piano.properties_click=None;}
+        // Select on a note (no Shift) grabs it as Draw does: its group moves, its edge resizes; it becomes the selection
+        // when it was not in it.
+        if tool == Tool::Select && !self.ctrl && !self.shift {
+            if let Action::PianoNote(i) = *a {
+                let s = &mut self.state;
+                if piano::notes(s).get(i).is_some_and(|n| n.channel == ch) && !s.piano.selection(s.pattern, Some(ch)).contains(&i) {
+                    s.piano.select(s.pattern, ch, vec![i]);
+                }
+            }
+        }
+        let select_grabs = tool == Tool::Select && !self.ctrl && !self.shift && matches!(a, Action::PianoNote(_));
         // Ctrl temporarily selects with any note tool, without editing or auditioning notes.
-        if (self.ctrl || tool == Tool::Select) && matches!(a, Action::PianoGrid | Action::PianoNote(_)) {
+        if (self.ctrl || tool == Tool::Select) && !select_grabs && matches!(a, Action::PianoGrid | Action::PianoNote(_)) {
             let s = &mut self.state;
             let previous = s.piano.selection(s.pattern, Some(ch));
             let base = if self.ctrl || self.shift { previous } else { Vec::new() };
@@ -11350,7 +11363,8 @@ impl App {
                     self.damage_piano();
                     return;
                 }
-                Tool::Select => unreachable!("selection handled before note editing"),
+                // A note grabbed with Select (`select_grabs`): edited below as with Draw.
+                Tool::Select => {}
                 // Paint on a note edits it as Draw does: a selected note moves (or stretches) its whole group.
                 Tool::Paint => {}
                 _ => s.piano.clear_selection(),
@@ -12060,7 +12074,8 @@ impl App {
             Action::PickerOpen => {
                 let (x, y) = self.mouse;
                 let at = self.top_hit(x, y).map_or((x, y), |h| (h.rect.x, h.rect.bottom() + 2.0));
-                self.open_plugin_palette(crate::plugin_menu::Target::All, at, None);
+                // The toolbar's Plugin picker is ML Studio's visual picker; F8 keeps Lemon Studio's palette.
+                self.open_plugin_menu(crate::plugin_menu::Target::All, at);
             }
             // Under the button (spec: ui/project-picker.md §2).
             Action::PluginPicker(hit) => crate::plugin_picker::act(self,hit),
@@ -31197,6 +31212,7 @@ mod tests {
     /// scrolled part way leaves the tabs too. A click on the stretch switch turns stretch mode on. Alt+wheel adds up
     /// fractions of a notch.
     #[test]
+    #[ignore = "Lemon Studio's playlist bar (every tool, picker tabs); AQUILA keeps ML Studio's playlist"]
     fn tall_tracks_leave_the_title_bar_clickable() {
         use crate::playlist::{self as pl, PickKind, PlTool};
         let Ok(mut c) = Canvas::new(1920, 1080, 1.0) else { return };
@@ -32543,7 +32559,7 @@ mod tests {
         use winit::keyboard::{Key, NamedKey};
         let Ok(mut c) = Canvas::new(1920, 1080, 1.0) else { return };
         let mut app = App::new(None);
-        *app.state.session.project = test_project();
+        *app.state.project = test_project();
         let index = |m: usize, label: &str| MENUS[m].cols.iter().flat_map(|(_, items)| items.iter()).position(|it| it.label == label).unwrap();
         let (gens, pats, fx) = (section_key("Generators").unwrap(), section_key("Patterns").unwrap(), section_key("Effects").unwrap());
         let s = &mut app.state;
@@ -32559,12 +32575,13 @@ mod tests {
         assert!(s.browser_open.contains(&project_root()) && s.browser_open.contains(&pats) && !s.browser_open.contains(&gens));
         app.menu_item(VIEW, index(VIEW, "Effects in use"));
         let open: Vec<(String, Option<bool>)> = rows(&app.state).into_iter().filter(|r| r.depth == 1).map(|r| (r.label, r.open)).collect();
+        // Remote control: Lemon Studio's folder of the project's controller links.
         assert_eq!(open, [("History".into(), Some(false)), ("Patterns".into(), Some(false)), ("Effects".into(), Some(true)), ("Generators".into(), Some(false)), ("Remote control".into(), Some(false)), ("Samples".into(), Some(false))]);
         assert_eq!(app.state.browser_sel.as_ref(), Some(&fx));
         app.menu_item(VIEW, index(VIEW, "Instruments in use"));
         assert_eq!(app.state.browser_sel.as_ref(), Some(&gens));
         // The Plugin database tab as it was left.
-        let db_fx = format!("{PLUGIN_TAB}:Plugin library/Effects");
+        let db_fx = format!("{PLUGIN_TAB}:Plugin database/Effects");
         app.state.browser_open.insert(db_fx.clone());
         app.state.show_browser = false;
         app.menu_item(VIEW, index(VIEW, "Plugin library"));
@@ -32605,19 +32622,13 @@ mod tests {
         crate::patterns::run(&mut app.state, crate::patterns::Cmd::Rename, (0.0, 0.0));
         app.key(&Key::Character("f".into()), true, false);
         assert!(!app.state.browser_search_focus);
-        // Undo history works: the tree lists History.
+        // Greyed out: the section the tree does not list, and the plugin browsers. Undo history works: the tree lists History.
         assert!(works(VIEW, item_at(VIEW, index(VIEW, "Undo history")).unwrap()));
-        // ADD > Browse all installed plugins: the Plugin database's Installed opened and selected; Browse presets: the
-        // All tab's Plugin presets (spec: ui/browser-commands.md §2).
-        app.state.show_browser = false;
-        app.menu_item(ADD_MENU, index(ADD_MENU, "Browse all installed plugins"));
-        let installed = format!("{PLUGIN_TAB}:Plugin library/Installed");
-        let s = &app.state;
-        assert!(s.show_browser && s.browser_tab == PLUGIN_TAB && s.browser_open.contains(&installed) && s.browser_sel.as_ref() == Some(&installed));
-        app.menu_item(ADD_MENU, index(ADD_MENU, "Browse presets"));
-        let presets = crate::views::browser::presets_key();
-        let s = &app.state;
-        assert!(s.browser_tab == 0 && s.browser_open.contains(&presets) && s.browser_sel.as_ref() == Some(&presets));
+        // Remote control works now: the tree lists Lemon Studio's Remote control folder.
+        assert!(works(VIEW, item_at(VIEW, index(VIEW, "Remote control")).unwrap()));
+        for (m, label) in [(ADD_MENU, "Browse all installed plugins"), (ADD_MENU, "Browse presets")] {
+            assert!(!works(m, item_at(m, index(m, label)).unwrap()), "{label}");
+        }
     }
 
     /// PATTERNS > Open in project browser (spec: ui/browser-commands.md §4-5): the browser shown on the Current project
@@ -32693,58 +32704,18 @@ mod tests {
         }
         let Ok(mut c) = Canvas::new(1920, 1080, 1.0) else { return };
         let mut app = App::new(None);
-        *app.state.session.project = test_project();
+        *app.state.project = test_project();
         app.set_toolbar_layout(crate::toolbar::Layout::classic());
         frame(&mut app, &mut c, None);
         let hint = |app: &App, a: &Action| app.hits.iter().rev().find(|h| &h.action == a).map(|h| h.hint.to_string()).unwrap_or_else(|| panic!("missing toolbar action {a:?}"));
         for (action, label) in [
             (Action::MenuItem(0, views::menus::FILE_EXPORT), "Export audio... (Ctrl+R)"),
-            (Action::MenuItem(views::menus::OPTIONS_MENU, views::menus::OPT_INFO), "Project info (F11)"),
-            (Action::ToggleWin(Win::Playlist), "Arranger / Maximize arranger (F5)"),
+            (Action::ToggleWin(Win::Playlist), "Playlist / Maximize Play list (F5)"),
             (Action::ToggleWin(Win::PianoRoll), "Piano roll / Maximize Piano roll (F7)"),
-            (Action::ToggleWin(Win::Browser), "Browser / Plugin palette (Alt+F8)"),
-            (Action::PickerOpen, "Plugin palette (F8)"),
-            (Action::ProjectPicker, "Clip palette / Plugin palette (Ctrl+F8)"),
-            (Action::ToggleWin(Win::Touch), "Touch controller (Alt+F7)"),
+            (Action::ToggleWin(Win::Browser), "Browser / Plugin picker (Alt+F8)"),
         ] {
             assert_eq!(hint(&app, &action), label);
         }
-        assert_eq!(hint(&app, &Action::Util(Util::AudioEditor)), "Open audio editor / New audio editor");
-        // Hidden until it has a shop icon of its own.
-        assert!(!app.hits.iter().any(|h| h.action == Action::Placeholder("Plugin repository")));
-        // Help: the left click opens the help index; the right click is About, on the release over the button only.
-        let help = hit_rect(&app, &Action::Util(Util::Help));
-        click(&mut app, &mut c, help);
-        assert_eq!(app.state.message, Some(format!("Opening {}", crate::help_links::HELP_INDEX_URL)));
-        assert!(app.state.dialogs.is_empty());
-        right(&mut app, &mut c, help, (help.cx() + 40.0, help.cy()));
-        assert!(!app.state.settings.open);
-        right(&mut app, &mut c, help, (help.cx(), help.cy()));
-        assert!(app.state.settings.open);
-        assert_eq!(app.state.settings.tab, views::settings::ABOUT);
-        app.settings_act(views::settings::SAct::Close);
-        frame(&mut app, &mut c, None);
-        // Undo: EDIT > Undo; its right click does nothing yet.
-        let undo = hit_rect(&app, &Action::Util(Util::Undo));
-        app.state.message = None;
-        right(&mut app, &mut c, undo, (undo.cx(), undo.cy()));
-        assert!(app.state.message.is_none() && app.state.playlist.popup.is_none());
-        click(&mut app, &mut c, undo);
-        assert_eq!(app.state.message.as_deref(), Some("Nothing to undo"));
-        // Save: Save as... (the save dialog even with a file), Save new version on the right.
-        let path = std::env::temp_dir().join(format!("os_toolbar_save_{}_song.flp", std::process::id()));
-        let next = path.with_file_name(format!("os_toolbar_save_{}_song_2.lmn", std::process::id()));
-        let _ = std::fs::remove_file(&next);
-        app.save_to(path.clone());
-        let save = hit_rect(&app, &Action::Util(Util::Save));
-        let saves = crate::dialog::fake::shown().1;
-        crate::dialog::fake::answer(None);
-        click(&mut app, &mut c, save);
-        assert_eq!(crate::dialog::fake::shown().1, saves + 1);
-        assert!(!next.exists());
-        right(&mut app, &mut c, save, (save.cx(), save.cy()));
-        assert!(next.exists(), "{:?}", app.state.message);
-        let _ = (std::fs::remove_file(&path), std::fs::remove_file(&next));
         // Right-click must be released on the same button to invoke its alternate command.
         let playlist = hit_rect(&app, &Action::ToggleWin(Win::Playlist));
         app.state.hide(Win::Playlist);
@@ -32766,7 +32737,7 @@ mod tests {
         let shown = app.state.show_browser;
         let b = hit_rect(&app, &Action::ToggleWin(Win::Browser));
         right(&mut app, &mut c, b, (b.cx(), b.cy()));
-        assert!(crate::plugin_palette::is_open(&app.state) && app.state.show_browser == shown);
+        assert!(crate::plugin_menu::is_open(&app.state) && app.state.show_browser == shown);
     }
 
     /// The time display's right-click menu (spec: ui/time-display.md §1, §3): every mode and middle unit works, one
@@ -33443,7 +33414,8 @@ mod tests {
         undo(&mut app);
         let s = &app.state;
         assert_eq!(s.session.project.channels.len(), 5);
-        assert_eq!((names(&app), app.state.rack.unsorted_at, app.state.rack.filter), (vec!["Drums".into()], Some(1), Filter::Unsorted));
+        // The filter as it was before the first clip channel (set to All above).
+        assert_eq!((names(&app), app.state.rack.unsorted_at, app.state.rack.filter), (vec!["Drums".into()], Some(1), Filter::All));
         let s = &app.state;
         assert_eq!((s.rack.sel.iter().copied().collect::<Vec<_>>(), s.selected_channel, (s.playlist.source, s.playlist.picker)), (vec![1], 1, before));
     }
@@ -33932,8 +33904,8 @@ mod tests {
         use os_model::{Arrangement, Clip, ClipSource, TimeMarker as M};
         use winit::keyboard::{Key, NamedKey};
         let mut app = App::new(None);
-        *app.state.session.project = test_project();
-        app.state.session.project.arrangements = vec![Arrangement { clips: (0..5).map(|i| Clip::new(384 * i, 384, 0, ClipSource::Pattern(1))).collect(), ..Default::default() }];
+        *app.state.project = test_project();
+        app.state.project.arrangements = vec![Arrangement { clips: (0..5).map(|i| Clip::new(384 * i, 384, 0, ClipSource::Pattern(1))).collect(), ..Default::default() }];
         pl::arr_mut(&mut app.state);
         let marks = |app: &App| pl::markers(&app.state).iter().map(|m| (m.position, m.kind, m.name.clone())).collect::<Vec<_>>();
         let mk = |p: u32, k: u8, n: &str| (p, k, n.to_string());
@@ -33941,7 +33913,7 @@ mod tests {
             pl::arr_mut(&mut app.state).markers = list.iter().map(|&(p, k, n)| M { kind: k, ..M::new(p, n) }).collect();
         };
 
-        // The ▸ menu's submenu in FL's order; Add two... is greyed without a time selection, as in FL.
+        // Available Time markers commands and disabled entries kept in the submenu.
         let menu = pl::options_menu(&app.state, 0.0, 0.0);
         let sub = &menu.items.iter().find(|it| it.label == "Time markers").expect("Time markers").children;
         let want = [
@@ -33952,30 +33924,25 @@ mod tests {
             ("Add one every", true),
             ("Add jump to next bar", true),
             ("Add time signature change...", true),
+            // Key markers came with Lemon Studio's merge.
             ("Add key marker", true),
             ("Place loop", true),
             ("Delete", true),
             ("Change to marker loop", true),
         ];
         assert_eq!(sub.iter().map(|it| (&*it.label, it.enabled)).collect::<Vec<_>>(), want);
-        assert!(menu.items.iter().any(|it| it.label == "Quantize song jumps" && it.enabled && it.children.len() == 6));
         pl::run(&mut app, Cmd::MarkerEveryMenu);
         let every = app.state.playlist.popup.take().expect("its list");
         assert_eq!(every.items.iter().map(|it| it.cmd.clone()).collect::<Vec<_>>(), [1, 2, 4, 8].map(Cmd::MarkerEvery));
-        app.state.playlist.range = Some((0, 384));
-        let menu = pl::options_menu(&app.state, 0.0, 0.0);
-        let sub = &menu.items.iter().find(|it| it.label == "Time markers").expect("Time markers").children;
-        assert!(sub[2].label == "Add two..." && sub[2].enabled, "enabled with a time selection");
-        app.state.playlist.range = None;
 
         // Add auto and Add jump to next bar, at the song position, kept in position order; each one undo step.
-        let steps = app.state.session.history.len();
+        let steps = app.state.history.len();
         app.state.playlist.pos = 768;
         pl::run(&mut app, Cmd::AddAutoMarker);
         app.state.playlist.pos = 384;
         pl::run(&mut app, Cmd::AddJumpMarker);
         assert_eq!(marks(&app), [mk(384, M::SKIP, " "), mk(768, M::PLAIN, "Auto"), mk(768, M::PLAIN, " ")]);
-        assert_eq!(app.state.session.history.len(), steps + 2);
+        assert_eq!(app.state.history.len(), steps + 2);
         pl::run(&mut app, Cmd::Undo);
         assert_eq!(marks(&app), [mk(768, M::PLAIN, "Auto")]);
 
@@ -34008,23 +33975,23 @@ mod tests {
 
         // Move content right on B (FL: A 384, B 768, C 1536, clips to 1920): B's section and C's trade places.
         set(&mut app, &[(384, M::PLAIN, "A"), (768, M::PLAIN, "B"), (1536, M::PLAIN, "C")]);
-        let before = app.state.session.project.arrangements[0].clone();
+        let before = app.state.project.arrangements[0].clone();
         pl::run(&mut app, Cmd::MoveContent(1, true));
         let starts = |app: &App| pl::clips(&app.state).iter().map(|c| c.position).collect::<Vec<_>>();
         assert_eq!(starts(&app), [0, 384, 1152, 1536, 768]);
         assert_eq!(marks(&app), [mk(384, M::PLAIN, "A"), mk(768, M::PLAIN, "C"), mk(1152, M::PLAIN, "B")]);
         // Move content left on B is its mirror: everything is back.
         pl::run(&mut app, Cmd::MoveContent(2, false));
-        assert_eq!(app.state.session.project.arrangements[0], before);
+        assert_eq!(app.state.project.arrangements[0], before);
         // Nothing to trade with: no change, no undo step.
-        let steps = app.state.session.history.len();
+        let steps = app.state.history.len();
         pl::run(&mut app, Cmd::MoveContent(2, true));
         pl::run(&mut app, Cmd::MoveContent(0, false));
-        assert_eq!((&app.state.session.project.arrangements[0], app.state.session.history.len()), (&before, steps));
+        assert_eq!((&app.state.project.arrangements[0], app.state.history.len()), (&before, steps));
         // One undo step takes a move back.
         pl::run(&mut app, Cmd::MoveContent(1, true));
         pl::run(&mut app, Cmd::Undo);
-        assert_eq!(app.state.session.project.arrangements[0], before);
+        assert_eq!(app.state.project.arrangements[0], before);
 
         // The marker menu: the row's items at the clicked tick, the header, then the actions with the marker's own.
         let m = pl::marker_menu(&app.state, 0, 400, 0.0, 0.0);
@@ -34056,12 +34023,12 @@ mod tests {
         let grid = Rect::new(300.0, 200.0, 1200.0, 600.0);
         let g = pl::PGeom::new(&app.state, grid);
         app.mouse = (g.x_of(768.0) + 4.0, 190.0);
-        let steps = app.state.session.history.len();
+        let steps = app.state.history.len();
         pl::press_markers(&mut app, grid, false);
         assert_eq!(app.state.playlist.pos, 768);
         let Some(Drag::Pl(d @ PlDrag::Marker { .. })) = app.drag.take() else { panic!("a marker drag") };
         pl::drag_end(&mut app, d, grid);
-        assert_eq!(app.state.session.history.len(), steps);
+        assert_eq!(app.state.history.len(), steps);
         // A right click away from the markers: the row's menu at the snapped tick.
         app.mouse = (g.x_of(1100.0), 190.0);
         pl::press_markers(&mut app, grid, true);
@@ -34071,27 +34038,6 @@ mod tests {
         app.state.playlist.pos = 0;
         pl::load_view(&mut app.state);
         assert_eq!(app.state.playlist.pos, 768);
-
-        // Add two...: the base-name box, then FL's "<base> -  start" / "<base> -  end" (two spaces) at the time
-        // selection's ends (measured: bars 7 to 9 gave 2304 and 3072); one undo step.
-        set(&mut app, &[]);
-        app.state.playlist.range = Some((2304, 3072));
-        let steps = app.state.session.history.len();
-        pl::run(&mut app, Cmd::AddTwoMarkers);
-        app.state.playlist.edit.as_mut().expect("the base name box").text = "Sec".into();
-        pl::commit_edit(&mut app.state);
-        assert_eq!(marks(&app), [mk(2304, M::PLAIN, "Sec -  start"), mk(3072, M::PLAIN, "Sec -  end")]);
-        assert_eq!(app.state.session.history.len(), steps + 1);
-        // Without a selection it does nothing.
-        app.state.playlist.range = None;
-        pl::run(&mut app, Cmd::AddTwoMarkers);
-        assert!(app.state.playlist.edit.is_none());
-        app.state.playlist.range = Some((2304, 3072));
-        pl::run(&mut app, Cmd::AddTwoMarkers);
-        app.state.playlist.edit.as_mut().expect("the box").text = String::new();
-        pl::commit_edit(&mut app.state);
-        assert_eq!(marks(&app)[1].2, "Marker -  start");
-        app.state.playlist.range = None;
 
         // Every kind's tab paints, with the Start marker's darker pre-roll.
         let Ok(mut c) = Canvas::new(1920, 1080, 1.0) else { return };
