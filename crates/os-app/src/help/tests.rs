@@ -145,11 +145,14 @@ fn guide_menu_browse_search_read_picture_and_visibility() {
         assert!(is_open(&app.state));
         app.paint(&mut canvas, None);
         shot(&canvas, &format!("guide-home-{w}.png"));
-        click(&mut app, Hit::Section(0));
-        assert_eq!(app.state.guide.page, Page::Chapter(0));
+        // The first article with a picture (the guide's first articles have none).
+        let pic = topics().iter().position(|t| t.picture.is_some_and(|p| super::wiki::picture_for(p).is_some())).unwrap();
+        let chapter = topics()[pic].chapter;
+        click(&mut app, Hit::Section(chapter));
+        assert_eq!(app.state.guide.page, Page::Chapter(chapter));
         app.paint(&mut canvas, None);
-        click(&mut app, Hit::Topic(0));
-        assert_eq!(app.state.guide.page, Page::Topic(0));
+        click(&mut app, Hit::Topic(pic));
+        assert_eq!(app.state.guide.page, Page::Topic(pic));
         app.paint(&mut canvas, None);
         if w < 800 {
             app.state.guide.scroll_by(140., body(&app.state).h);
