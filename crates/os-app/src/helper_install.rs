@@ -103,7 +103,8 @@ pub fn remove_owned(dir:&Path)->Result<()> {
     for path in paths {if ordinary(&path)?.is_dir(){fs::remove_dir(path)?;}else{fs::remove_file(path)?;}}
     fs::remove_dir(dir)?;Ok(())
 }
-fn extract(archive:&Path,dest:&Path,limit:u64)->Result<()> {
+/// `cancel`: whether to stop (`cancelled` for a real install).
+fn extract(archive:&Path,dest:&Path,limit:u64,cancel:&dyn Fn()->Result<()>)->Result<()> {
     let mut zip=zip::ZipArchive::new(fs::File::open(archive)?)?;
     if zip.len()>30000{return Err("Melli archive contains too many entries".into())}
     let mut inventory=Vec::new();zip.by_name("melli-files.json")?.take(4*1024*1024+1).read_to_end(&mut inventory)?;
@@ -113,7 +114,7 @@ fn extract(archive:&Path,dest:&Path,limit:u64)->Result<()> {
     for i in 0..zip.len(){let f=zip.by_index(i)?;let name=f.name()?;if !safe_name(&name) || f.is_dir() || f.unix_mode().is_some_and(|m|m&0o170000==0o120000) || !names.contains(name.as_ref()) || !found.insert(name.into_owned()){return Err("Invalid Melli archive entry".into())}total=total.checked_add(f.size()).ok_or("Melli archive too large")?;}
     if total!=limit || total>2*1024*1024*1024 || found!=names{return Err("Melli archive inventory/size mismatch".into())}
     fs::create_dir(dest)?;fs::write(dest.join("melli-files.json"),inventory)?;
-    for i in 0..zip.len(){cancelled()?;let mut f=zip.by_index(i)?;let name=f.name()?.into_owned();if name=="melli-files.json"{continue}let path=dest.join(name);fs::create_dir_all(path.parent().ok_or("Invalid archive path")?)?;
+    for i in 0..zip.len(){cancel()?;let mut f=zip.by_index(i)?;let name=f.name()?.into_owned();if name=="melli-files.json"{continue}let path=dest.join(name);fs::create_dir_all(path.parent().ok_or("Invalid archive path")?)?;
         let mut out=fs::OpenOptions::new().write(true).create_new(true).open(&path)?;let size=std::io::copy(&mut f,&mut out)?;if size!=f.size(){return Err("Incomplete Melli archive entry".into())}
         #[cfg(unix)]{use std::os::unix::fs::PermissionsExt;fs::set_permissions(&path,fs::Permissions::from_mode(if f.unix_mode().unwrap_or(0)&0o111!=0{0o755}else{0o644}))?;}
     }Ok(())
@@ -135,7 +136,7 @@ fn install(root:&Path)->Result<()> {
     let result=(||->Result<()>{
         download(&p.model,&models.join(&p.model.name))?;
         download(&p.archive,&archive)?;report("Melli: installing verified files...".into());
-        extract(&archive,&stage,p.unpacked_size)?;
+        extract(&archive,&stage,p.unpacked_size,&cancelled)?;
         fs::write(stage.join("installed.json"),&p.archive.sha256)?;cancelled()?;
         if current.exists(){fs::rename(&current,&old)?;}
         if let Err(e)=fs::rename(&stage,&current){if old.exists(){let _=fs::rename(&old,&current);}return Err(e.into())}
@@ -173,7 +174,7 @@ pub fn start(remove:bool){
             let archive=root.join(format!("{label}.zip"));let mut zip=zip::ZipWriter::new(fs::File::create(&archive).unwrap());
             let inventory=serde_json::to_vec(&vec![name]).unwrap();let options=zip::write::SimpleFileOptions::default().unix_permissions(0o755);
             zip.start_file("melli-files.json",options).unwrap();zip.write_all(&inventory).unwrap();zip.start_file(name,options).unwrap();zip.write_all(b"test").unwrap();zip.finish().unwrap();
-            let dest=root.join(label);let result=extract(&archive,&dest,inventory.len() as u64+4);assert_eq!(result.is_ok(),valid,"{label}: {result:?}");
+            let dest=root.join(label);let result=extract(&archive,&dest,inventory.len() as u64+4,&||Ok(()));assert_eq!(result.is_ok(),valid,"{label}: {result:?}");
             if valid {assert_eq!(fs::read(dest.join(name)).unwrap(),b"test");remove_owned(&dest).unwrap();}else{assert!(!dest.exists());assert!(!root.join("outside").exists());}
             fs::remove_file(archive).unwrap();
         }fs::remove_dir(root).unwrap();
