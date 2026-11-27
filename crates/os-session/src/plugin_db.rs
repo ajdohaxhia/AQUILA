@@ -765,6 +765,14 @@ pub fn category(d: &Descriptor) -> &'static str {
         n if n == crate::osc3::LEMON_TRIO || n == crate::citrus::CITRUS || n == crate::smith::SMITH => return "Synth",
         n if n == crate::plugins::LEMON_EQ => return "EQ",
         "ML Master Assistant" | "Lemon Master Assistant" => return "Utility",
+        // ML Studio's own effects, with no feature strings of their own.
+        "ML Amp" | "ML Waveshaper" => return "Distortion",
+        "ML Frequency Shift" | "ML Vocoder" => return "Modulation",
+        "ML Multiband Delay" => return "Delay",
+        "ML Time Shaper" => return "Dynamics",
+        "ML Tuner" => return "Analyzer",
+        "ML Vocal Tune" => return "Pitch",
+        "ML Patch" | "ML Split" => return "Utility",
         n if n == crate::plugins::LEMON_VOCODER => return "Modulation",
         _ => {}
     }
@@ -1212,7 +1220,7 @@ mod tests {
         for _ in 0..2 {
             plugins.merge(&Cache::default());let listed=lists(&plugins.available,&plugins.effects,&Prefs::default(),&plugins.missing);
             let waves:Vec<_>=listed.gens.iter().filter(|e|e.name=="ML Wave").collect();assert_eq!(waves.len(),1);assert_eq!(waves[0].category,"Synth");assert!(!listed.fx.iter().any(|e|e.name=="ML Wave"));
-            for e in listed.gens.iter().chain(&listed.fx){assert_ne!(e.category,OTHER,"{} must have a factory category",e.name);}
+            let other:Vec<&str>=listed.gens.iter().chain(&listed.fx).filter(|e|e.category==OTHER).map(|e|e.name.as_str()).collect();assert!(other.is_empty(),"these must have a factory category: {other:?}");
             let available=&plugins.available[waves[0].index];assert!(crate::project_plugins::is_wrapped(&available.desc));
             let shared=available.lib.clone().create(&available.desc.id).unwrap();let mut p=shared.lock().unwrap();assert!(p.activate(48000));let state=p.save_state().unwrap();assert!(p.load_state(&state));p.note_on(0,60,0.8);let(mut l,mut r)=(vec![0.;1024],vec![0.;1024]);p.process(48000,&mut l,&mut r);assert!(l.iter().any(|x|x.abs()>0.0001));assert!(l.iter().chain(&r).all(|x|x.is_finite()));
         }

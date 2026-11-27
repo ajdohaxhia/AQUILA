@@ -1017,3 +1017,10 @@ La CI su `7e4f7ae1` era verde solo perché lo step `Test` è `continue-on-error`
 **Fuori da os-app:** os-session 4 (`every_lemon_effect_is_built_in`, `wave_factory_organization` "ML Amp" senza categoria, `audit_updated_zip_equal_lengths`, `the_stopped_playback_keeps_the_stream`), `watermark::every_source_file_has_the_header` (forse solo perché la copia di build non ha `.git`).
 
 **Prossimi passi:** ricompilare e rieseguire os-app, committare, poi `cargo test --workspace --no-fail-fast` locale, push su `ade/michael-lane`, dispatch della CI (`gh workflow run ci.yml --ref michael-lane -R ajdohaxhia/AQUILA`) e controllare i log dello step Test per Linux/Windows (`gh run view <id> --log | grep "test result"`). Solo dopo valutare di togliere `continue-on-error`.
+
+### 25.1 Aggiornamento (stessa sera)
+
+- os-app macOS: **17 rossi** (elenco sopra meno splash, recording_pickup, factory_folders, catalog_browser_search).
+- os-session: **1 rosso**, `transport::the_stopped_playback_keeps_the_stream_while_its_tails_ring` (test Lemon): allo Stop la coda di release ha un frame muto al passaggio playback → motore live (frame ~930 di 19200). È un vero buco audio nel transport fuso, non un'attesa stale; il messaggio del test ora dice dove.
+- Corretti: ML Patch nell'elenco dei built-in, categorie factory per gli effetti ML senza feature (`plugin_db::category`), `.lmn` tra i `PROJECT_EXTS` della sessione (uno zip con un progetto AQUILA non si apriva).
+- CI dispatchata su `810c7742` (run `46063618396`), prima di questi ultimi fix: leggere lo step Test di Linux/Windows.

@@ -72,9 +72,10 @@ fn files_under(dir: &Path, out: &mut Vec<PathBuf>) {
 pub const EXT: &str = "lemon";
 
 /// The project files Lemon Studio opens: its own, and the FLPs it migrates from (spec: flp/lemon-format.md).
-pub const PROJECT_EXTS: [&str; 2] = [EXT, "flp"];
+/// `.lmn`: AQUILA's own projects (ML Studio's format, `os_app::project_files::EXT`).
+pub const PROJECT_EXTS: [&str; 3] = [EXT, "lmn", "flp"];
 
-/// Whether `p` is a project file by its extension (`.lemon` or `.flp`).
+/// Whether `p` is a project file by its extension (`.lemon`, `.lmn` or `.flp`).
 pub fn is_project(p: &Path) -> bool {
     p.extension().is_some_and(|e| PROJECT_EXTS.iter().any(|x| e.eq_ignore_ascii_case(x)))
 }

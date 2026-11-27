@@ -4379,7 +4379,8 @@ mod tests {
         let left: Vec<f32> = heard.chunks_exact(2).map(|f| f[0]).collect();
         let from = left.iter().position(|&v| v > 0.0 && v < 0.29).expect("the release");
         let rest = &left[from..left.len() - 256];
-        assert!(rest.iter().all(|&v| v > 0.0), "no silent frame while it rings");
+        let silent=rest.iter().position(|&v| v <= 0.0);
+        assert!(silent.is_none(), "no silent frame while it rings: frame {silent:?} of {} after the release at {from} of {}", rest.len(), left.len());
         let jump = rest.windows(2).map(|w| (w[1] - w[0]).abs()).fold(0.0f32, f32::max);
         assert!(jump < 1e-3, "no fade or gap: a jump of {jump}");
         // A key typed now plays on the stopped playback; held, the plugins are not reset, however long it is quiet.
