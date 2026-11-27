@@ -466,12 +466,14 @@ pub fn tick(app:&mut App){
 #[cfg(test)]
 mod tests {
     use super::*;
+    /// A catalog plugin with a download for this platform whose name finds only it (nova has none on Linux).
+    fn here()->usize{catalog().iter().position(|p|download(p).is_some()&&catalog().iter().filter(|q|q.name.to_lowercase().contains(&p.name.to_lowercase())).count()==1).unwrap()}
     #[test]
     fn discovery_filters_favorites_and_visibility(){
         let mut app=App::new(None);
         crate::prefs::set_text(DISCOVERY_VISIBILITY,"1");
         discovery_row(&mut app,"5:discover/reset");
-        let i=catalog().iter().position(|p|p.id=="nova").unwrap();
+        let i=here();
         crate::prefs::set_text(&format!("catalog_favorite_{}",catalog()[i].id),"0");
         act(&mut app,i,6);assert!(favorite(&catalog()[i]));
         discovery_row(&mut app,"5:discover/filter");assert!(app.state.playlist.popup.is_some());app.state.playlist.popup=None;app.browser_cmd(crate::browser::BCmd::CatalogFilter(1));assert_eq!(filter(),1);
@@ -622,11 +624,10 @@ mod tests {
     fn hover_information_is_delayed_and_never_downloads(){
         crate::prefs::set_text(DISCOVERY_VISIBILITY,"0");
         let mut app=App::new(None);app.state.show_browser=true;app.browser_act(&Action::BrowserTab(TAB));
-        app.state.browser_search="nova".into();
+        let i=here();app.state.browser_search=catalog()[i].name.to_lowercase();
         let mut c=os_ui::Canvas::new(1000,600,1.).unwrap();app.state.screen=(1000.,600.);app.paint(&mut c,None);
         let r=app.hits.iter().find(|h|h.action==Action::BrowserRow(1)).unwrap().rect;
         app.mouse_move(r.x+60.,r.cy());hover_tick(&mut app);
-        let i=catalog().iter().position(|p|p.id=="nova").unwrap();
         assert_eq!(app.state.catalog_hover.map(|v|v.0),Some(i));assert_eq!(app.state.catalog_tooltip,None);
         app.state.catalog_hover=Some((i,std::time::Instant::now()-Duration::from_millis(500)));
         hover_tick(&mut app);assert_eq!(app.state.catalog_tooltip,Some(i));assert!(selected(&app.state).is_none());
