@@ -1025,6 +1025,6 @@ La CI su `7e4f7ae1` era verde solo perché lo step `Test` è `continue-on-error`
 - Corretti: ML Patch nell'elenco dei built-in, categorie factory per gli effetti ML senza feature (`plugin_db::category`), `.lmn` tra i `PROJECT_EXTS` della sessione (uno zip con un progetto AQUILA non si apriva).
 - CI dispatchata su `810c7742` (run `46063618396`), prima di questi ultimi fix: leggere lo step Test di Linux/Windows.
 
-### 25.2 Merge Lemon upstream/main 0aa419ce (2026-11-28) — committato in locale, NON verificato, NON pushato
+### 25.2 Merge Lemon upstream/main 0aa419ce (2026-11-28) — compila, nessuna regressione nei test, pushato
 
 Conflitti risolti: `live.rs` (versione Lemon con `any` + `clear()` AQUILA), `zipped.rs`, `transport.rs` (GUI transport AQUILA + `Sent`/revisioni Lemon), `capture.rs` (`FrameRing` AQUILA + mutex `consumer` Lemon), `os-clap` (buffer preallocati Lemon + MPE/slide AQUILA, `fixed_str`), `engine.rs` (lato AQUILA; `multicore.rs` resta cancellato), `Cargo.lock` (nostro), `os-app/Cargo.toml` invariato (AQUILA usa ancora vst e encoder). Prossimo passo: `cargo check --workspace` con gli env di §24.2 (serve `ML_PLASMA_BUNDLE_MACOS_AARCH64`), aggiornare `Cargo.lock`, test, poi push e CI.

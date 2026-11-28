@@ -55,7 +55,7 @@ impl Ring {
     }
 
     /// Appends every sample waiting to `out`. Consumer only.
-    pub(crate) fn pop_into(&self, out: &mut Vec<f32>) {
+    pub fn pop_into(&self, out: &mut Vec<f32>) {
         let tail = self.tail.load(Ordering::Relaxed);
         let head = self.head.load(Ordering::Acquire);
         // Safety: slots between tail and head were written and published by the producer.
@@ -78,7 +78,7 @@ impl Ring {
     }
 
     /// Empties it. Consumer only.
-    pub(crate) fn clear(&self) {
+    pub fn clear(&self) {
         self.tail.store(self.head.load(Ordering::Acquire), Ordering::Release);
     }
 }
@@ -687,13 +687,15 @@ mod tests {
     #[test]
     fn start_and_drain_do_not_race() {
         let c = Arc::new(Capture {
-            ring: Ring::new(256),
+            ring: FrameRing::new(256),
             consumer: Mutex::new(()),
             on: AtomicBool::new(false),
+            asio: AtomicBool::new(true),
             first: AtomicU32::new(0),
             stereo: AtomicBool::new(true),
             frames: AtomicU64::new(0),
             dropped: AtomicU64::new(0),
+            clock: Mutex::new(None),
         });
         let stop = Arc::new(AtomicBool::new(false));
         let (c1, s1) = (c.clone(), stop.clone());

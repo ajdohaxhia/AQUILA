@@ -687,7 +687,7 @@ impl Transport {
             Cmd::Pause => Some(GuiRequest::Pause),
             Cmd::Resume => Some(GuiRequest::Resume),
             Cmd::Stop(ring) => Some(GuiRequest::Stop { ring }),
-            Cmd::Update | Cmd::LiveEdits(_) | Cmd::Instruments => Some(GuiRequest::Update),
+            Cmd::Update | Cmd::LiveEdits(..) | Cmd::Instruments => Some(GuiRequest::Update),
             Cmd::NoteOn(row, key, velocity, midi) => Some(GuiRequest::NoteOn(row, key, velocity, midi)),
             Cmd::NoteOff(row, key) => Some(GuiRequest::NoteOff(row, key)),
             Cmd::Midi(row, bytes, bend) => Some(GuiRequest::Midi(row, bytes, bend)),
