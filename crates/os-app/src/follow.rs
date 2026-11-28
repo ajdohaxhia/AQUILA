@@ -18,16 +18,30 @@ pub struct RackView {
     selected: usize,
     source: Option<os_model::ClipSource>,
     picker: crate::playlist::PickKind,
+    /// The interface's own names and colours of mixer slots and its track icons (ML Studio's, kept in `State`): a
+    /// step that moves mixer tracks (Delete mixer track) puts them back with it.
+    slot_names: std::collections::HashMap<(u16, u8), String>,
+    slot_colors: std::collections::HashMap<(u16, u8), os_model::Rgb>,
+    icons: std::collections::HashMap<crate::playlist::IconOwner, crate::icons::Icon>,
 }
 
 impl RackView {
     pub fn now(s: &State) -> RackView {
-        RackView { sel: s.rack.sel.clone(), selected: s.selected_channel, source: s.playlist.source, picker: s.playlist.picker }
+        RackView {
+            sel: s.rack.sel.clone(),
+            selected: s.selected_channel,
+            source: s.playlist.source,
+            picker: s.playlist.picker,
+            slot_names: s.mixer.slot_names.clone(),
+            slot_colors: s.mixer.slot_colors.clone(),
+            icons: s.playlist.icons.clone(),
+        }
     }
 
     pub fn put(self, s: &mut State) {
         (s.rack.sel, s.selected_channel) = (self.sel, self.selected);
         (s.playlist.source, s.playlist.picker) = (self.source, self.picker);
+        (s.mixer.slot_names, s.mixer.slot_colors, s.playlist.icons) = (self.slot_names, self.slot_colors, self.icons);
     }
 }
 

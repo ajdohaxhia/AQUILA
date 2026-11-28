@@ -9194,8 +9194,10 @@ impl App {
         }
         if action == Some(Action::PianoGrid) {
             let piano = &self.state.piano;
+            // Not over a ghost note: its right click is the first of a double one (`ghost_double`).
             let deselect = matches!(piano.tool, Tool::Draw | Tool::Paint)
-                && !piano.selection(self.state.pattern, piano::channel(&self.state)).is_empty();
+                && !piano.selection(self.state.pattern, piano::channel(&self.state)).is_empty()
+                && self.ghost_row_at(self.mouse.0, self.mouse.1).is_none();
             if piano.stretch || deselect {
                 self.state.piano.stretch = false;
                 if deselect { self.state.piano.clear_selection(); }
@@ -9358,11 +9360,7 @@ impl App {
     /// piano roll's, as in FL: the notes selected are let go, the ruler's time selection stays (spec:
     /// ui/piano-roll.md §8). Returns whether this press was the second click, `None` when it is not on a ghost note.
     fn ghost_double(&mut self, x: f32, y: f32) -> Option<bool> {
-        let s = &self.state;
-        let Some(g) = self.piano_geom().filter(|_| s.piano.ghosts) else { return None };
-        let ch = piano::channel(s);
-        let ghost = piano::notes(s).iter().rev().filter(|n| Some(n.channel) != ch).find(|n| g.note_rect(n).is_some_and(|r| r.contains(x, y)));
-        let Some(row) = ghost.and_then(|n| s.session.project.channels.iter().position(|c| c.index == n.channel)) else {
+        let Some(row) = self.ghost_row_at(x, y) else {
             self.ghost_right = None;
             return None;
         };
@@ -9376,6 +9374,15 @@ impl App {
             self.invalidate();
         }
         Some(double)
+    }
+
+    /// The rack row of the ghost note (another channel's, with Ghost channels on) under (x, y).
+    fn ghost_row_at(&self, x: f32, y: f32) -> Option<usize> {
+        let s = &self.state;
+        let g = self.piano_geom().filter(|_| s.piano.ghosts)?;
+        let ch = piano::channel(s);
+        let ghost = piano::notes(s).iter().rev().filter(|n| Some(n.channel) != ch).find(|n| g.note_rect(n).is_some_and(|r| r.contains(x, y)))?;
+        s.session.project.channels.iter().position(|c| c.index == ghost.channel)
     }
 
     pub(crate) fn cancel_effect_drag(&mut self) {

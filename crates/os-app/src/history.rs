@@ -1218,10 +1218,18 @@ fn swap(s: &mut State, i: usize, redo: bool) -> Option<String> {
         Some(name)
     } else {
         let expected = s.collaborating.then(|| Box::new(s.history.steps[i].snap.clone()));
+        // Pattern clips of the whole length follow a pattern the step lengthens or shortens, as the edit fitted them
+        // (`piano::finish_edit`); the session's step holds the notes only.
+        let lengths: Vec<(u16, u32)> = s.project.patterns.iter().map(|p| (p.number, s.project.pattern_length(p.number))).collect();
         let result = crate::follow::around(s, |s| {
             if redo { session_history::redo_in(&mut s.session) }
             else { session_history::undo_in(&mut s.session) }
         });
+        for (n, old) in lengths {
+            if s.project.pattern(n).is_some() && s.project.pattern_length(n) != old {
+                crate::playlist::refit_pattern_clips(s, n, old);
+            }
+        }
         if result.is_some() { s.history.steps[i].expected = expected; }
         s.piano.dirty = true;
         result

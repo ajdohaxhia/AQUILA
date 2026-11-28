@@ -3090,7 +3090,15 @@ pub fn run(app: &mut App, c: MCmd) -> Option<String> {
         if matches!(c, MCmd::Member(..) | MCmd::MemberAdd(..) | MCmd::MemberAddInst(..) | MCmd::MemberReplace(..) | MCmd::MemberReplaceInst(..)) {
             crate::container::store_members(&mut app.state.session.project, &app.state.session.plugins);
         }
-        return crate::control::edit_app(app, name, Region::Project, |app| run_now(app, c));
+        // Deleting tracks moves the interface's own slot names, colours and track icons: the step keeps them as they
+        // were, so its undo puts them back (`follow::RackView`).
+        let moves_tracks = matches!(c, MCmd::Trim { .. } | MCmd::Delete(_));
+        let (before, newest) = (crate::follow::RackView::now(&app.state), app.state.session.history.newest_id());
+        let r = crate::control::edit_app(app, name, Region::Project, |app| run_now(app, c));
+        if let Some(id) = app.state.session.history.newest_id().filter(|&id| moves_tracks && Some(id) != newest) {
+            app.state.rack_views.insert(id, before);
+        }
+        return r;
     }
     // A slot's sidechain input is the track's own (its slot's saved state).
     if let MCmd::SlotSidechain(..) = c {
