@@ -4031,8 +4031,9 @@ impl Engine {
             self.tap_clicks.mix(&mut self.bus[click][..len * 2]);
         }
         self.pad_voices(len);
-        self.render_instruments(len, &song);
-        // Pause / resume: the channels fade out of (into) the mixer's inputs; the effects behind them run on.
+        // Pause / resume: the sampler channels fade out of (into) the mixer's inputs; the effects behind them run on.
+        // The hosted instruments are left out (rendered after the fade): at the hold they are let go of their notes and
+        // ring on, so a Stop's tails go on without a gap (Lemon Studio's engine).
         if self.fade_out > 0 || self.fade_in > 0 {
             let total = self.fade_len as f32;
             let (left, out) = if self.fade_out > 0 { (self.fade_out as f32, true) } else { (self.fade_in as f32, false) };
@@ -4054,6 +4055,7 @@ impl Engine {
                 self.fade_in = self.fade_in.saturating_sub(len as u32);
             }
         }
+        self.render_instruments(len, &song);
         // Held from here: the hosted instruments are let go of what they hold and ring on. After the tick's
         // instruments have rendered, which files the notes an instrument busy elsewhere missed: a note on among them
         // is dropped with the others it missed, or it would reach the instrument after its note off and sound on
@@ -11278,7 +11280,8 @@ mod tests {
             assert_eq!(serial.pdc.chan_delay,parallel.pdc.chan_delay);
             assert_eq!(serial.inst_active,parallel.inst_active);
         }
-        if mix_workers::enabled() { assert_eq!(peak.load(Ordering::SeqCst), 2, "overlap stays within the worker limit"); }
+        // At most the limit; whether two calls overlap at all depends on the cores the machine (a CI runner) gives.
+        if mix_workers::enabled() { assert!((1..=2).contains(&peak.load(Ordering::SeqCst)), "overlap stays within the worker limit"); }
         let shared=parallel.channels[0].instrument.0.clone().unwrap();
         parallel.set_instrument(1,shared);
         parallel.instrument_workers.cost=Duration::from_millis(5);

@@ -1220,14 +1220,22 @@ fn swap(s: &mut State, i: usize, redo: bool) -> Option<String> {
         let expected = s.collaborating.then(|| Box::new(s.history.steps[i].snap.clone()));
         // Pattern clips of the whole length follow a pattern the step lengthens or shortens, as the edit fitted them
         // (`piano::finish_edit`); the session's step holds the notes only.
+        // Only for a piano roll edit (the session's `Snap::Pattern`, not yet turned into commands), as the edit fitted
+        // them: a command (`set_notes`, `set_project`) fits no clips when applied, so its undo and redo fit none either.
+        let piano_edit = matches!(s.history.steps[i].snap, session_history::Snap::Pattern { .. });
         let lengths: Vec<(u16, u32)> = s.project.patterns.iter().map(|p| (p.number, s.project.pattern_length(p.number))).collect();
+        let clips: Vec<Vec<os_model::Clip>> = s.project.arrangements.iter().map(|a| a.clips.clone()).collect();
         let result = crate::follow::around(s, |s| {
             if redo { session_history::redo_in(&mut s.session) }
             else { session_history::undo_in(&mut s.session) }
         });
-        for (n, old) in lengths {
-            if s.project.pattern(n).is_some() && s.project.pattern_length(n) != old {
-                crate::playlist::refit_pattern_clips(s, n, old);
+        let same_clips = s.project.arrangements.len() == clips.len() && s.project.arrangements.iter().zip(&clips).all(|(a, c)| &a.clips == c);
+        let same_patterns = s.project.patterns.len() == lengths.len() && s.project.patterns.iter().zip(&lengths).all(|(p, l)| p.number == l.0);
+        if piano_edit && same_clips && same_patterns {
+            for (n, old) in lengths {
+                if s.project.pattern_length(n) != old {
+                    crate::playlist::refit_pattern_clips(s, n, old);
+                }
             }
         }
         if result.is_some() { s.history.steps[i].expected = expected; }

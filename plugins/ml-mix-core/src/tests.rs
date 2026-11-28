@@ -267,7 +267,12 @@ fn reference_match_reload_missing_and_callback_safety() {
             .into_owned(),
         true,
     );
-    std::thread::sleep(std::time::Duration::from_millis(80));
+    // The worker finds the file missing off the audio thread: wait for it (a busy CI runner takes longer than 80 ms).
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while !c.status().contains("Missing file") {
+        assert!(std::time::Instant::now() < until, "the missing file was not reported");
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
     l.copy_from_slice(&input);
     r.copy_from_slice(&input);
     no_alloc(|| c.audio(&mut l, &mut r, true, Some(0)));

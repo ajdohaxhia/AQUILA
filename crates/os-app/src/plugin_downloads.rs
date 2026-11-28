@@ -493,6 +493,8 @@ mod tests {
         assert_eq!(rows(&app.state).iter().any(|r|row_index(&r.key).is_some_and(|i|catalog()[i].id=="valhalla-supermassive")),download(supermassive).is_some());
         crate::prefs::set_text("catalog_filter","1");
         crate::prefs::set_text(DISCOVERY_VISIBILITY,"0");
+        // Hidden controls ignore the favourites filter: a plugin of this platform shows though it is no favourite.
+        app.state.browser_search=catalog()[here()].name.to_lowercase();
         assert!(rows(&app.state).iter().any(|r|row_index(&r.key).is_some()));
         assert_eq!(filter(),1,"hiding controls must preserve preference");
         discovery_row(&mut app,"5:discover/reset");
