@@ -1082,7 +1082,7 @@ main_gui_scaling = 200%
         }
         for c in COMBOS {
             // The priority choice is offered where the system has one (Windows, macOS).
-            if c.key == AUDIO_PRIORITY.key && !cfg!(any(windows, target_os = "macos")) { keys.push(c.key); continue; }
+            if c.key == AUDIO_PRIORITY.key && !cfg!(any(windows, target_os = "macos")) { keys.push(c.key); labels.push(c.label); continue; }
             assert!(combos_shown.contains(&c.label), "{} is a combo on a settings page", c.label);
             assert!(c.default < c.choices.len(), "{}: default among its choices", c.label);
             keys.push(c.key);

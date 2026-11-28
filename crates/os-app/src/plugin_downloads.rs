@@ -488,7 +488,9 @@ mod tests {
         app.state.browser_search = "komplete start".into();
         assert!(!rows(&app.state).iter().any(|row| row_index(&row.key).is_some()));
         app.state.browser_search="reverb ambient".into();
-        assert!(rows(&app.state).iter().any(|r|row_index(&r.key).is_some_and(|i|catalog()[i].id=="valhalla-supermassive")));
+        // Supermassive is found by its description where this platform has a download of it (not on Linux).
+        let supermassive=catalog().iter().find(|p|p.id=="valhalla-supermassive").unwrap();
+        assert_eq!(rows(&app.state).iter().any(|r|row_index(&r.key).is_some_and(|i|catalog()[i].id=="valhalla-supermassive")),download(supermassive).is_some());
         crate::prefs::set_text("catalog_filter","1");
         crate::prefs::set_text(DISCOVERY_VISIBILITY,"0");
         assert!(rows(&app.state).iter().any(|r|row_index(&r.key).is_some()));

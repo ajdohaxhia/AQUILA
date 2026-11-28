@@ -62,6 +62,11 @@ impl SharedRef {
         self.revision.fetch_add(1, Ordering::AcqRel);
         *self.message.lock().unwrap() = "Loading reference…".into();
     }
+    /// Whether the worker has loaded the requested file (its "Ready" status), for tests that wait on it.
+    #[cfg(test)]
+    pub(crate) fn loaded(&self) -> bool {
+        self.message.lock().unwrap().starts_with("Ready")
+    }
     fn reclaim(slot: &AtomicPtr<Track>) {
         let p = slot.swap(std::ptr::null_mut(), Ordering::AcqRel);
         if !p.is_null() {

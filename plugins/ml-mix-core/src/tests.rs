@@ -323,7 +323,12 @@ fn actual_host_state_latency_and_reference_offline_export() {
                 fixture("reference-host").to_string_lossy().into_owned(),
                 true,
             );
-            std::thread::sleep(std::time::Duration::from_millis(150));
+            // The worker loads the file off the audio thread: wait for it (a busy CI runner takes longer than 150 ms).
+            let until = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            while !shared.loaded() {
+                assert!(std::time::Instant::now() < until, "reference did not load");
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
             let input = tone(48000, 48000., 500., 0.1);
             for block in 0..3 {
                 let mut l = input.clone();
