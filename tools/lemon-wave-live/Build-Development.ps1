@@ -1,3 +1,7 @@
+# Copyright (C) 2026 Michael Lane
+# SPDX-License-Identifier: GPL-3.0-or-later
+# This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 param([string]$Source, [string]$Destination, [string]$Target)
 $ErrorActionPreference='Stop'
 if (!$Source -or !$Destination -or !$Target) {throw 'Source, Destination and Target are required'}

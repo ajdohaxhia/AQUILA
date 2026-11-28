@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Persistent, original-source-relative vocal edits. Playlist slices share source coordinates.
 use serde::{Serialize,Deserialize};
 #[derive(Debug,Clone,PartialEq,Serialize,Deserialize)]

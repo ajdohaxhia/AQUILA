@@ -1,4 +1,8 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+/* Copyright (C) 2026 Michael Lane
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+ */
+
 // Lemon's bounded C ABI around WORLD (BSD-3-Clause, source/notice in vendor/world).
 #include <algorithm>
 #include <cmath>

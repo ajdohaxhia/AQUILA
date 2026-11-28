@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Musical starting points, not genre detection or fixed mastering targets.
 //! Research and the limits of these authored values: docs/development/mix-assistant-genres.md.
 use super::Role;

@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Persistent cue layout and host-visible controls. Source files are never modified.
 use nih_plug::prelude::*;
 use os_plugkit::live::LiveEdits;

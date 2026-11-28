@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael Lane
+// SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Original, quiet completion chime. Independent of project routing and transport.
 #[cfg(any(windows, test))]
 const CHIME: &[u8] = include_bytes!("../assets/startup.wav");

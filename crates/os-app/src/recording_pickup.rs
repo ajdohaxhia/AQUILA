@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Bounded real-time mixer taps. Disk writing stays on the existing recorder threads.
 use os_model::{RecordingPoint as Point,InputMonitoring};
 use crate::{app::{App,State},mixer::{MCmd,MHit},playlist::{Cmd,PItem,Mark,Popup}};

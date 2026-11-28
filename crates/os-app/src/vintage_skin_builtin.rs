@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Lemon's built-in artwork for the classic layout. Uses the same module sizes
 //! and hit regions as the optional local skin, with Lemon's own drawn faces.
 use super::{Skin, Sprite};

@@ -1,3 +1,7 @@
+# Copyright (C) 2026 Michael Lane
+# SPDX-License-Identifier: GPL-3.0-or-later
+# This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 """Run after the native Mac build. Creates a DMG and a Mac-only website update ZIP."""
 from pathlib import Path
 import hashlib, json, os, platform, re, shutil, subprocess, sys, tempfile, zipfile

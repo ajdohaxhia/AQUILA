@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Original wavetable engine; analytic spectra, not recovered vendor tables.
 use crate::controls::*;
 use std::f32::consts::{PI, TAU};

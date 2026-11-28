@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Record buttons for Playlist track headers and Traditional Mixer inserts.
 use os_theme::{Color, Palette, appearance::{RecordLight, RecordLightStyle}};
 use os_ui::{Canvas, Font, Rect};

@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Shared musical state. Device settings, editor positions and local file bookkeeping never travel.
 use os_collab::Document;
 use os_model::{Arrangement, Pattern, Project};

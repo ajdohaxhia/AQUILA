@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael Lane
+// SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Per-note expression data. Curve records are immutable once attached to a note;
 //! editors append a replacement so note copies and undo remain independent.
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]

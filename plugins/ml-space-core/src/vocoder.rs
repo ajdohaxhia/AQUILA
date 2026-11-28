@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael Lane
+// SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 // Filter-bank/envelope algorithm adapted from mda Vocoder by Paul Kellett / Shane Dunne (MIT).
 // ML: explicit stereo carrier sidechain, internal band-limited carrier, sample-rate-scaled envelopes,
 // Nyquist guards, smoothed output and transition fades; no upstream VST shell or callback mutex.

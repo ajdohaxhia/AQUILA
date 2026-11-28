@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Header drops are explicit track creation, distinct from timeline audio placement.
 use crate::{app::{Action, App, Win}, playlist as pl, mixer, attached_mixer as attached};
 use os_model::{ClipSource, PlaylistTrackMode};

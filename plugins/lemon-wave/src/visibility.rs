@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael Lane
+// SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Read the active host profile on the editor thread. These flags affect only presentation.
 pub const MODULATION_MENU: &str = "visible_wave-mod-menu";
 pub const HARMONIC_CONTROLS: &str = "visible_wave-harmonics";

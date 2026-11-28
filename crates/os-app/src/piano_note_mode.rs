@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Piano Roll drawing color, slide and portamento controls.
 use crate::{app::{State,Ui,Action},piano,playlist::{PItem,Popup,Cmd,Mark},piano_tools::NCmd};
 use os_ui::{Color,Rect,Font};

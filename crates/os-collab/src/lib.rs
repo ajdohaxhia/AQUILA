@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Direct, invitation-pinned TLS sessions. No public service, audio or UI dependency.
 //! Every blocking call belongs on a background thread. Drop never joins a worker.
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD as B64};

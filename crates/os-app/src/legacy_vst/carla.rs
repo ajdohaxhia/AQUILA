@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Windows x64 host-side adapter to the pinned Carla 2.5.10 host-plugin DLL.
 //! ABI declarations follow Carla's GPL-2.0-or-later CarlaNative.h and CarlaHost.h
 //! (Filipe Coelho and contributors, upstream tag v2.5.10).

@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Heard automation values are a display overlay, never project edits or recording input.
 use crate::{app::{Action,App,State},knobs::KnobId};
 use os_model::target::Target;

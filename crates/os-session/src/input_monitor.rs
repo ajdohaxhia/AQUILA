@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! An independent, bounded input queue: monitoring never consumes the disk recorder's samples.
 use crate::capture::{Input, Ring};
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};

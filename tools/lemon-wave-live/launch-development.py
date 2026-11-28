@@ -1,3 +1,7 @@
+# Copyright (C) 2026 Michael Lane
+# SPDX-License-Identifier: GPL-3.0-or-later
+# This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 """Launch one Wave standalone and release its devices when its window closes."""
 from pathlib import Path
 import ctypes, json, os, subprocess, sys, time

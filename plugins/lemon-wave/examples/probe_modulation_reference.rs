@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael Lane
+// SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Read-only installed Serum parameter display comparison. No audio device or GUI.
 use os_host::Library;
 fn main() {

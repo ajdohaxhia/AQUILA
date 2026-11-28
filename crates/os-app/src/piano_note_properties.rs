@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Transactional note properties, reached by double-clicking an existing note.
 use crate::{app::{Action,App,Ui},dialog::{Body,DHit,Field,Modal},piano};
 use os_model::Note;

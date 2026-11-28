@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael Lane
+// SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 // Portable factory programs, indexed by category and display name.
 pub static FACTORY: &[(&str, &str, &[u8])] = &[
     ("Init", "Init", include_bytes!("../presets/Night Shift/Init/Init.ospreset")),

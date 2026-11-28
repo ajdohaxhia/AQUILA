@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael Lane
+// SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 // Derived from ConjureAlign, Michael Jancsy. GPL-3.0-or-later. See UPSTREAM.md.
 //! Offset estimation between the captured main and reference signals.
 //!

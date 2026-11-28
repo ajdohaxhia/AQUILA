@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Visual, searchable picker over the existing installed-plugin database.
 use crate::{app::{Action,App,State,Ui,Drag},plugin_menu::{Target,PlugCmd},plugin_db::Entry};
 use os_ui::{Rect,Font};

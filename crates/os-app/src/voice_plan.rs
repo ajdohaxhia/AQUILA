@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Bounded voice workflows: validate destinations before editing, then wait for real plugin loads.
 use serde_json::Value;
 use std::{collections::VecDeque, time::{Duration,Instant}};

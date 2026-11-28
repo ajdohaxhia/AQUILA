@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael Lane
+// SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Additional independent instruments driven by an existing channel's MIDI.
 use crate::{app::{App,State},playlist::{Cmd,PItem},plugin_menu::PlugCmd,history::{self,Snap,RackSide}};
 use os_model::ChannelKind;

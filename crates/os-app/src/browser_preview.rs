@@ -1,5 +1,8 @@
-// Copyright (C) 2026 Lemon Studio contributors
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
+// Copyright (C) 2026 Lemon Studio contributors
 //! Browser-only audition state; it never seeks or changes the user's song.
 use std::sync::{Arc,Mutex};
 use std::time::{Duration,Instant};

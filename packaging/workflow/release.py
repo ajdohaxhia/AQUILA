@@ -1,3 +1,7 @@
+# Copyright (C) 2026 Michael Lane
+# SPDX-License-Identifier: GPL-3.0-or-later
+# This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 """Shared local-build workflow. Credentials live in the OS keychain, never Git/SMB."""
 from pathlib import Path, PurePosixPath
 import argparse, datetime, ftplib, getpass, hashlib, io, json, os, platform, re

@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael Lane
+// SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 use super::MixerInput;
 use crate::{Engine, HostedEffect, Instrument, PlayMode, SampleLibrary};
 use os_model::{Channel, ChannelKind, MixerTrack, Note, Pattern, Project, SlotPlugin};

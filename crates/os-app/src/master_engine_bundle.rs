@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Release-native engine, carried inside the executable for backwards-compatible updates.
 use std::{fs, io::{Cursor, Read}, path::{Path, PathBuf}, sync::OnceLock};
 use sha2::{Digest, Sha256};

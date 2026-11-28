@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Native AppKit parents for mixer strip editors. Editor sizes are device pixels;
 //! AppKit geometry is points. The composited editor fits the mixer height.
 use std::{cell::RefCell, ffi::c_void, time::Instant};

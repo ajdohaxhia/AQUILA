@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Host-driven VST3 editor resizing; sizes are pixels except for macOS view points.
 use vst3_sys::base::{kResultOk, kResultTrue};
 use vst3_sys::gui::{IPlugView, ViewRect};

@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! SLAB general MIDI mode, from AlphaTheta's published MIDI message list (E1).
 //! No proprietary handshake, display or LED protocol is claimed.
 use crate::params::*;

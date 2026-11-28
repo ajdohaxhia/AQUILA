@@ -1,4 +1,6 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
 
 //! Presentation strings for the built-in interface languages. Action IDs and
 //! user-provided names stay independent of the display language.

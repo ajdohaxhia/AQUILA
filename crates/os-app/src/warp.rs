@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Editable audio timing anchors, rendered off the audio/UI threads with the source kept intact.
 use crate::{
     app::{Action, App, State, Ui},

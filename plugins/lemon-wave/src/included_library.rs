@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Included recordings are part of the binary. No original drive/catalogue is needed.
 include!(concat!(env!("OUT_DIR"), "/included_library.rs"));
 #[derive(serde::Deserialize)]

@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Original sub waveforms and generated, pitchable noise textures.
 use std::{f32::consts::{PI,TAU},sync::OnceLock};
 pub const NOISE_NAMES:[&str;9]=["White","Pink","Brown","Blue","Air","Vinyl","Hum","Digital","User WAV"];

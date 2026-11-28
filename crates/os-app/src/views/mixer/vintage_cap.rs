@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Molded, colored caps for the Original console. The ivory pointer is painted
 //! separately so turning it does not rotate the lighting or the cast shadow.
 use os_ui::Color;

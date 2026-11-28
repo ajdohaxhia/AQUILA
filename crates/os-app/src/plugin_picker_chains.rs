@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael Lane
+// SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Reusable, ordered mixer effect recipes for the visual plugin picker.
 use super::{Hit, fallback};
 use crate::{app::{Action, App, State, Ui}, mixer, plugin_menu::Target, plugins::{self, Plugins}};

@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Per-profile page dividers shared by mixer instances of the same effect.
 use crate::app::{Action, State, Ui};
 use crate::rack_mixer::Command;

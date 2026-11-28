@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! One design definition for offline preview, development app and final builds.
 //! All lookups happen on the UI thread, never in audio processing.
 use os_ui::{Color, Rect};

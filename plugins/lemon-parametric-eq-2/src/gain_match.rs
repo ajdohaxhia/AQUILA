@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael Lane
+// SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Temporary, bounded RMS loudness matching for listening comparisons. No allocations.
 #[derive(Default)]
 pub struct GainMatch {

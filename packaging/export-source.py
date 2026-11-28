@@ -1,3 +1,7 @@
+# Copyright (C) 2026 Michael Lane
+# SPDX-License-Identifier: GPL-3.0-or-later
+# This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 """Export corresponding source, including uncommitted customizations and embedded assets."""
 from pathlib import Path
 import subprocess, sys, zipfile, os

@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Recording pre-roll plays existing material, gating takes until the original start point.
 use crate::{app::{App,State},record::{Opt,RecCmd},playlist::{Cmd,PItem,Mark}};
 pub fn mode()->bool{crate::settings_file::flag("rec_lead_preroll",false)}

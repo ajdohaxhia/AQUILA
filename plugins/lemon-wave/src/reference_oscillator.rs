@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael Lane
+// SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Evidence-backed oscillator core used by Lemon Wave Reference Saw.
 //! See research/oscillator-reference.md for the measured scope and limitations.
 use std::sync::Arc;

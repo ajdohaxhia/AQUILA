@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael Lane
+// SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Content-addressed audio transfer. Peer supplied paths never reach the filesystem.
 use super::*;
 const QUOTA: u64 = 4 * 1024 * 1024 * 1024;

@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 use nih_plug::prelude::*;
 use serde::Deserialize;

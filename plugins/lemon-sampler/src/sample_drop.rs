@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! A host can accept a waveform release over its Browser. Snapshot parameters
 //! at release; decoding, processing and writing run off the audio/UI threads.
 use super::{SamplerParams, Shared, block, dsp, fx};

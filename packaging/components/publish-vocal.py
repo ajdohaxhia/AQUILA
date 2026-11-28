@@ -1,3 +1,7 @@
+# Copyright (C) 2026 Michael Lane
+# SPDX-License-Identifier: GPL-3.0-or-later
+# This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 """Publish immutable optional vocal-engine v1 files. Does not publish a DAW release.
 Build the native library on each platform first. Credentials stay on their existing machines.
 """

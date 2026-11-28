@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael Lane
+// SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Rectified-average stereo VU detector. A -18 dBFS sine reads 0 VU.
 //! Two cascaded poles reach 99% of a steady level in approximately 300 ms.
 

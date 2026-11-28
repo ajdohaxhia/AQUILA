@@ -1,5 +1,8 @@
-// Adapted from Airwindows DeBess, Copyright (c) 2016 Chris Johnson.
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: MIT
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
+// Adapted from Airwindows DeBess, Copyright (c) 2016 Chris Johnson.
 // See ../../../licenses/Airwindows-MIT.txt.
 // Source: https://github.com/airwindows/airwindows/blob/master/plugins/WinVST/DeBess/DeBessProc.cpp
 // Port: fixed Sharp=.5, Depth=.5, Filter=.5; Intense is the DS knob.

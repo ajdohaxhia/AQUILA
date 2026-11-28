@@ -1,5 +1,8 @@
-// Copyright (C) 2026 ItsAlphaNeon
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
+// Copyright (C) 2026 ItsAlphaNeon
 //! Adapted from Lemon Studio motion.rs (clip_jumped/clip_glide), upstream
 //! 73e6389821c59ffd5d738f0ca43e926d5ab84a89. Visual offsets never alter clip timing.
 use crate::app::{App, State};

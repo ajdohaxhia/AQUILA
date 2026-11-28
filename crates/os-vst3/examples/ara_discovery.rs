@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael Lane
+// SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Metadata-only diagnostic: no editor, audio device, or ARA initialization.
 fn main() {
     let path=std::env::args_os().nth(1).expect("usage: ara_discovery <plugin.vst3>");

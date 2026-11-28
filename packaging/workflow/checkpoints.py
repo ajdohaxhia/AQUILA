@@ -1,3 +1,7 @@
+# Copyright (C) 2026 Michael Lane
+# SPDX-License-Identifier: GPL-3.0-or-later
+# This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 """Durable, revision-bound release checkpoints. No publishing side effects on import."""
 from pathlib import Path
 import contextlib, datetime, hashlib, json, os, threading, time

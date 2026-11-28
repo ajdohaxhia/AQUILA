@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael Lane
+// SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 // Adapted from B.Oops FxChopper.hpp and FxStutter.hpp, Sven Jaehnichen,
 // GPL-3.0-or-later. Native transport, 16-step editor and safety bounds are ML additions.
 use crate::*;

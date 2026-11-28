@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Offline factory-preset audition and validation. Never opens an audio device.
 use os_host::Library;
 use std::{io::Write, path::Path};

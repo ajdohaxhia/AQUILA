@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Guide-relative vocal timing. Analyze and render off-thread, then apply the batch in one undo step.
 mod onsets;
 use crate::{

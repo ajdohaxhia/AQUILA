@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael Lane
+// SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Optional support link; opens the user's browser without initiating a payment.
 pub const URL: &str = "https://paypal.me/michaellanemusic";
 

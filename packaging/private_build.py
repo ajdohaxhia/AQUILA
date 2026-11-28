@@ -1,3 +1,7 @@
+# Copyright (C) 2026 Michael Lane
+# SPDX-License-Identifier: GPL-3.0-or-later
+# This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 """Reject stale private preview builds; Master Assistant publication authorized 2 November 2026."""
 from pathlib import Path
 import io, zipfile, json, re

@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Non-destructive audio take groups. Muted child lanes retain complete source clips;
 //! the leader contains ordinary editable audio clips, so playback/export need no extra DSP.
 use crate::app::State;

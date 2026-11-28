@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Measure individual Playlist clips before the mixer, then apply one undoable gain edit.
 use crate::{app::App, playlist as pl};
 use os_model::{Arrangement, Channel, Clip, ClipSource, Project};

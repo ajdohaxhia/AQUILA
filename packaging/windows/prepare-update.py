@@ -1,3 +1,7 @@
+# Copyright (C) 2026 Michael Lane
+# SPDX-License-Identifier: GPL-3.0-or-later
+# This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 """Prepare a signed update; never uploads or publishes it.
 Requires Python cryptography. Keep the private key outside this repository.
 Usage: python packaging/windows/prepare-update.py --output ABSOLUTE_STAGING_FOLDER

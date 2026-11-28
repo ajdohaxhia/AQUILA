@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Optional appearance extensions in a Lemon Studio .flstheme. Legacy themes inherit their skin.
 
 use crate::{Color, Palette, Style};

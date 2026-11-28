@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Optional local companion. Inference and installation run outside the audio thread.
 use std::{sync::Mutex, process::{Child, Command}, time::{Instant,Duration}};
 use crate::{app::App, dialog::{Msg,Kind,Answer,Then,spans},helper_install as install};

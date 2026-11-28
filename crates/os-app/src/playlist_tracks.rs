@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Optional track controls in the ordinary Playlist. Binding happens on an edit,
 //! never while drawing headers or opening a picker.
 use crate::{app::{Action,App,State},attached_mixer as attached,mixer,playlist as pl};

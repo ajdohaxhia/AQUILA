@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael Lane
+// SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Routed dynamic bell/shelf EQ plus frequency-selective spectral dynamics.
 use super::{BANDS, STATE_LEN, Settings};
 /// Nominal bell quality for the existing stored octave-bandwidth control.

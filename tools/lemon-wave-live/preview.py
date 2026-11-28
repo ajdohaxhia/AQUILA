@@ -1,3 +1,7 @@
+# Copyright (C) 2026 Michael Lane
+# SPDX-License-Identifier: GPL-3.0-or-later
+# This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 """Loopback-only Wave visual preview. Renders the real editor, never opens audio/MIDI."""
 from pathlib import Path
 import argparse, hashlib, http.server, json, os, secrets, subprocess, threading, time, urllib.request, webbrowser

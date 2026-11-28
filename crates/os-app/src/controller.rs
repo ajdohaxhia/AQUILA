@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Per-input control-surface modes. MCU note numbers follow the Control Surface
 //! library's published MCU constants. Select MCU on the controller's DAW port.
 use crate::app::{Action, App};

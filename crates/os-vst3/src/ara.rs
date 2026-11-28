@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! ARA 2 document hosting. UI-thread lifecycle; immutable sample readers may run on analysis threads.
 #![allow(non_snake_case)]
 use crate::Module;

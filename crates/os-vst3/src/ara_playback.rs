@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Clip voices on an ARA source-relative renderer. Storage is allocated before activation.
 use os_engine::{instrument::VOICE_GAIN_FRAMES, NoteLevels};
 

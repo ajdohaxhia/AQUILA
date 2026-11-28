@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Cached real editor previews; never open a hosted plugin to paint the picker.
 use std::{collections::HashMap,sync::{Arc,OnceLock},path::{Path,PathBuf},io::Read};
 use crate::{app::{App,Ui},plugin_db::Entry};

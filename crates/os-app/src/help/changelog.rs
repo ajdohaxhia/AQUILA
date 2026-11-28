@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 use super::{Hit, button, hit};
 use crate::app::{Action, Scroll, State, Ui};
 use crate::views::settings::{self, SAct};

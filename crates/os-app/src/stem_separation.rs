@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Opt-in, private stem runtime. Downloads and inference never run on the UI/audio thread.
 use crate::{
     app::{App, State},

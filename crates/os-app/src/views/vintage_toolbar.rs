@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Original-sized local FL4 modules wired to Lemon's existing actions.
 use os_ui::{Color,Font,Rect};
 use crate::{app::{Action,Live,State,Ui,Win}, icons::{self,Icon}, knobs::KnobId, vintage_skin as skin};

@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Offline pad rendering uses the same voice as live playback, never a raw source copy.
 use crate::{audio::Audio, dsp::Voice, params::*};
 use std::{

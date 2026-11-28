@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Original plugin editors with painted native parents and section-aligned paging.
 use std::{ffi::c_void,time::{Duration,Instant}};
 use windows_sys::Win32::UI::Controls::SetScrollInfo;

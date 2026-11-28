@@ -1,4 +1,6 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
 
 /// A resizable delay with an immediate logical reset. Samples from an earlier
 /// length are never read after reset, so changes need no buffer-sized clear.

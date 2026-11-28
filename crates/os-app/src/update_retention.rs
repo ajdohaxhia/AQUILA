@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael Lane
+// SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Bounded rollback retention. Only updater-owned, structurally validated folders are eligible.
 use super::*;
 const KEEP: usize = 2;

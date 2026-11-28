@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# Copyright (C) 2026 Michael Lane
+# SPDX-License-Identifier: GPL-3.0-or-later
+# This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 # Waits for the CI run of a commit on GitHub and, only if it ends green, starts the AQUILA release workflow
 # (.github/workflows/aquila-release.yml). Needs the GitHub CLI (`gh`), logged in with access to the repository.
 #

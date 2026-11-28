@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Persistent, audio-device-free renderer using the actual Wave editor.
 use std::{io::{self,BufRead,Write},sync::{Arc,atomic::Ordering}};
 use lemon_small_fx::editor::{Logic,Extension};

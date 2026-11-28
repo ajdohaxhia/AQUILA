@@ -1,4 +1,7 @@
+# Copyright (C) 2026 Michael Lane
 # SPDX-License-Identifier: GPL-3.0-or-later
+# This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 """Lemon's private local worker. No audio uploads; no FFmpeg or system Python needed."""
 import os
 import sys

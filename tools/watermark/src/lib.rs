@@ -50,9 +50,35 @@ mod tests {
     const SHARED_NOTE: &str = "It also holds others' work, which keeps its authors' copyright and licence, named below.";
 
     /// The folders of third-party sources kept unchanged (paths from the repository root), which keep their own headers.
-    const VENDORED: [&str; 1] = [
+    const VENDORED: &[&str] = &[
         // The ASIO SDK's host files (GPL-3.0 option), built by asio-sys.
         "crates/os-app/asiosdk/",
+        // AQUILA's (ML Studio's) third-party sources, each with its licence in THIRD-PARTY-NOTICES.txt.
+        "crates/os-app/vendor/",
+        "crates/os-dsp/vendor/",
+        "crates/os-engine/vendor/",
+        "crates/os-vst3/vendor/",
+        "plugins/lemon-master-assistant/JUCE/",
+        "plugins/lemon-small-fx/vendor/",
+        "plugins/ml-performance-core/vendor/",
+        "plugins/ml-plasma/vendor/",
+        "plugins/ml-space-core/vendor/",
+        "tools/lemon-wave-standalone/vendor/",
+        "tools/vocal-engine/vendor/",
+        "vendor/cpal/",
+        "vendor/mp3lame-sys/",
+    ];
+
+    /// AQUILA's files under a licence of their own (the work they derive from keeps it), and that licence.
+    const OWN_LICENCE: [(&str, &str); 5] = [
+        // Adapted from Airwindows DeBess (MIT).
+        ("crates/os-dsp/src/debess.rs", "MIT"),
+        // AudioVisualizer's offline renderer (AGPL-3.0-or-later).
+        ("packaging/visualizer/OfflineRender.cpp", "AGPL-3.0-or-later"),
+        // Gridline Plasma's factory code and engine (GPL-3.0-only).
+        ("plugins/lemon-wave/tools/export-plasma-wavetables.cpp", "GPL-3.0-only"),
+        ("plugins/ml-plasma/build.rs", "GPL-3.0-only"),
+        ("plugins/ml-plasma/src/lib.rs", "GPL-3.0-only"),
     ];
 
     /// The files that hold others' work (paths from the repository root) and their licence expression.
@@ -67,7 +93,8 @@ mod tests {
     /// `SHARED`.
     fn lines_for(rel: &str) -> Vec<String> {
         let shared = SHARED.iter().find(|(path, _)| *path == rel);
-        let spdx = shared.map_or(LICENCE, |(_, spdx)| spdx);
+        let own = OWN_LICENCE.iter().find(|(path, _)| *path == rel).map(|(_, spdx)| *spdx);
+        let spdx = shared.map_or(own.unwrap_or(LICENCE), |(_, spdx)| spdx);
         let mut lines: Vec<String> = HEADER.iter().map(|l| l.replace("{spdx}", spdx)).collect();
         lines.extend(shared.map(|_| SHARED_NOTE.to_string()));
         lines
@@ -185,7 +212,6 @@ mod tests {
     /// Every source file in the repository opens with the header, with the note for a file that holds others' work (see
     /// the crate documentation).
     #[test]
-    #[ignore = "AQUILA: the sources brought in from ML Studio carry only their SPDX line; naming their copyright holders in each file is the owner's decision (HANDOFF.md §25.3)"]
     fn every_source_file_has_the_header() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         let mut files = Vec::new();

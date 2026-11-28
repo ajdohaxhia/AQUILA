@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 impl Logic {
     fn stretch_click(&mut self,id:u8,x:f32,y:f32)->Vec<Act>{
         if id==8 {self.view.stretch=None;return vec![Act::Repaint]}

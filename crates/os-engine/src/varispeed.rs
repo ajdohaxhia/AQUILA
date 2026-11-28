@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael Lane
+// SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Streaming tape-rate conversion after the complete mix, including hosted effects.
 #[derive(Default)]
 pub(crate) struct Varispeed {

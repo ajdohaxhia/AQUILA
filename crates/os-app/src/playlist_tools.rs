@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Keyboard-first playlist tools, native cursor feedback, and the compact source menu.
 use crate::app::{Action, App, Cursor, State};
 use crate::icons::{self, Icon};

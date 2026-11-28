@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael Lane
+// SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! The mixer's compact view of its dedicated Lemon Parametric EQ instance.
 use crate::app::{Action, App, Live, State, Ui};
 use crate::mixer::{self, MHit};

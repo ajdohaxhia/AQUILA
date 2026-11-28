@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Approved vintage artwork, embedded for clean installs and automatic updates.
 //! Decode once on the UI thread; drawing never reads files or rebuilds sprite frames.
 use std::{collections::HashMap, path::{Path, PathBuf}, sync::OnceLock};

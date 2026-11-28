@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael Lane
+// SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Native piano-roll harmony workspace. Drafts do not modify notes until Apply.
 use crate::{
     app::{Action, App, State, Ui},

@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Headless verification through Lemon Studio's actual CLAP/VST3 hosts.
 use os_host::Library;
 use std::{path::Path, sync::Arc};

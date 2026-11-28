@@ -1,3 +1,7 @@
+# Copyright (C) 2026 Michael Lane
+# SPDX-License-Identifier: GPL-3.0-or-later
+# This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 """Build relocatable optional Melli packages; dependencies are pinned by SHA-256."""
 from pathlib import Path, PurePosixPath
 import argparse, hashlib, json, os, posixpath, shutil, stat, tarfile, urllib.request, zipfile

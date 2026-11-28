@@ -1,4 +1,6 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
 
 //! Read MusicXML into the same notes, patterns and Playlist arrangements used by playback.
 use super::{Command, IMPORT_VISIBILITY, written};

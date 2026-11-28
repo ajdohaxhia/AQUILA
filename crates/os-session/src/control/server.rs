@@ -1,5 +1,9 @@
 // Copyright (C) 2026 thacer13
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
+// Copyright (C) 2026 thacer13
 // This file is part of AQUILA: https://github.com/ItsAlphaNeon/Lemon-Studio
 
 //! The local socket clients connect to (`--control <where>`): a Unix socket at a path (Linux, macOS), or a TCP port on

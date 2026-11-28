@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael Lane
+// SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! SnapTune's AGPL-3.0 DSP, isolated behind an owned C ABI instance.
 use std::{ffi::c_void, ptr::NonNull};
 unsafe extern "C" {

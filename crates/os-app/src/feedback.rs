@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael Lane
+// SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Explicit user-initiated report: a new AQUILA issue on GitHub, prefilled with diagnostics the user reviews before
 //! submitting. Nothing is sent until they submit it.
 pub const URL:&str="https://github.com/ajdohaxhia/AQUILA/issues/new";

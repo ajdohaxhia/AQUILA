@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael Lane
+// SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Stereo-linked, frequency-selective STFT dynamics with fixed, reported latency.
 //! Four-times-overlapped sqrt-Hann windows reconstruct an unmodified signal at unity.
 use super::{Settings, dynamic::Config, fft::Fft};

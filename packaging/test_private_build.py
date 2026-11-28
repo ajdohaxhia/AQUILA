@@ -1,3 +1,7 @@
+# Copyright (C) 2026 Michael Lane
+# SPDX-License-Identifier: GPL-3.0-or-later
+# This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 import io, tempfile, unittest, zipfile
 from pathlib import Path
 from private_build import MARKER, MIX_REFERENCE_HEADER, require_public_binary, require_public_artifact, private_source, public_source_bytes

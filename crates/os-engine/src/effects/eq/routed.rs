@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael Lane
+// SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Per-band stereo placement. L/R stage precedes optional M/S stage; all branches share delay.
 use super::{Equalizer,Options,Mode,PARAMS,MAIN,BANDS,STATE_LEN};
 pub const NAMES:[&str;5]=["Stereo","Mid","Side","Left","Right"];

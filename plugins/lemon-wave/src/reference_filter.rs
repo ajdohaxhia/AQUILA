@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Recovered nonlinear state-variable filter paths (12/24 dB LP/BP/HP).
 //! Coefficients and operation order follow 0x1802fcc90 / 0x1802f7510.
 #[derive(Clone, Copy, Default)]

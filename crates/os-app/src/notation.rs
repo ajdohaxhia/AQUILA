@@ -1,4 +1,6 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
 
 //! A score projection of the active Piano Roll channel. Engraving is a worker
 //! task; every musical edit is made in the existing pattern on the UI thread.

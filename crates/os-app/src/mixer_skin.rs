@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Bounded, portable Mixer control art. Settings are resolved outside the painters.
 
 use base64::{Engine, engine::general_purpose::STANDARD};

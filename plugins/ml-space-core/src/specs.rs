@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael Lane
+// SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 use lemon_small_fx::{Card, Control, Mark, Setting, Spec};
 pub static CONVOLVER: Spec = Spec {
     name: "ML Convolver",

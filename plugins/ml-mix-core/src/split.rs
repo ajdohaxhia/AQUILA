@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael Lane
+// SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 // Three-way LR4 topology follows ChowDSP CrossoverFilter (GPLv3):
 // split low/rest, split rest into mid/high, all-pass-align low at the upper split.
 use crate::*;

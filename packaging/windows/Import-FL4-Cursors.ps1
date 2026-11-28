@@ -1,4 +1,7 @@
+# Copyright (C) 2026 Michael Lane
 # SPDX-License-Identifier: GPL-3.0-or-later
+# This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 # Open your own FL Studio 4 copy before running this script. Restart Lemon after import.
 param([string]$SkinFolder = (Join-Path $env:LOCALAPPDATA 'Lemon Studio/Skins/FL4'))
 $ErrorActionPreference = 'Stop'

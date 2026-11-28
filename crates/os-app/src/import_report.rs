@@ -1,5 +1,8 @@
-// Copyright (C) 2026 Lemon Studio contributors
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
+// Copyright (C) 2026 Lemon Studio contributors
 // This file is part of Lemon Studio.
 //! Project-local import provenance, persistent compatibility report and explicit recovery choices.
 use crate::{

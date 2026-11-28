@@ -1,4 +1,8 @@
-// SPDX-License-Identifier: GPL-3.0-only
+/* Copyright (C) 2026 Michael Lane
+ * SPDX-License-Identifier: GPL-3.0-only
+ * This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+ */
+
 // Export the canonical frames straight from ML Plasma's vendored factory generator.
 #include <cstdint>
 #include <cstdlib>

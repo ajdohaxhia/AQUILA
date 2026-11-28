@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Semantic tools: shared app commands, validated project edits, no screen automation or shell access.
 use crate::{
     app::{Action, App, Win},

@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Bounded WAV import and periodic Fourier resampling. No file access in render().
 use serde::{Deserialize, Serialize};
 use std::{f64::consts::TAU, path::Path};

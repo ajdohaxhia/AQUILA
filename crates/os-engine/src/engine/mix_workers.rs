@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael Lane
+// SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Persistent workers shared by instrument rendering and the mixer dependency graph.
 //! Every job owns its mutable DSP state. Reply queues belong to one engine instance.
 use super::{MixTrack, TransportInfo, record_stage, record_level, finish_mix_audio, run_slot, send_mix_audio, strip_process};

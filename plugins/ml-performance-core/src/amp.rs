@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael Lane
+// SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 use crate::*;
 use ml_space_core::{convolver::Native as Convolution, impulse::Impulse};
 use serde::{Deserialize, Serialize};

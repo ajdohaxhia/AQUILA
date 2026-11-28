@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Bundled oXygen-derived mastering engine. A normal master effect participates in
 //! playback, delay compensation, project saving and normal exports alike.
 use crate::{app::{App, State}, mixer::{self, FxReq}, plugins::Available};

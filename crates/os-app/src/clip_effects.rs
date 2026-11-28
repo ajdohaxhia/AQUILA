@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael Lane
+// SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Per-clip audio chains, using dedicated sources and independent effect inserts.
 use crate::{
     app::{Action, App, State, Ui},

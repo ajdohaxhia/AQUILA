@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Original Lemon modulation routing and drawn LFO curves, not a full Serum model.
 use crate::controls::*;
 use std::sync::atomic::{AtomicU32, Ordering};

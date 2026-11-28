@@ -1,3 +1,7 @@
+# Copyright (C) 2026 Michael Lane
+# SPDX-License-Identifier: GPL-3.0-or-later
+# This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 """Package a built native VST3 for embedding; never consumes credentials or personal data."""
 import argparse, hashlib, json, zipfile
 from pathlib import Path

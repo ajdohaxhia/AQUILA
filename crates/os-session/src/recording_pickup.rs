@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 use std::sync::atomic::{AtomicBool,AtomicU32,AtomicU64,AtomicUsize,Ordering};
 use os_model::RecordingPoint as Point;
 static WRITING:AtomicBool=AtomicBool::new(false);

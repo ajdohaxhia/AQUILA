@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Background source analysis. No decoding or inference on the audio callback.
 use os_engine::Sample;
 use std::{path::Path, sync::Arc};

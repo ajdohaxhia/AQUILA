@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael Lane
+// SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Dependency scheduling inside the render engine. The device callback still only
 //! drains the render-ahead queue. Jobs own their DSP state, and inputs are summed
 //! in the original mixer order, independent of worker completion order.

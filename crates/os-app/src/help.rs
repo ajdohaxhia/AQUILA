@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Bundled user guide and shared controls for the offline Change Log.
 use crate::app::{Action, App, State, Ui};
 use crate::views::settings::{self, SAct};

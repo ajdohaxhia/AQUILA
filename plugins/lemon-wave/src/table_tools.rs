@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Wavetable editing operations and user banks; all work stays off the audio thread.
 use crate::wavetable::{MAX_FRAMES, SIZE, Source, fft};
 use std::path::{Path, PathBuf};

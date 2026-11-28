@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael Lane
+// SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 // Approved vintage assets are embedded so installation and automatic updates use identical artwork.
 pub(crate) fn asset(name: &str) -> Option<&'static [u8]> {
     Some(match name {

@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael Lane
+// SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Channel-rack group edits. Relative knob offsets survive common-limit clamping.
 use crate::{app::{App,State},knobs::KnobId,history::{self,Snap}};
 pub const ROUTING_VISIBILITY: &str = "visible_rack-routing-menu";

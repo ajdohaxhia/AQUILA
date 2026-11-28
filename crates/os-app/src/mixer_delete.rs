@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 // Included by mixer.rs: structural deletion and its bounded host Undo entry.
 
 #[derive(Debug,Clone,PartialEq)]

@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-only
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! The matching Gridline-derived engine travels inside each AQUILA update.
 use serde::Deserialize;
 use sha2::{Digest, Sha256};

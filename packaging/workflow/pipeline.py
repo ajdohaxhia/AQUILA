@@ -1,3 +1,7 @@
+# Copyright (C) 2026 Michael Lane
+# SPDX-License-Identifier: GPL-3.0-or-later
+# This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 """Resumable full or macOS-only release. `check` verifies setup; `run` publishes."""
 from pathlib import Path, PurePosixPath
 from concurrent.futures import ThreadPoolExecutor

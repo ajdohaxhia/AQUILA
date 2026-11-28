@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael Lane
+// SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Original causal resonance suppressor. No FFT buffering, look-ahead or audio-thread allocation.
 //! Detectors see the unprocessed stereo signal; linked, bounded dynamic notches run in series.
 const BANDS: usize = 72;

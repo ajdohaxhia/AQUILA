@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael Lane
+// SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Direct, project-local audio-envelope linking, without a controller plugin slot.
 use crate::{app::State,playlist::{Cmd,PItem},history::{self,Snap}};
 #[derive(Debug,Clone,PartialEq)]

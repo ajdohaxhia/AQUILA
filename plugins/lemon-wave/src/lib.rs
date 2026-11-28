@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Lemon Wave: original two-oscillator wavetable instrument, stage one.
 #![allow(semicolon_in_expressions_from_non_local_macros)]
 mod morph;

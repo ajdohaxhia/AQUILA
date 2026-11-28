@@ -1,4 +1,8 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+/* Copyright (C) 2026 Michael Lane
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+ */
+
 // One TU keeps the native implementation private and allows exception-safe ownership.
 #include "velociloops.cpp"
 

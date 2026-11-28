@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Commit a take as one editable curve per target. No work is done on the audio callback.
 use crate::{app::State,playlist as pl,smart_recording::Gesture};
 use os_model::{AutoMode,AutoPoint,Automation,Clip,ClipSource};

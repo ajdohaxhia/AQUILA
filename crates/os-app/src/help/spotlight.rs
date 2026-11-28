@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Resolve guide destinations against the controls painted for the current workspace.
 use super::{Hit, PAGE, hit, is_open, topics};
 use crate::app::{Action, App, State, Ui, Win};

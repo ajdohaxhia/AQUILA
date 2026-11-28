@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Offline Signalsmith edits. Rendering owns a snapshot, never the audio thread's document lock.
 use crate::sample::Sample;
 pub const VISIBILITY: &str = "visible_tesla-stretch";

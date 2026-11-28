@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Offline local-library validation, with no audio device or source asset copying.
 use lemon_wave::{
     assets::{Sources, WaveParams},

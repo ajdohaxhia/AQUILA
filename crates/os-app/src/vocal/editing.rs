@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 use super::*;
 fn related(app:&App,channel:u16)->Vec<(u16,usize,Note)>{app.state.project.vocal_edits.iter().filter(|d|d.channel!=channel).flat_map(|d|d.notes.iter().enumerate().filter(|(i,_)|app.state.playlist.vocal.selected.contains(&(d.channel,*i))).map(move|(i,n)|(d.channel,i,n.clone()))).collect()}
 fn strengths(app:&App)->Vec<(u16,f32)>{app.state.project.vocal_edits.iter().filter(|d|pl::clips(&app.state).iter().any(|c|Some(c.track)==app.state.playlist.vocal.row&&c.source==ClipSource::Channel(d.channel))).map(|d|(d.channel,d.strength)).collect()}

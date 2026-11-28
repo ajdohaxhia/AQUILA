@@ -1,4 +1,6 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
 
 //! Per-profile presentation edits for workspace menus. Rebuild from the real menu each time
 //! so command targets, shortcuts, availability and checkmarks always come from the application.

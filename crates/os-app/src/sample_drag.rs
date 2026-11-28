@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael Lane
+// SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Upgrade a browser gesture to an OS file drag once it reaches a hosted editor.
 use crate::app::{App, Drag};
 use crate::views::browser::Item;

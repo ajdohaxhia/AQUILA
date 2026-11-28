@@ -1,4 +1,8 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+/* Copyright (C) 2026 Michael Lane
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+ */
+
 // Native macOS AUv2 calls. The Rust host serializes access to each instance.
 #import <AppKit/AppKit.h>
 #import <AudioToolbox/AudioToolbox.h>

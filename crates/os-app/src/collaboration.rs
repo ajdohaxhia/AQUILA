@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Opt-in direct-host arrangement sessions. All network and package work is off the UI/audio threads.
 use crate::{
     app::{Action, App, State, Ui, Win},

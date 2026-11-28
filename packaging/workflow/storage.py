@@ -1,3 +1,7 @@
+# Copyright (C) 2026 Michael Lane
+# SPDX-License-Identifier: GPL-3.0-or-later
+# This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 """Local build storage policy. Never touches installed apps, source or the shared server.
 
 Machine paths are explicitly configured in ~/.lemon-studio-release/storage.json.

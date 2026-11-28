@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael Lane
+// SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Playable bridge: verified oscillator/unison laws with Lemon Wave's existing
 //! envelopes, MIDI handling, modulation and effects. No whole-Serum parity claim.
 use crate::reference_oscillator::{LevelSmoother, Oscillator, Table, Warp};

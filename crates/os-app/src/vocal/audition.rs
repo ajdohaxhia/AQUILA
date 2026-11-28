@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Gesture-owned audition: source decoding off-thread, pitch updates on the existing audio stream.
 use super::*;
 type Loaded=Result<Arc<os_engine::Sample>,String>;

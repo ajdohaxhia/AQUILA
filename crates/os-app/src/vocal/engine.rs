@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Optional signed WORLD engine. No engine code is loaded before signature/hash checks.
 use std::{fs,path::{Path,PathBuf},io::Read,time::Duration};
 use serde::{Serialize,Deserialize};

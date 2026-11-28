@@ -1,5 +1,8 @@
-// Copyright (C) 2026 ItsAlphaNeon
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
+// Copyright (C) 2026 ItsAlphaNeon
 //! Traditional stock mixer geometry, sharing the current mixer actions and audio state.
 use super::*;
 fn layout_index(s: &State) -> u8 {

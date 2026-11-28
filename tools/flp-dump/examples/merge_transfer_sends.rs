@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael Lane
+// SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 fn main() -> Result<(),Box<dyn std::error::Error>> {
  let args:Vec<String>=std::env::args().collect();
  let read=|p:&str|->Result<os_model::Project,Box<dyn std::error::Error>> {Ok(os_flp::project::load(&os_flp::FlpFile::parse(&std::fs::read(p)?)?)?)};

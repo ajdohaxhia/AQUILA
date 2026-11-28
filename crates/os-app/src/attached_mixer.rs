@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! A second presentation of the existing mixer. No audio graph or clip relocation on attach.
 use std::{cell::RefCell, collections::{BTreeMap, BTreeSet, HashMap}, rc::Rc};
 use os_model::{ChannelKind, ClipSource};

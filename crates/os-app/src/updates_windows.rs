@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael Lane
+// SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Windows' consent-based fallback for a helper rejected with ERROR_ELEVATION_REQUIRED.
 use std::{ffi::OsStr, os::windows::{ffi::OsStrExt, io::{FromRawHandle, AsRawHandle, OwnedHandle}, process::{ExitStatusExt,CommandExt}}, process::{ExitStatus, Command}};
 use windows_sys::Win32::UI::{Shell::{ShellExecuteExW, SHELLEXECUTEINFOW, SEE_MASK_NOCLOSEPROCESS, SEE_MASK_NOASYNC, SEE_MASK_FLAG_NO_UI}, WindowsAndMessaging::SW_HIDE};

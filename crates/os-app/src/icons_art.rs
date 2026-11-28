@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Original 24-unit vector artwork. Array order matches the opt-in families in os_ui::icon_packs::PACKS after Default.
 //! Transport, editing and window controls use separately drawn silhouettes per family.
 //! File and utility glyphs use each family's document, folder and instrument shapes.

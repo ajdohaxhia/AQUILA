@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Native local skin controls with resolution-independent fallbacks.
 //! Live values select original sprite frames; no screenshot crops or enlarged JPEGs.
 use os_ui::{Canvas, Color, Font, Rect};

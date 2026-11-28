@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! A bounded, acyclic stereo graph built on ML Studio's existing plugin host.
 //! Construction, state and delay allocation belong to the UI thread. Rendering
 //! only tries locks, uses prepared buffers and never loads a plugin or allocates.

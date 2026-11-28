@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Dedicated Lemon Wave instrument view. Uses the same hit targets and host gestures
 //! as the shared editor; graphs are parameter-derived, never decorative fake meters.
 mod cyberpunk;

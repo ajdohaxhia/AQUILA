@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael Lane
+// SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 fn thumbnails() -> &'static Vec<Option<(usize,usize,Vec<u32>)>> {
     static IMAGES: OnceLock<Vec<Option<(usize,usize,Vec<u32>)>>> = OnceLock::new();
     IMAGES.get_or_init(|| vec![

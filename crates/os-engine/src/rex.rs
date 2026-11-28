@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Bounded REX loop decoding. Statically linked VelociLoops; no external runtime.
 use crate::Sample;
 use std::{collections::VecDeque, ffi::c_void, path::{Path,PathBuf}, sync::{Mutex,OnceLock}};

@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael Lane
+// SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Xdnd file transfer to the editor under the release point. The plugin and host
 //! share a UI thread: never wait synchronously for a plugin's Status or Finished.
 use super::*;

@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Vintage strip bank beside a fixed left insert panel; existing actions and DSP are shared.
 use super::*;
 use crate::{vintage as skin,vintage_rack_art as art};

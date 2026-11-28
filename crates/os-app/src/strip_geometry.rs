@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 #[derive(Clone,Copy,Debug,PartialEq)]
 pub(super) struct Page {pub left:f32,pub right:f32}
 impl Page {pub(super) fn width(self)->f32{self.right-self.left}}

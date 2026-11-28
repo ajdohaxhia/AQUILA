@@ -1,4 +1,8 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+/* Copyright (C) 2026 Michael Lane
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ * This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+ */
+
 // Offline entry point for the AudioVisualizer renderer, based on v0.77 by mtyas.
 #include "render/Renderer.h"
 #include <juce_audio_formats/juce_audio_formats.h>

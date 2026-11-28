@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael Lane
+// SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Shared single-line editor. Character indices stay on UTF-8 boundaries.
 use winit::keyboard::{Key, NamedKey as N};
 

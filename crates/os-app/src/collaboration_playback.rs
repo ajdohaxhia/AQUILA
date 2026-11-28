@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael Lane
+// SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Optional follow transport. Each computer renders locally; this is not an internet audio jam.
 use super::*;
 pub fn tick(app: &mut App) {

@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael Lane
+// SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Synthetic, headless ARA lifecycle test. No device, editor, microphone or user project.
 fn main() -> Result<(), String> {
     let path = std::env::args_os().nth(1).ok_or("plugin path required")?;

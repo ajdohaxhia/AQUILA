@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Opt-in loopback MCP endpoint. All application commands execute on the UI thread.
 //! No listener, worker, inference or analysis exists while disabled.
 use crate::{

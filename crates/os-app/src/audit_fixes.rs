@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Michael Lane
+// SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 use crate::app::App;
 #[test]fn audit_plugin_edits_backup_and_failed_save(){
  let dir=std::env::temp_dir().join(format!("audit-plugin-save-{}",std::process::id()));std::fs::create_dir_all(&dir).unwrap();

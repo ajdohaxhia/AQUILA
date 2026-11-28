@@ -1,4 +1,7 @@
+// Copyright (C) 2026 Michael Lane
 // SPDX-License-Identifier: GPL-3.0-or-later
+// This file is part of Lemon Studio: https://github.com/ItsAlphaNeon/Lemon-Studio
+
 //! Full mixer console finish. Painters only: control geometry, hit targets and audio laws stay in mixer.rs.
 use crate::{app::Ui, meters};
 use os_ui::{Color, Font, Rect};
