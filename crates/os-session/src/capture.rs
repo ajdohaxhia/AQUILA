@@ -55,7 +55,7 @@ impl Ring {
     }
 
     /// Appends every sample waiting to `out`. Consumer only.
-    pub fn pop_into(&self, out: &mut Vec<f32>) {
+    pub(crate) fn pop_into(&self, out: &mut Vec<f32>) {
         let tail = self.tail.load(Ordering::Relaxed);
         let head = self.head.load(Ordering::Acquire);
         // Safety: slots between tail and head were written and published by the producer.
@@ -78,7 +78,7 @@ impl Ring {
     }
 
     /// Empties it. Consumer only.
-    pub fn clear(&self) {
+    pub(crate) fn clear(&self) {
         self.tail.store(self.head.load(Ordering::Acquire), Ordering::Release);
     }
 }
@@ -112,6 +112,9 @@ impl FrameRing {
 /// The capture the device's callbacks feed: whether a recording is on, which inputs it takes, and what came in.
 pub struct Capture {
     ring: FrameRing,
+    /// Serializes consumer-side operations (`drain` and `start`'s `clear`) so `start` never mutates `tail` while a
+    /// `Recorder` thread is draining. Never taken on the audio callback (`push`).
+    consumer: Mutex<()>,
     on: AtomicBool,
     asio: AtomicBool,
     /// The first input (0-based) and whether its next one makes a stereo pair (`set_source`).
@@ -134,6 +137,7 @@ pub fn capture() -> &'static Capture {
     static C: OnceLock<Capture> = OnceLock::new();
     C.get_or_init(|| Capture {
         ring: FrameRing::new(RING),
+        consumer: Mutex::new(()),
         on: AtomicBool::new(false),
         asio: AtomicBool::new(true),
         first: AtomicU32::new(0),
@@ -150,7 +154,7 @@ static EXTRA: [OnceLock<Capture>; 63] = [const { OnceLock::new() }; 63];
 static INPUT_GATE: AtomicBool = AtomicBool::new(true);
 static DISPATCHING: AtomicBool = AtomicBool::new(false);
 pub fn extra_capture(index: usize) -> &'static Capture {
-    EXTRA[index].get_or_init(|| Capture { ring: FrameRing::new(RING), on: AtomicBool::new(false),
+    EXTRA[index].get_or_init(|| Capture { ring: FrameRing::new(RING), consumer: Mutex::new(()), on: AtomicBool::new(false),
         asio: AtomicBool::new(true), first: AtomicU32::new(0), stereo: AtomicBool::new(false),
         frames: AtomicU64::new(0), dropped: AtomicU64::new(0), clock: Mutex::new(None) })
 }
@@ -203,6 +207,7 @@ impl Capture {
     /// Starts taking inputs `first` (and `first + 1` when `stereo`) from the next block.
     pub fn start(&self, first: u16, stereo: bool) {
         self.on.store(false, Ordering::Release);
+        let _consumer = self.consumer.lock().unwrap_or_else(|e| e.into_inner());
         self.ring.clear();
         self.first.store(u32::from(first), Ordering::Relaxed);
         self.stereo.store(stereo, Ordering::Relaxed);
@@ -252,6 +257,7 @@ impl Capture {
     }
 
     fn drain(&self, out: &mut Vec<f32>) {
+        let _consumer = self.consumer.lock().unwrap_or_else(|e| e.into_inner());
         self.ring.drain(out,!self.on());
     }
 }
@@ -655,7 +661,7 @@ mod tests {
     /// Stereo takes a pair; one input goes to both sides.
     #[test]
     fn a_block_goes_in_as_stereo() {
-        let c = Capture { ring: FrameRing::new(64), on: AtomicBool::new(false), asio: AtomicBool::new(true), first: AtomicU32::new(0), stereo: AtomicBool::new(true), frames: AtomicU64::new(0), dropped: AtomicU64::new(0), clock: Mutex::new(None) };
+        let c = Capture { ring: FrameRing::new(64), consumer: Mutex::new(()), on: AtomicBool::new(false), asio: AtomicBool::new(true), first: AtomicU32::new(0), stereo: AtomicBool::new(true), frames: AtomicU64::new(0), dropped: AtomicU64::new(0), clock: Mutex::new(None) };
         c.push(2, |ch, f| (ch * 10 + f) as f32);
         assert_eq!(c.frames(), 0, "off");
         c.start(1, true);
@@ -675,6 +681,43 @@ mod tests {
         input.asio = true; c.start_input(&input);
         c.push_source(false, 3, |_, _| 0.9);
         assert_eq!(c.frames(), 0, "a system callback must not enter an ASIO take");
+    }
+
+    /// Concurrent `start` (clearing) and `drain` serialize the consumer side while `push` remains lock-free.
+    #[test]
+    fn start_and_drain_do_not_race() {
+        let c = Arc::new(Capture {
+            ring: Ring::new(256),
+            consumer: Mutex::new(()),
+            on: AtomicBool::new(false),
+            first: AtomicU32::new(0),
+            stereo: AtomicBool::new(true),
+            frames: AtomicU64::new(0),
+            dropped: AtomicU64::new(0),
+        });
+        let stop = Arc::new(AtomicBool::new(false));
+        let (c1, s1) = (c.clone(), stop.clone());
+        let prod = std::thread::spawn(move || {
+            while !s1.load(Ordering::Relaxed) {
+                c1.push(16, |ch, f| (ch + f) as f32);
+            }
+        });
+        let (c2, s2) = (c.clone(), stop.clone());
+        let cons = std::thread::spawn(move || {
+            let mut buf = Vec::with_capacity(256);
+            while !s2.load(Ordering::Relaxed) {
+                buf.clear();
+                c2.drain(&mut buf);
+                assert_eq!(buf.len() % 2, 0, "always whole stereo frames");
+            }
+        });
+        for i in 0..200u16 {
+            c.start(i % 2, i % 2 == 0);
+            std::thread::yield_now();
+        }
+        stop.store(true, Ordering::Release);
+        prod.join().unwrap();
+        cons.join().unwrap();
     }
 }
 

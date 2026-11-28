@@ -1408,8 +1408,10 @@ pub struct Engine {
     sampler_echo_count: usize,
     sampler_releases: Vec<sampler_notes::Release>,
     sampler_random: Option<Box<layers::Mt19937>>,
-    /// Audio clips with fades or gain playing on instrument channels.
+    /// Audio clips with fades or gain playing on instrument channels, and a read-only channel index mirror for
+    /// multicore dispatch without aliasing active `&mut InstClip`s.
     inst_shapes: Vec<InstClip>,
+    inst_shape_channels: Vec<usize>,
     /// The name the next audio clip voice on an instrument gets (`Instrument::voice_start`).
     next_voice: u32,
     /// Live notes for instrument channels waiting for the next tick (channel, key, velocity or -1 for an end, MIDI
@@ -2067,6 +2069,7 @@ impl Engine {
             sampler_releases: Vec::new(),
             sampler_random: None,
             inst_shapes: Vec::new(),
+            inst_shape_channels: Vec::new(),
             next_voice: 0,
             inst_live: Vec::with_capacity(64),
             vocal_audition:None,
@@ -4533,7 +4536,10 @@ impl Engine {
                 // choked on the song's last tick if it still sounds then ("The end of the song"), and when it is looped
                 // or the song ends otherwise, as every clip is. Notes end with a note off.
                 let inst = self.channels[t.channel].instrument.0.as_ref();
-                let ends = t.stop > 0.0 && inst.and_then(|i| i.lock().ok()).is_some_and(|i| i.voice_ends());
+                let ends = t.stop > 0.0
+                    && inst
+                        .and_then(|i| lock_busy(i, &mut self.busy_until, self.busy_wait, self.exporting))
+                        .is_some_and(|i| i.voice_ends());
                 match t.cut {
                     Some(_) if ends => {
                         let song = !self.looping && !self.live_only && self.end_tick > t.tick;
